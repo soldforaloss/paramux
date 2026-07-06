@@ -1,0 +1,31 @@
+const std = @import("std");
+
+/// Parse OSC 1
+pub fn parse(parser: anytype, _: ?u8) ?*@TypeOf(parser.command) {
+    const cap = if (parser.capture) |*c| c else {
+        parser.state = .invalid;
+        return null;
+    };
+    cap.writer.writeByte(0) catch {
+        parser.state = .invalid;
+        return null;
+    };
+    const data = cap.trailing();
+    parser.command = .{
+        .change_window_icon = data[0 .. data.len - 1 :0],
+    };
+    return &parser.command;
+}
+
+test "OSC 1: change_window_icon" {
+    const testing = std.testing;
+
+    var p = @import("../../osc.zig").Parser.init(null);
+    p.next('1');
+    p.next(';');
+    p.next('a');
+    p.next('b');
+    const cmd = p.end(null).?.*;
+    try testing.expect(cmd == .change_window_icon);
+    try testing.expectEqualStrings("ab", cmd.change_window_icon);
+}

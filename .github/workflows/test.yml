@@ -1,0 +1,58 @@
+name: Test
+
+on:
+  push: {}
+  pull_request: {}
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name != 'main' && github.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows Build And Tests
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Site copy checks
+        shell: pwsh
+        run: ./scripts/check-site-copy.ps1
+
+      - name: Release copy checks
+        shell: pwsh
+        # Keep CI local-only; manual release-copy validation uses -CheckRemoteLatest
+        # to avoid making PR checks depend on GitHub release API availability.
+        run: ./scripts/check-release-copy.ps1
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.15.2
+
+      - name: Zig version
+        run: zig version
+
+      - name: Win32 tests
+        run: zig build test -Dtest-filter=win32
+
+      - name: Scroll tests
+        run: zig build test -Dtest-filter=scroll
+
+      - name: Keybind tests
+        run: zig build test -Dtest-filter=keybind
+
+      - name: Build
+        run: zig build
+
+      - name: Build executable
+        run: zig build -Demit-exe=true
+
+      - name: Build ARM64 executable
+        env:
+          ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}\.zig-global-cache
+        # Cross-compilation coverage only; native execution runs in windows-arm64.yml.
+        run: zig build -Demit-exe=true -Dtarget=aarch64-windows-msvc -Dcpu=baseline
