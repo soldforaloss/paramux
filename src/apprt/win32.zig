@@ -7481,6 +7481,16 @@ pub const App = struct {
         return try core.renderer_state.terminal.plainString(alloc);
     }
 
+    /// paramux FR-3: apply an async git-dirty result on the UI thread. Ignored
+    /// if the surface is gone or the cwd changed again since the check began.
+    pub fn applyGitDirty(self: *App, surface_id: u64, gen: u64, dirty: bool) void {
+        const surface = self.findSurfaceById(surface_id) orelse return;
+        if (surface.git_check_gen.load(.monotonic) != gen) return;
+        if (surface.git_dirty == dirty) return;
+        surface.git_dirty = dirty;
+        surface.invalidateStatusBarState();
+    }
+
     fn showChildExited(
         self: *App,
         target: apprt.Target,
@@ -13651,7 +13661,7 @@ const Host = struct {
                 const cwd = basename(pwd);
                 var meta_buf: [320]u8 = undefined;
                 const meta: []const u8 = if (surface.git_branch) |br|
-                    (std.fmt.bufPrint(&meta_buf, "{s}  {s}", .{ br, cwd }) catch cwd)
+                    (std.fmt.bufPrint(&meta_buf, "{s}{s}  {s}", .{ br, if (surface.git_dirty) "*" else "", cwd }) catch cwd)
                 else
                     cwd;
                 drawPaletteRowText(hdc, meta, .{
@@ -15564,6 +15574,139 @@ fn drawPaneBorder(hdc: HDC, host_hwnd: HWND, surface_hwnd: HWND, c_rect: RECT, c
     if (br.y < c_rect.bottom) fillSolidRect(hdc, .{ .left = tl.x - bw, .top = br.y, .right = br.x + bw, .bottom = br.y + bw }, color);
     if (tl.x > c_rect.left) fillSolidRect(hdc, .{ .left = tl.x - bw, .top = tl.y, .right = tl.x, .bottom = br.y }, color);
     if (br.x < c_rect.right) fillSolidRect(hdc, .{ .left = br.x, .top = tl.y, .right = br.x + bw, .bottom = br.y }, color);
+}
+
+const CREATE_NO_WINDOW: windows.DWORD = 0x08000000;
+
+extern "kernel32" fn ReadFile(
+    hFile: windows.HANDLE,
+    lpBuffer: [*]u8,
+    nNumberOfBytesToRead: windows.DWORD,
+    lpNumberOfBytesRead: ?*windows.DWORD,
+    lpOverlapped: ?*anyopaque,
+) callconv(.winapi) windows.BOOL;
+
+/// paramux FR-3: run `git status --porcelain` in `pwd` with no console window
+/// (a GUI parent spawning a console child would otherwise flash one), returning
+/// whether the working tree is dirty (any output). Best-effort: any failure
+/// (git missing, not a repo) yields false. Runs on a background thread.
+fn runGitStatusDirty(alloc: Allocator, pwd: []const u8) bool {
+    const cmd_utf8 = std.fmt.allocPrint(alloc, "git -C \"{s}\" status --porcelain", .{pwd}) catch return false;
+    defer alloc.free(cmd_utf8);
+    const cmd_w = std.unicode.utf8ToUtf16LeAllocZ(alloc, cmd_utf8) catch return false;
+    defer alloc.free(cmd_w);
+
+    var sa: windows.SECURITY_ATTRIBUTES = .{
+        .nLength = @sizeOf(windows.SECURITY_ATTRIBUTES),
+        .lpSecurityDescriptor = null,
+        .bInheritHandle = windows.TRUE,
+    };
+    var read_pipe: windows.HANDLE = undefined;
+    var write_pipe: windows.HANDLE = undefined;
+    if (internal_os.windows.exp.kernel32.CreatePipe(&read_pipe, &write_pipe, &sa, 0) == 0) return false;
+    defer windows.CloseHandle(read_pipe);
+    // The read end must not be inherited, or the child holds it open and we
+    // never see EOF.
+    windows.SetHandleInformation(read_pipe, windows.HANDLE_FLAG_INHERIT, 0) catch {};
+
+    // stdin/stderr go to NUL so git's diagnostics (e.g. "not a git repository",
+    // advice/warnings) never get captured as "dirty" output — only the
+    // porcelain lines on stdout count.
+    const nul = windows.kernel32.CreateFileW(
+        std.unicode.utf8ToUtf16LeStringLiteral("NUL"),
+        windows.GENERIC_READ | windows.GENERIC_WRITE,
+        windows.FILE_SHARE_READ | windows.FILE_SHARE_WRITE,
+        &sa,
+        windows.OPEN_EXISTING,
+        0,
+        null,
+    );
+    const have_nul = nul != windows.INVALID_HANDLE_VALUE;
+    defer if (have_nul) windows.CloseHandle(nul);
+
+    var startup: windows.STARTUPINFOW = std.mem.zeroes(windows.STARTUPINFOW);
+    startup.cb = @sizeOf(windows.STARTUPINFOW);
+    startup.dwFlags = windows.STARTF_USESTDHANDLES;
+    startup.hStdOutput = write_pipe;
+    startup.hStdError = if (have_nul) nul else write_pipe;
+    startup.hStdInput = if (have_nul) nul else null;
+
+    var proc: windows.PROCESS_INFORMATION = undefined;
+    const created = internal_os.windows.exp.kernel32.CreateProcessW(
+        null,
+        cmd_w.ptr,
+        null,
+        null,
+        windows.TRUE,
+        CREATE_NO_WINDOW,
+        null,
+        null,
+        &startup,
+        &proc,
+    );
+    // Close our copy of the write end so ReadFile sees EOF when git exits.
+    windows.CloseHandle(write_pipe);
+    if (created == 0) return false;
+    defer windows.CloseHandle(proc.hProcess);
+    defer windows.CloseHandle(proc.hThread);
+
+    var dirty = false;
+    var buf: [4096]u8 = undefined;
+    while (true) {
+        var read_n: windows.DWORD = 0;
+        if (ReadFile(read_pipe, &buf, buf.len, &read_n, null) == 0) break;
+        if (read_n == 0) break;
+        if (!dirty) {
+            for (buf[0..read_n]) |c| {
+                if (!std.ascii.isWhitespace(c)) {
+                    dirty = true;
+                    break;
+                }
+            }
+        }
+    }
+    _ = windows.kernel32.WaitForSingleObject(proc.hProcess, 5000);
+    return dirty;
+}
+
+test "runGitStatusDirty: dirty repo true, non-repo false" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var buf: [std.fs.max_path_bytes]u8 = undefined;
+    const path = tmp.dir.realpath(".", &buf) catch return error.SkipZigTest;
+
+    // `git init` makes the tmp dir its own innermost repo (note: tmpDir lives
+    // inside this repo's .zig-cache, so without an inner repo git would walk up
+    // to the — dirty — paramux repo; the inner .git shadows it).
+    var init = std.process.Child.init(&.{ "git", "-C", path, "init" }, alloc);
+    init.stdout_behavior = .Ignore;
+    init.stderr_behavior = .Ignore;
+    _ = init.spawnAndWait() catch return error.SkipZigTest; // git not installed
+
+    // Fresh repo, no changes -> clean.
+    try testing.expect(!runGitStatusDirty(alloc, path));
+
+    // An untracked file -> dirty.
+    try tmp.dir.writeFile(.{ .sub_path = "untracked.txt", .data = "x" });
+    try testing.expect(runGitStatusDirty(alloc, path));
+}
+
+/// Background worker: compute git-dirty for a pane and marshal the result back
+/// to the UI thread. `pwd` is owned and freed here.
+fn gitDirtyWorker(app: *App, surface_id: u64, gen: u64, pwd: []u8) void {
+    const alloc = app.core_app.alloc;
+    defer alloc.free(pwd);
+    const dirty = runGitStatusDirty(alloc, pwd);
+    const mailbox: CoreApp.Mailbox = .{ .rt_app = app, .mailbox = &app.core_app.mailbox };
+    _ = mailbox.push(.{ .git_dirty_result = .{
+        .surface_id = surface_id,
+        .gen = gen,
+        .dirty = dirty,
+    } }, .{ .forever = {} });
 }
 
 fn utf16GdiTextLen(text: [:0]const u16) i32 {
@@ -21554,6 +21697,11 @@ pub const Surface = struct {
     /// paramux M2 sidebar metadata: git branch derived from pwd (.git/HEAD),
     /// and the latest desktop-notification text (OSC 9 / OSC 777).
     git_branch: ?[:0]const u8 = null,
+    /// paramux FR-3: whether the pane's git repo has uncommitted changes,
+    /// computed asynchronously (`git status`) off the UI thread. `git_check_gen`
+    /// is bumped on every cwd change so a stale check result is ignored.
+    git_dirty: bool = false,
+    git_check_gen: std.atomic.Value(u64) = .init(0),
     last_notification: ?[:0]const u8 = null,
     /// paramux FR-4 attention: the current agent-attention state for this pane
     /// (OSC 9/777 or an agent hook via `+notify --state`). Drives the sidebar
@@ -24911,7 +25059,26 @@ pub const Surface = struct {
         const alloc = self.app.core_app.alloc;
         try appendOwnedString(alloc, &self.pwd, pwd);
         self.updateGitBranch(pwd);
+        self.startGitDirtyCheck(pwd);
         self.invalidateStatusBarState();
+    }
+
+    /// paramux FR-3: kick off an async `git status` for the new cwd. Bumps the
+    /// generation so an in-flight (now stale) check is ignored when it returns.
+    fn startGitDirtyCheck(self: *Surface, pwd: []const u8) void {
+        const gen = self.git_check_gen.fetchAdd(1, .monotonic) + 1;
+        // Only a repo (branch found) can be dirty; clear otherwise.
+        if (self.git_branch == null) {
+            self.git_dirty = false;
+            return;
+        }
+        const alloc = self.app.core_app.alloc;
+        const pwd_copy = alloc.dupe(u8, pwd) catch return;
+        const thread = std.Thread.spawn(.{}, gitDirtyWorker, .{ self.app, self.core().id, gen, pwd_copy }) catch {
+            alloc.free(pwd_copy);
+            return;
+        };
+        thread.detach();
     }
 
     /// paramux M2: derive the git branch for `pwd` by walking up to a `.git`

@@ -313,6 +313,9 @@ fn drainMailbox(self: *App, rt_app: *apprt.App) !void {
                     break :blk null;
                 };
             },
+            .git_dirty_result => |result| {
+                rt_app.applyGitDirty(result.surface_id, result.gen, result.dirty);
+            },
             .close => |surface| self.closeSurface(surface),
             .surface_message => |msg| try self.surfaceMessage(msg.surface, msg.message),
             .redraw_surface => |surface| try self.redrawSurface(rt_app, surface),
@@ -753,6 +756,10 @@ pub const Message = union(enum) {
     /// Read a surface's viewport text on the app thread (paramux `+read-pane`).
     read_pane: *ReadPaneRequest,
 
+    /// Apply an async git-dirty result to a surface on the app thread (paramux
+    /// FR-3 sidebar). Fire-and-forget (a value, not a blocking request).
+    git_dirty_result: GitDirtyResult,
+
     /// Close a surface. This notifies the runtime that a surface
     /// should close.
     close: *Surface,
@@ -801,6 +808,12 @@ pub const Message = union(enum) {
         done: std.Thread.ResetEvent = .{},
         result: ?[]const u8 = null,
         err: ?anyerror = null,
+    };
+
+    pub const GitDirtyResult = struct {
+        surface_id: u64,
+        gen: u64,
+        dirty: bool,
     };
 
     const NewWindow = struct {

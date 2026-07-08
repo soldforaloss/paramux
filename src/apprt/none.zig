@@ -67,6 +67,8 @@ pub const App = struct {
         return error.Unsupported;
     }
 
+    pub fn applyGitDirty(_: *App, _: u64, _: u64, _: bool) void {}
+
     pub fn buildAutomationWindowListJson(
         _: *App,
         _: Allocator,
