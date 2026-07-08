@@ -35,6 +35,7 @@ const win32_surface_drop_target = @import("win32_surface_drop_target.zig");
 const win32_toast_activation = @import("win32_toast_activation.zig");
 const win32_tab_drag = @import("win32_tab_drag.zig");
 const win32_tab_drag_ole = @import("win32_tab_drag_ole.zig");
+const win32_split_resize = @import("win32_split_resize.zig");
 const win32_search_bar = @import("win32_search_bar.zig");
 const win32_icons = @import("win32_icons.zig");
 const win32_paste_protection = @import("win32_paste_protection.zig");
@@ -356,6 +357,8 @@ const GWLP_WNDPROC = -4;
 const GWL_STYLE = -16;
 const GWL_EXSTYLE = -20;
 const IDC_ARROW = @as(INTRESOURCE, @ptrFromInt(32512));
+const IDC_SIZEWE = @as(INTRESOURCE, @ptrFromInt(32644));
+const IDC_SIZENS = @as(INTRESOURCE, @ptrFromInt(32645));
 const ID_ICON_GHOSTTY = 1;
 const IMAGE_ICON = 1;
 const LR_SHARED = 0x00008000;
@@ -7754,6 +7757,11 @@ const Host = struct {
     tab_drag_index: ?usize = null,
     tab_drag_start_x: i32 = 0,
     tab_drag_active: bool = false,
+    /// Live divider drag-resize state, driven from `hostWindowProc`:
+    /// WM_LBUTTONDOWN over a divider begins the drag + SetCaptures,
+    /// WM_MOUSEMOVE updates the split ratio, WM_LBUTTONUP / WM_CAPTURECHANGED
+    /// ends it. Geometry/ratio math lives in `win32_split_resize.zig`.
+    split_resize: win32_split_resize.DragState = .{},
 
     // Command palette list UI. Backed by a custom child HWND shown
     // only while the palette is open. `palette_list_ranked` caches the
@@ -8980,6 +8988,71 @@ const Host = struct {
         if (self.tabs.items.len == 0 or self.active_tab >= self.tabs.items.len) return null;
         const tab: *const Tab = &self.tabs.items[self.active_tab];
         return tab.focusedSurface();
+    }
+
+    /// Hit-test the pane divider (if any) under host-client point (x, y),
+    /// returning a draggable divider descriptor or null. Null when the point
+    /// is not on a divider, or the active tab is single-pane / zoomed. Uses
+    /// the exact slot->pixel mapping that `layout()` uses so the hit region
+    /// lines up with the painted gap.
+    fn dividerAtPoint(self: *Host, x: i32, y: i32) ?win32_split_resize.Divider {
+        const active_tab = self.activeTab() orelse return null;
+        if (active_tab.tree.zoomed != null) return null;
+        if (active_tab.leafCount() <= 1) return null;
+        const content_rect = self.contentRect() catch return null;
+        const content_y = content_rect.top;
+        const content_width = @max(1, content_rect.right - content_rect.left);
+        const content_height = @max(1, content_rect.bottom - content_rect.top);
+        const alloc = self.app.core_app.alloc;
+        var sp = active_tab.tree.spatial(alloc) catch return null;
+        defer sp.deinit(alloc);
+        const tol = self.scaled(win32_split_resize.divider_half_px + win32_split_resize.grab_slop_px);
+        const toPx = struct {
+            fn f(norm: f16, size: i32) i32 {
+                return @as(i32, @intFromFloat(@round(norm * @as(f16, @floatFromInt(size)))));
+            }
+        }.f;
+
+        var best: ?win32_split_resize.Divider = null;
+        var best_dist: i32 = std.math.maxInt(i32);
+        for (active_tab.tree.nodes, 0..) |node, i| {
+            const s = switch (node) {
+                .leaf => continue,
+                .split => |sp_node| sp_node,
+            };
+            const slot = sp.slots[i];
+            const px0 = content_rect.left + toPx(slot.x, content_width);
+            const py0 = content_y + toPx(slot.y, content_height);
+            const pw = toPx(slot.width, content_width);
+            const ph = toPx(slot.height, content_height);
+            const divider: win32_split_resize.Divider = switch (s.layout) {
+                .horizontal => .{
+                    .node_index = i,
+                    .orientation = .horizontal,
+                    .line = content_rect.left + toPx(slot.x + slot.width * s.ratio, content_width),
+                    .span_lo = py0,
+                    .span_hi = py0 + ph,
+                    .axis_origin = px0,
+                    .axis_size = pw,
+                },
+                .vertical => .{
+                    .node_index = i,
+                    .orientation = .vertical,
+                    .line = content_y + toPx(slot.y + slot.height * s.ratio, content_height),
+                    .span_lo = px0,
+                    .span_hi = px0 + pw,
+                    .axis_origin = py0,
+                    .axis_size = ph,
+                },
+            };
+            if (win32_split_resize.hitDistance(x, y, divider, tol)) |dist| {
+                if (dist < best_dist) {
+                    best_dist = dist;
+                    best = divider;
+                }
+            }
+        }
+        return best;
     }
 
     fn refocusHostWindow(self: *Host) void {
@@ -12617,19 +12690,23 @@ const Host = struct {
                     // Pane divider gap: inset internal edges only (pixel-space detection)
                     const has_multi_panes = active_tab.leafCount() > 1;
                     if (has_multi_panes) {
+                        // Inset internal edges to leave a grabbable divider gap
+                        // between adjacent panes (the drag-resize hit target);
+                        // see win32_split_resize.zig and dividerAtPoint().
+                        const gap = self.scaled(win32_split_resize.divider_half_px);
                         if (x > content_rect.left) {
-                            x += 1;
-                            w -= 1;
+                            x += gap;
+                            w -= gap;
                         }
                         if (x + w < content_rect.left + content_width) {
-                            w -= 1;
+                            w -= gap;
                         }
                         if (y > content_y) {
-                            y += 1;
-                            h -= 1;
+                            y += gap;
+                            h -= gap;
                         }
                         if (y + h < content_y + content_height) {
-                            h -= 1;
+                            h -= gap;
                         }
                         w = @max(1, w);
                         h = @max(1, h);
@@ -18907,8 +18984,69 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
 
+        WM_LBUTTONDOWN => {
+            if (host) |v| {
+                const mx = signedLowWord(lParamBits(lParam));
+                const my = signedHighWord(lParamBits(lParam));
+                if (v.dividerAtPoint(mx, my)) |divider| {
+                    v.split_resize.begin(divider, v.scaled(win32_split_resize.min_pane_px));
+                    _ = SetCapture(hwnd);
+                    _ = SetCursor(LoadCursorW(null, switch (divider.orientation) {
+                        .horizontal => IDC_SIZEWE,
+                        .vertical => IDC_SIZENS,
+                    }));
+                    return 0;
+                }
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+
+        WM_SETCURSOR => {
+            if (host) |v| {
+                if (lowWord(@as(usize, @intCast(lParam))) == HTCLIENT) {
+                    if (v.split_resize.active) {
+                        _ = SetCursor(LoadCursorW(null, switch (v.split_resize.orientation) {
+                            .horizontal => IDC_SIZEWE,
+                            .vertical => IDC_SIZENS,
+                        }));
+                        return 1;
+                    }
+                    var cp: POINT = undefined;
+                    if (GetCursorPos(&cp) != 0 and ScreenToClient(hwnd, &cp) != 0) {
+                        if (v.dividerAtPoint(cp.x, cp.y)) |divider| {
+                            _ = SetCursor(LoadCursorW(null, switch (divider.orientation) {
+                                .horizontal => IDC_SIZEWE,
+                                .vertical => IDC_SIZENS,
+                            }));
+                            return 1;
+                        }
+                    }
+                }
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+
         WM_MOUSEMOVE => {
             if (host) |v| {
+                if (v.split_resize.active) {
+                    const mx = signedLowWord(lParamBits(lParam));
+                    const my = signedHighWord(lParamBits(lParam));
+                    const cursor_axis = switch (v.split_resize.orientation) {
+                        .horizontal => mx,
+                        .vertical => my,
+                    };
+                    const ratio: f16 = @floatCast(v.split_resize.ratioAt(cursor_axis));
+                    if (v.activeTab()) |tab| {
+                        const handle: SplitTreeSurface.Node.Handle = @enumFromInt(v.split_resize.node_index);
+                        tab.tree.resizeInPlace(handle, ratio);
+                        v.layout() catch {};
+                    }
+                    _ = SetCursor(LoadCursorW(null, switch (v.split_resize.orientation) {
+                        .horizontal => IDC_SIZEWE,
+                        .vertical => IDC_SIZENS,
+                    }));
+                    return 0;
+                }
                 var track: TRACKMOUSEEVENT = .{
                     .cbSize = @sizeOf(TRACKMOUSEEVENT),
                     .dwFlags = TME_LEAVE,
@@ -18946,6 +19084,11 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
 
         WM_LBUTTONUP, WM_MBUTTONUP, WM_RBUTTONUP => {
             if (host) |v| {
+                if (msg == WM_LBUTTONUP and v.split_resize.active) {
+                    v.split_resize.end();
+                    _ = ReleaseCapture();
+                    return 0;
+                }
                 const point = POINT{
                     .x = signedLowWord(lParamBits(lParam)),
                     .y = signedHighWord(lParamBits(lParam)),
@@ -18963,6 +19106,13 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     if (v.openSelectedProfile(open_target)) return 0;
                     return 0;
                 }
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+
+        WM_CAPTURECHANGED => {
+            if (host) |v| {
+                if (v.split_resize.active) v.split_resize.end();
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
