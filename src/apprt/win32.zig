@@ -2552,6 +2552,22 @@ fn collectStartupForwardArguments(alloc: Allocator) !?[]const [:0]const u8 {
 fn ipcServerMain(app: *App) void {
     const pipe_name = app.ipc_pipe_name orelse return;
 
+    // Publish a real handle to this thread so stopIpcServer can cancel our
+    // blocking ConnectNamedPipe directly (process-local), instead of relying on
+    // a self-connect that a shared pipe name may route elsewhere.
+    var thread_handle: windows.HANDLE = undefined;
+    if (windows.kernel32.DuplicateHandle(
+        windows.kernel32.GetCurrentProcess(),
+        GetCurrentThread(),
+        windows.kernel32.GetCurrentProcess(),
+        &thread_handle,
+        0,
+        0,
+        DUPLICATE_SAME_ACCESS,
+    ) != 0) {
+        app.ipc_thread_handle = thread_handle;
+    }
+
     while (!app.ipc_stop_requested.load(.acquire)) {
         const pipe = CreateNamedPipeW(
             pipe_name.ptr,
@@ -2955,6 +2971,10 @@ pub const App = struct {
     system_dynamic_scrollbars: bool = true,
     ipc_pipe_name: ?[:0]const u16 = null,
     ipc_thread: ?std.Thread = null,
+    /// A dup'd handle to the IPC server thread, so shutdown can reliably cancel
+    /// its blocking ConnectNamedPipe (a self-connect on the shared pipe can be
+    /// routed to another process). Set by the thread at start.
+    ipc_thread_handle: ?windows.HANDLE = null,
     ipc_stop_requested: std.atomic.Value(bool) = .init(false),
     /// paramux per-instance IPC auth token (32 hex chars), generated at server
     /// start. Gated mutating methods require it; injected into every pane env as
@@ -4173,14 +4193,13 @@ pub const App = struct {
     fn stopIpcServer(self: *App) void {
         if (self.ipc_thread) |thread| {
             self.ipc_stop_requested.store(true, .release);
-            // Wake the accept loop's blocking ConnectNamedPipe by self-connecting.
-            // KNOWN LIMITATION (multi-process only): the pipe name is shared
-            // across same-class processes, so this self-connect can be routed by
-            // Windows to a *different* process's listener, leaving this process's
-            // ConnectNamedPipe blocked and join() hung. It is reliable for the
-            // single-process model paramux targets. The robust fix (overlapped
-            // ConnectNamedPipe + a per-process stop event) belongs with the
-            // per-instance-pipe/token work; see the startIpcServer note.
+            // Cancel the accept loop's blocking ConnectNamedPipe process-locally
+            // via the thread handle. This is reliable even with multiple
+            // same-class processes on the shared pipe name (a self-connect could
+            // be routed to a *different* process, hanging our join()).
+            if (self.ipc_thread_handle) |h| _ = CancelSynchronousIo(h);
+            // Belt-and-suspenders: also poke the pipe, in case the thread is
+            // between accepts (not yet blocked in ConnectNamedPipe).
             if (self.ipc_pipe_name) |pipe_name| {
                 if (connectToIpcPipe(pipe_name)) |pipe| {
                     _ = windows.CloseHandle(pipe);
@@ -4188,6 +4207,10 @@ pub const App = struct {
             }
             thread.join();
             self.ipc_thread = null;
+        }
+        if (self.ipc_thread_handle) |h| {
+            _ = windows.CloseHandle(h);
+            self.ipc_thread_handle = null;
         }
 
         if (self.ipc_pipe_name) |pipe_name| {
@@ -15649,6 +15672,10 @@ fn formatSidebarPorts(buf: []u8, ports: []const u16) []const u8 {
 }
 
 const CREATE_NO_WINDOW: windows.DWORD = 0x08000000;
+const DUPLICATE_SAME_ACCESS: windows.DWORD = 0x00000002;
+
+extern "kernel32" fn GetCurrentThread() callconv(.winapi) windows.HANDLE;
+extern "kernel32" fn CancelSynchronousIo(hThread: windows.HANDLE) callconv(.winapi) windows.BOOL;
 
 extern "kernel32" fn ReadFile(
     hFile: windows.HANDLE,
