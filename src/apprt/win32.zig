@@ -4857,6 +4857,7 @@ pub const App = struct {
             .desktop_notification => {
                 if (self.findSurfaceForTarget(target)) |surface| {
                     surface.setLastNotification(value.title, value.body) catch {};
+                    surface.setNeedsAttention(true);
                 }
                 try self.showDesktopNotification(target, value.title, value.body);
                 return true;
@@ -12938,7 +12939,7 @@ const Host = struct {
         const pad = self.scaled(10);
         const stripe_w = self.scaled(3);
         const half = @divTrunc(row_h, 2);
-        const text_right = rect.right - border - pad;
+        const text_right = rect.right - border - pad - self.scaled(16);
         const basename = struct {
             fn f(path: []const u8) []const u8 {
                 var end = path.len;
@@ -12980,6 +12981,15 @@ const Host = struct {
                     .right = text_right,
                     .bottom = row_bottom - self.scaled(2),
                 }, theme.text_secondary);
+            }
+            // paramux M3: status dot when the pane needs attention.
+            if (surface.needs_attention) {
+                const d = self.scaled(9);
+                const cx = rect.right - border - self.scaled(13);
+                const cy = y + @divTrunc(row_h, 2);
+                const dot_rect = RECT{ .left = cx - @divTrunc(d, 2), .top = cy - @divTrunc(d, 2), .right = cx + @divTrunc(d, 2), .bottom = cy + @divTrunc(d, 2) };
+                const attn = win32_theme.rgb(235, 170, 50);
+                drawRoundedRect(hdc, dot_rect, attn, attn, d);
             }
             // Subtle 1px separator under each row.
             fillSolidRect(hdc, .{ .left = rect.left, .top = row_bottom - border, .right = rect.right - border, .bottom = row_bottom }, theme.chrome_border);
@@ -20763,6 +20773,10 @@ pub const Surface = struct {
     /// and the latest desktop-notification text (OSC 9 / OSC 777).
     git_branch: ?[:0]const u8 = null,
     last_notification: ?[:0]const u8 = null,
+    /// paramux M3 attention: true when this pane has raised a notification
+    /// (OSC 9/777 or an agent hook) and hasn't been looked at yet. Drives the
+    /// sidebar status dot + taskbar flash; cleared when the pane is focused.
+    needs_attention: bool = false,
     taskbar_progress: ?win32_taskbar_progress.ProgressReport = null,
     inspector_visible: bool = false,
     paint_pending: bool = false,
@@ -24153,6 +24167,13 @@ pub const Surface = struct {
         if (text.len == 0) return;
         if (ownedStringEquals(self.last_notification, text)) return;
         try appendOwnedString(alloc, &self.last_notification, text);
+        self.invalidateStatusBarState();
+    }
+
+    /// paramux M3: set/clear the pane's needs-attention flag and repaint.
+    fn setNeedsAttention(self: *Surface, value: bool) void {
+        if (self.needs_attention == value) return;
+        self.needs_attention = value;
         self.invalidateStatusBarState();
     }
 
