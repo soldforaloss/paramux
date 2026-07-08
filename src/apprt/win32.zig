@@ -11964,6 +11964,25 @@ const Host = struct {
                 .bottom = draw.rcItem.top + self.scaled(5),
             }, border);
         }
+        // paramux FR-4: tab-strip attention indicator — a top stripe colored by
+        // the strongest alerting state across the tab's panes (same palette as
+        // the sidebar dot + pane ring), so a background tab surfaces an agent
+        // that is waiting/done/errored.
+        if (tab_button and !overlay and !disabled) {
+            if (self.tabIndexForButton(draw.hwndItem)) |tab_idx| {
+                var state: AttentionState = .none;
+                var it = self.tabs.items[tab_idx].tree.iterator();
+                while (it.next()) |entry| state = AttentionState.max(state, entry.view.attention_state);
+                if (state.isAlerting()) {
+                    fillSolidRect(draw.hDC, .{
+                        .left = draw.rcItem.left + self.scaled(5),
+                        .top = draw.rcItem.top + self.scaled(3),
+                        .right = draw.rcItem.right - self.scaled(5),
+                        .bottom = draw.rcItem.top + self.scaled(6),
+                    }, state.color());
+                }
+            }
+        }
         if (focused and !disabled) {
             const focus = if (profile_kind) |kind|
                 profileKindFocusRingColor(kind, theme.is_dark)
@@ -12422,6 +12441,19 @@ const Host = struct {
         if (sidebar_w <= 0) return;
         const cr = self.contentRect() catch return;
         var rect = RECT{ .left = 0, .top = cr.top, .right = sidebar_w, .bottom = cr.bottom };
+        _ = InvalidateRect(hwnd, &rect, 0);
+    }
+
+    /// paramux FR-4: repaint the attention visuals that live outside the sidebar
+    /// — the owner-drawn tab-strip stripes and the pane rings in the host
+    /// content region. Called when a pane's attention state changes.
+    fn invalidateAttentionVisuals(self: *Host) void {
+        const hwnd = self.hwnd orelse return;
+        for (self.tabs.items) |tab| {
+            if (tab.button_hwnd) |btn| _ = InvalidateRect(btn, null, 0);
+        }
+        const cr = self.contentRect() catch return;
+        var rect = RECT{ .left = cr.left, .top = cr.top, .right = cr.right, .bottom = cr.bottom };
         _ = InvalidateRect(hwnd, &rect, 0);
     }
 
@@ -13636,13 +13668,7 @@ const Host = struct {
                 const cx = rect.right - border - self.scaled(13);
                 const cy = y + @divTrunc(row_h, 2);
                 const dot_rect = RECT{ .left = cx - @divTrunc(d, 2), .top = cy - @divTrunc(d, 2), .right = cx + @divTrunc(d, 2), .bottom = cy + @divTrunc(d, 2) };
-                const attn = switch (surface.attention_state) {
-                    .working => win32_theme.rgb(60, 140, 235),
-                    .waiting => win32_theme.rgb(235, 170, 50),
-                    .done => win32_theme.rgb(70, 190, 90),
-                    .@"error" => win32_theme.rgb(225, 70, 70),
-                    .none => unreachable,
-                };
+                const attn = surface.attention_state.color();
                 drawRoundedRect(hdc, dot_rect, attn, attn, d);
             }
             // Subtle 1px separator under each row.
@@ -14196,37 +14222,24 @@ const Host = struct {
             if (self.activeTab()) |active_tab| {
                 if (active_tab.leafCount() > 1) {
                     const c_rect = content_rect;
-                    const c_width = @max(1, c_rect.right - c_rect.left);
-                    const c_height = @max(1, c_rect.bottom - c_rect.top);
                     // Fill entire content area with divider color first (gap pixels)
                     fillSolidRect(hdc, c_rect, theme.pane_divider);
-                    // Draw accent border around focused pane
-                    const focused_surface = self.activeSurface();
-                    if (focused_surface) |surface| {
+                    // Draw the thin focus border around the focused pane.
+                    if (self.activeSurface()) |surface| {
                         if (surface.hwnd) |surface_hwnd| {
-                            var sr: RECT = undefined;
-                            if (GetWindowRect(surface_hwnd, &sr) != 0) {
-                                var tl = POINT{ .x = sr.left, .y = sr.top };
-                                var br = POINT{ .x = sr.right, .y = sr.bottom };
-                                _ = ScreenToClient(hwnd, &tl);
-                                _ = ScreenToClient(hwnd, &br);
-                                // Only draw focus border if pane is within content area
-                                if (tl.x >= c_rect.left and br.x <= c_rect.right and
-                                    tl.y >= c_rect.top and br.y <= c_rect.bottom)
-                                {
-                                    const bw: i32 = 1; // border width for focus accent
-                                    // Top
-                                    if (tl.y > c_rect.top) fillSolidRect(hdc, .{ .left = tl.x - bw, .top = tl.y - bw, .right = br.x + bw, .bottom = tl.y }, theme.pane_divider_focused);
-                                    // Bottom
-                                    if (br.y < c_rect.bottom) fillSolidRect(hdc, .{ .left = tl.x - bw, .top = br.y, .right = br.x + bw, .bottom = br.y + bw }, theme.pane_divider_focused);
-                                    // Left
-                                    if (tl.x > c_rect.left) fillSolidRect(hdc, .{ .left = tl.x - bw, .top = tl.y, .right = tl.x, .bottom = br.y }, theme.pane_divider_focused);
-                                    // Right
-                                    if (br.x < c_rect.right) fillSolidRect(hdc, .{ .left = br.x, .top = tl.y, .right = br.x + bw, .bottom = br.y }, theme.pane_divider_focused);
-                                }
-                                _ = c_width;
-                                _ = c_height;
-                            }
+                            drawPaneBorder(hdc, hwnd, surface_hwnd, c_rect, theme.pane_divider_focused, 1);
+                        }
+                    }
+                    // paramux FR-4: draw a thicker colored attention ring around
+                    // every pane whose state is alerting (waiting/done/error),
+                    // after the focus border so an alerting focused pane shows
+                    // its state color. Same palette as the sidebar dot + tab.
+                    var it = active_tab.tree.iterator();
+                    while (it.next()) |entry| {
+                        const surface = entry.view;
+                        if (!surface.attention_state.isAlerting()) continue;
+                        if (surface.hwnd) |surface_hwnd| {
+                            drawPaneBorder(hdc, hwnd, surface_hwnd, c_rect, surface.attention_state.color(), 2);
                         }
                     }
                 }
@@ -15532,6 +15545,25 @@ fn fillSolidRect(hdc: HDC, rect: RECT, color: u32) void {
     const brush = GetStockObject(DC_BRUSH) orelse return;
     _ = SetDCBrushColor(hdc, color);
     _ = FillRect(hdc, &rect, brush);
+}
+
+/// paramux FR-4: draw a `bw`-pixel border in `color` around a pane child window,
+/// painted into the split gap *outside* the pane rect (the GL renderer owns the
+/// interior). Used for both the focus border and the attention ring. No-ops if
+/// the pane falls outside the content area or an edge has no gap.
+fn drawPaneBorder(hdc: HDC, host_hwnd: HWND, surface_hwnd: HWND, c_rect: RECT, color: u32, bw: i32) void {
+    var sr: RECT = undefined;
+    if (GetWindowRect(surface_hwnd, &sr) == 0) return;
+    var tl = POINT{ .x = sr.left, .y = sr.top };
+    var br = POINT{ .x = sr.right, .y = sr.bottom };
+    _ = ScreenToClient(host_hwnd, &tl);
+    _ = ScreenToClient(host_hwnd, &br);
+    if (!(tl.x >= c_rect.left and br.x <= c_rect.right and
+        tl.y >= c_rect.top and br.y <= c_rect.bottom)) return;
+    if (tl.y > c_rect.top) fillSolidRect(hdc, .{ .left = tl.x - bw, .top = tl.y - bw, .right = br.x + bw, .bottom = tl.y }, color);
+    if (br.y < c_rect.bottom) fillSolidRect(hdc, .{ .left = tl.x - bw, .top = br.y, .right = br.x + bw, .bottom = br.y + bw }, color);
+    if (tl.x > c_rect.left) fillSolidRect(hdc, .{ .left = tl.x - bw, .top = tl.y, .right = tl.x, .bottom = br.y }, color);
+    if (br.x < c_rect.right) fillSolidRect(hdc, .{ .left = br.x, .top = tl.y, .right = br.x + bw, .bottom = br.y }, color);
 }
 
 fn utf16GdiTextLen(text: [:0]const u16) i32 {
@@ -21382,6 +21414,36 @@ pub const AttentionState = enum {
             .none, .working => false,
         };
     }
+
+    /// paramux FR-4 "one color language": the single palette used identically on
+    /// the sidebar dot, the tab-strip indicator, and the pane ring. `.none`
+    /// never draws, so its color is not meaningful.
+    fn color(self: AttentionState) u32 {
+        return switch (self) {
+            .working => win32_theme.rgb(60, 140, 235), // blue
+            .waiting => win32_theme.rgb(235, 170, 50), // amber
+            .done => win32_theme.rgb(70, 190, 90), // green
+            .@"error" => win32_theme.rgb(225, 70, 70), // red
+            .none => win32_theme.rgb(0, 0, 0),
+        };
+    }
+
+    /// The most attention-worthy state among a set, for the tab-strip indicator
+    /// (a tab shows the strongest state across its panes). Priority:
+    /// error > waiting > done > working > none.
+    fn max(a: AttentionState, b: AttentionState) AttentionState {
+        return if (rank(a) >= rank(b)) a else b;
+    }
+
+    fn rank(self: AttentionState) u8 {
+        return switch (self) {
+            .none => 0,
+            .working => 1,
+            .done => 2,
+            .waiting => 3,
+            .@"error" => 4,
+        };
+    }
 };
 
 /// The private OSC 777 title marker paramux uses to carry an attention state.
@@ -23844,6 +23906,7 @@ pub const Surface = struct {
         if (self.host) |host| {
             host.invalidateStatusBarText();
             host.invalidateSidebar();
+            host.invalidateAttentionVisuals();
         }
     }
 
