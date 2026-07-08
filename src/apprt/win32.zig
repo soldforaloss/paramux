@@ -575,6 +575,9 @@ const host_tab_small_button_width: i32 = default_metrics.tab_small_button_width;
 const host_tab_overflow_button_width: i32 = default_metrics.tab_overflow_button_width;
 const host_titlebar_action_button_size: i32 = 32;
 const host_tab_label_max_len: usize = default_metrics.tab_label_max_len;
+// paramux M2: docked left metadata sidebar (width + per-row height, unscaled).
+const host_sidebar_width: i32 = 240;
+const host_sidebar_row_height: i32 = 48;
 const host_tab_min_button_width: i32 = default_metrics.tab_min_width;
 /// Non-owning view over the palette's command lists. Points into
 /// config arena storage — lifetime matches `app.config`. Re-exported
@@ -11771,6 +11774,24 @@ const Host = struct {
         return 0;
     }
 
+    /// Width (px) of the docked left metadata sidebar (M2). Always-on for
+    /// now; a toggle can gate this later. Reserved by contentRect() so panes
+    /// reflow automatically.
+    fn sidebarWidth(self: *const Host) i32 {
+        return self.scaled(host_sidebar_width);
+    }
+
+    /// Invalidate just the sidebar strip so per-pane metadata changes
+    /// (cwd / title / notification) repaint it without a full-host repaint.
+    fn invalidateSidebar(self: *Host) void {
+        const hwnd = self.hwnd orelse return;
+        const sidebar_w = self.sidebarWidth();
+        if (sidebar_w <= 0) return;
+        const cr = self.contentRect() catch return;
+        var rect = RECT{ .left = 0, .top = cr.top, .right = sidebar_w, .bottom = cr.bottom };
+        _ = InvalidateRect(hwnd, &rect, 0);
+    }
+
     fn estimateLauncherLaneRight(self: *Host) i32 {
         var x = self.scaled(16);
         const selected_profile_index = self.selectedProfileIndex();
@@ -11816,7 +11837,7 @@ const Host = struct {
         const overlay_offset: i32 = if (self.overlay_mode == .none) 0 else self.scaled(host_overlay_height);
         const inspector_offset: i32 = if (self.inspectorPanelVisible()) self.scaled(host_inspector_panel_height) else 0;
         return .{
-            .left = 0,
+            .left = self.sidebarWidth(),
             .top = tab_offset + overlay_offset + inspector_offset,
             .right = rect.right,
             .bottom = @max(tab_offset + 1, rect.bottom - self.statusBarHeight()),
@@ -12600,6 +12621,9 @@ const Host = struct {
         if (GetClientRect(hwnd, &rect) == 0) {
             return windows.unexpectedError(windows.kernel32.GetLastError());
         }
+        // paramux M2: repaint the sidebar on any structural relayout
+        // (split / close / tab-switch / resize) so the pane rows stay in sync.
+        self.invalidateSidebar();
         var chrome_layout_changed = false;
         if (!self.layoutChromeForRect(rect, &chrome_layout_changed)) return;
 
@@ -12890,6 +12914,70 @@ const Host = struct {
         self.paintCaptionButton(hdc, close_rect, .close, .close, now, is_hc, theme);
     }
 
+    /// Paint the docked left metadata sidebar: one row per pane of the active
+    /// tab (M2 Phase 1). Each row shows the pane label (OSC-2 title) and the
+    /// cwd basename; the active pane gets a background highlight + accent
+    /// stripe. cwd/label come straight off the cached Surface fields.
+    fn paintSidebar(self: *Host, hdc: HDC, rect: RECT) void {
+        const theme = &self.app.resolved_theme;
+        fillSolidRect(hdc, rect, theme.chrome_bg);
+        const border = self.scaled(1);
+        fillSolidRect(hdc, .{
+            .left = rect.right - border,
+            .top = rect.top,
+            .right = rect.right,
+            .bottom = rect.bottom,
+        }, theme.chrome_border);
+
+        const tab = self.activeTab() orelse return;
+        _ = SetBkMode(hdc, TRANSPARENT);
+        const row_h = self.scaled(host_sidebar_row_height);
+        const pad = self.scaled(10);
+        const stripe_w = self.scaled(3);
+        const half = @divTrunc(row_h, 2);
+        const text_right = rect.right - border - pad;
+        const basename = struct {
+            fn f(path: []const u8) []const u8 {
+                var end = path.len;
+                while (end > 0 and (path[end - 1] == '\\' or path[end - 1] == '/')) end -= 1;
+                var start = end;
+                while (start > 0 and path[start - 1] != '\\' and path[start - 1] != '/') start -= 1;
+                return path[start..end];
+            }
+        }.f;
+
+        var y: i32 = rect.top;
+        var it = tab.tree.iterator();
+        while (it.next()) |entry| {
+            if (y >= rect.bottom) break;
+            const surface = entry.view;
+            const is_active = entry.handle == tab.focused;
+            const row_bottom = @min(rect.bottom, y + row_h);
+            if (is_active) {
+                fillSolidRect(hdc, .{ .left = rect.left, .top = y, .right = rect.right - border, .bottom = row_bottom }, theme.button_active_bg);
+                fillSolidRect(hdc, .{ .left = rect.left, .top = y, .right = rect.left + stripe_w, .bottom = row_bottom }, theme.accent);
+            }
+            const label: []const u8 = if (surface.effectiveTitle()) |t| t else "shell";
+            drawPaletteRowText(hdc, label, .{
+                .left = rect.left + pad,
+                .top = y + self.scaled(4),
+                .right = text_right,
+                .bottom = y + half,
+            }, theme.text_primary);
+            if (surface.pwd) |pwd| {
+                drawPaletteRowText(hdc, basename(pwd), .{
+                    .left = rect.left + pad,
+                    .top = y + half - self.scaled(2),
+                    .right = text_right,
+                    .bottom = row_bottom - self.scaled(2),
+                }, theme.text_secondary);
+            }
+            // Subtle 1px separator under each row.
+            fillSolidRect(hdc, .{ .left = rect.left, .top = row_bottom - border, .right = rect.right - border, .bottom = row_bottom }, theme.chrome_border);
+            y += row_h;
+        }
+    }
+
     fn paintChrome(self: *Host) void {
         const hwnd = self.hwnd orelse return;
         var ps: PAINTSTRUCT = undefined;
@@ -12914,7 +13002,7 @@ const Host = struct {
         const inspector_offset: i32 = if (inspector_panel_visible) self.scaled(host_inspector_panel_height) else 0;
         const status_h = self.statusBarHeight();
         const content_rect = RECT{
-            .left = 0,
+            .left = self.sidebarWidth(),
             .top = tab_h + overlay_offset + inspector_offset,
             .right = client_rect.right,
             .bottom = @max(tab_h + 1, client_rect.bottom - status_h),
@@ -12935,6 +13023,18 @@ const Host = struct {
         const paint_content = paintRectVisible(hdc, ps.rcPaint, content_rect);
         const paint_status = paintRectVisible(hdc, ps.rcPaint, status_rect);
         const banner_y: i32 = tab_h + overlay_offset + inspector_offset + self.scaled(2);
+
+        // paramux M2: docked left metadata sidebar (one row per pane).
+        const sidebar_w = self.sidebarWidth();
+        if (sidebar_w > 0) {
+            const sidebar_rect = RECT{
+                .left = 0,
+                .top = content_rect.top,
+                .right = sidebar_w,
+                .bottom = content_rect.bottom,
+            };
+            if (paintRectVisible(hdc, ps.rcPaint, sidebar_rect)) self.paintSidebar(hdc, sidebar_rect);
+        }
 
         // Tab bar (only when visible)
         if (paint_top and tab_h > 0) {
@@ -22986,7 +23086,10 @@ pub const Surface = struct {
     }
 
     fn invalidateStatusBarState(self: *Surface) void {
-        if (self.host) |host| host.invalidateStatusBarText();
+        if (self.host) |host| {
+            host.invalidateStatusBarText();
+            host.invalidateSidebar();
+        }
     }
 
     fn toggleMaximize(self: *Surface) void {
