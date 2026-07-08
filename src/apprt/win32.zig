@@ -992,6 +992,17 @@ extern "user32" fn RedrawWindow(hWnd: HWND, lprcUpdate: ?*const RECT, hrgnUpdate
 extern "user32" fn SetTimer(hWnd: ?HWND, nIDEvent: UINT_PTR, uElapse: UINT, lpTimerFunc: ?*const anyopaque) callconv(.winapi) UINT_PTR;
 extern "user32" fn SetCursor(hCursor: HCURSOR) callconv(.winapi) HCURSOR;
 extern "user32" fn SetCapture(hWnd: HWND) callconv(.winapi) ?HWND;
+extern "user32" fn GetForegroundWindow() callconv(.winapi) ?HWND;
+extern "user32" fn FlashWindowEx(pfwi: *FLASHWINFO) callconv(.winapi) BOOL;
+const FLASHWINFO = extern struct {
+    cbSize: u32,
+    hwnd: HWND,
+    dwFlags: u32,
+    uCount: u32,
+    dwTimeout: u32,
+};
+const FLASHW_ALL: u32 = 3;
+const FLASHW_TIMERNOFG: u32 = 12;
 extern "user32" fn SetForegroundWindow(hWnd: HWND) callconv(.winapi) BOOL;
 extern "user32" fn GetCursorPos(lpPoint: *POINT) callconv(.winapi) BOOL;
 extern "user32" fn MonitorFromPoint(pt: POINT, dwFlags: u32) callconv(.winapi) ?*anyopaque;
@@ -11794,6 +11805,24 @@ const Host = struct {
         const cr = self.contentRect() catch return;
         var rect = RECT{ .left = 0, .top = cr.top, .right = sidebar_w, .bottom = cr.bottom };
         _ = InvalidateRect(hwnd, &rect, 0);
+    }
+
+    /// paramux M3: flash the taskbar button + caption until the window comes
+    /// to the foreground, so a background pane raising attention is noticed.
+    /// No-op if this window is already foreground.
+    fn flashForAttention(self: *Host) void {
+        const hwnd = self.hwnd orelse return;
+        if (GetForegroundWindow()) |fg| {
+            if (fg == hwnd) return;
+        }
+        var fw: FLASHWINFO = .{
+            .cbSize = @sizeOf(FLASHWINFO),
+            .hwnd = hwnd,
+            .dwFlags = FLASHW_ALL | FLASHW_TIMERNOFG,
+            .uCount = 0,
+            .dwTimeout = 0,
+        };
+        _ = FlashWindowEx(&fw);
     }
 
     fn estimateLauncherLaneRight(self: *Host) i32 {
@@ -23632,6 +23661,8 @@ pub const Surface = struct {
 
     fn focusChanged(self: *Surface, focused: bool) void {
         self.window_focused = focused;
+        // paramux M3: viewing a pane clears its attention flag.
+        if (focused) self.setNeedsAttention(false);
         const focus_state_changed = if (focused) self.app.noteSurfaceFocused(self) else false;
         if (!self.core_initialized) return;
         if (focused) self.app.core_app.focusSurface(self.core());
@@ -24174,6 +24205,9 @@ pub const Surface = struct {
     fn setNeedsAttention(self: *Surface, value: bool) void {
         if (self.needs_attention == value) return;
         self.needs_attention = value;
+        if (value) {
+            if (self.host) |host| host.flashForAttention();
+        }
         self.invalidateStatusBarState();
     }
 
