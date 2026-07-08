@@ -12,14 +12,21 @@ pub const Options = struct {
 
     /// An optional title for the notification, set with `--title=<title>`.
     /// The title is shown in bold in the desktop toast and is prefixed to the
-    /// message in the paramux sidebar row.
+    /// message in the paramux sidebar row. Ignored when `--state` is set.
     title: [:0]const u8 = "",
+
+    /// An optional agent-attention state, set with `--state=<state>`, one of
+    /// `working`, `waiting`, `done`, or `error`. When set, paramux colors the
+    /// pane's sidebar row by this state (working=blue, waiting=amber,
+    /// done=green, error=red) instead of treating it as a plain notification.
+    state: []const u8 = "",
 
     /// The notification message, collected from all positional arguments after
     /// `+notify`.
     _message: std.ArrayList([]const u8) = .empty,
 
-    /// Collect the `--title` flag and all positional arguments as the message.
+    /// Collect the `--title`/`--state` flags and all positional arguments as
+    /// the message.
     pub fn parseManuallyHook(
         self: *Options,
         alloc: Allocator,
@@ -36,6 +43,10 @@ pub const Options = struct {
     fn consume(self: *Options, alloc: Allocator, arg: []const u8) Allocator.Error!void {
         if (lib.cutPrefix(u8, arg, "--title=")) |rest| {
             self.title = try alloc.dupeZ(u8, rest);
+            return;
+        }
+        if (lib.cutPrefix(u8, arg, "--state=")) |rest| {
+            self.state = try alloc.dupe(u8, rest);
             return;
         }
         try self._message.append(alloc, try alloc.dupe(u8, arg));
@@ -71,6 +82,11 @@ pub const Options = struct {
 ///
 ///     winghostty +notify --title=Claude review complete
 ///
+/// For agent hooks, `--state=` colors the pane by attention state, one of
+/// `working`, `waiting`, `done`, or `error`:
+///
+///     winghostty +notify --state=waiting Claude needs your approval
+///
 /// On Windows the sequence is written directly to the console (`CONOUT$`)
 /// rather than to stdout, so it still reaches the terminal even when the
 /// calling process has had its stdout redirected, as agent hooks do.
@@ -91,6 +107,14 @@ pub fn run(alloc: Allocator) !u8 {
 
     const message = try std.mem.join(arena, " ", opts._message.items);
 
+    // When a state is given, encode it in the OSC 777 title as the paramux
+    // marker `paramux.state:<state>` (parsed by the win32 apprt's
+    // `parseAttentionState`). Otherwise the title is the plain human title.
+    const osc_title: []const u8 = if (opts.state.len > 0)
+        try std.fmt.allocPrint(arena, "paramux.state:{s}", .{opts.state})
+    else
+        opts.title;
+
     // Build the OSC 777 desktop-notification sequence:
     //   ESC ] 777 ; notify ; <title> ; <body> BEL
     //
@@ -100,7 +124,7 @@ pub fn run(alloc: Allocator) !u8 {
     const seq = try std.fmt.allocPrint(
         arena,
         "\x1b]777;notify;{s};{s}\x07",
-        .{ opts.title, message },
+        .{ osc_title, message },
     );
 
     writeToTerminal(seq) catch |err| {

@@ -4866,11 +4866,14 @@ pub const App = struct {
             },
 
             .desktop_notification => {
+                // paramux FR-4/FR-5: a `paramux.state:` title marker selects the
+                // attention state; a plain notification defaults to `.waiting`.
+                const attn = parseAttentionState(value.title);
                 if (self.findSurfaceForTarget(target)) |surface| {
-                    surface.setLastNotification(value.title, value.body) catch {};
-                    surface.setNeedsAttention(true);
+                    surface.setLastNotification(attn.title, value.body) catch {};
+                    surface.setAttentionState(attn.state);
                 }
-                try self.showDesktopNotification(target, value.title, value.body);
+                try self.showDesktopNotification(target, attn.title, value.body);
                 return true;
             },
 
@@ -13011,13 +13014,20 @@ const Host = struct {
                     .bottom = row_bottom - self.scaled(2),
                 }, theme.text_secondary);
             }
-            // paramux M3: status dot when the pane needs attention.
-            if (surface.needs_attention) {
+            // paramux FR-4: status dot colored by the pane's attention state
+            // (working=blue, waiting=amber, done=green, error=red).
+            if (surface.attention_state != .none) {
                 const d = self.scaled(9);
                 const cx = rect.right - border - self.scaled(13);
                 const cy = y + @divTrunc(row_h, 2);
                 const dot_rect = RECT{ .left = cx - @divTrunc(d, 2), .top = cy - @divTrunc(d, 2), .right = cx + @divTrunc(d, 2), .bottom = cy + @divTrunc(d, 2) };
-                const attn = win32_theme.rgb(235, 170, 50);
+                const attn = switch (surface.attention_state) {
+                    .working => win32_theme.rgb(60, 140, 235),
+                    .waiting => win32_theme.rgb(235, 170, 50),
+                    .done => win32_theme.rgb(70, 190, 90),
+                    .@"error" => win32_theme.rgb(225, 70, 70),
+                    .none => unreachable,
+                };
                 drawRoundedRect(hdc, dot_rect, attn, attn, d);
             }
             // Subtle 1px separator under each row.
@@ -20731,6 +20741,72 @@ const TerminalUiaContext = struct {
     }
 };
 
+/// paramux FR-4: per-pane agent-attention state. Drives the sidebar row color
+/// and (for the non-passive states) the taskbar flash. `none` means nothing to
+/// surface — the pane is idle or its attention was acknowledged by focusing it.
+/// The wire encoding is `paramux.state:<tag>` carried in the OSC 777 title; see
+/// `parseAttentionState` and `src/cli/notify.zig` which must agree on it.
+pub const AttentionState = enum {
+    none,
+    working,
+    waiting,
+    done,
+    @"error",
+
+    /// Parse the `<tag>` suffix of a `paramux.state:` marker. Unknown tags fall
+    /// back to `.waiting` so an unrecognized notification still draws the eye.
+    fn parse(tag: []const u8) AttentionState {
+        return std.meta.stringToEnum(AttentionState, tag) orelse .waiting;
+    }
+
+    /// Whether entering this state should fire the taskbar flash + toast.
+    /// `.working` is passive (the agent is busy, not blocking on you).
+    fn isAlerting(self: AttentionState) bool {
+        return switch (self) {
+            .waiting, .done, .@"error" => true,
+            .none, .working => false,
+        };
+    }
+};
+
+/// The private OSC 777 title marker paramux uses to carry an attention state.
+/// Kept in sync with `src/cli/notify.zig`.
+const attention_state_marker = "paramux.state:";
+
+/// Split an incoming notification title into an optional attention state and the
+/// human-facing title. A title of `paramux.state:<tag>` yields that state and an
+/// empty display title; any other title is a plain notification (state
+/// `.waiting`) whose title text is preserved.
+fn parseAttentionState(title: [:0]const u8) struct { state: AttentionState, title: [:0]const u8 } {
+    if (std.mem.startsWith(u8, title, attention_state_marker)) {
+        return .{
+            .state = AttentionState.parse(title[attention_state_marker.len..]),
+            .title = "",
+        };
+    }
+    return .{ .state = .waiting, .title = title };
+}
+
+test "parseAttentionState maps the state marker and preserves plain titles" {
+    const testing = std.testing;
+
+    const done = parseAttentionState("paramux.state:done");
+    try testing.expectEqual(AttentionState.done, done.state);
+    try testing.expectEqualStrings("", done.title);
+
+    const err = parseAttentionState("paramux.state:error");
+    try testing.expectEqual(AttentionState.@"error", err.state);
+
+    // Unknown state tags fall back to waiting so they still draw the eye.
+    const unknown = parseAttentionState("paramux.state:bogus");
+    try testing.expectEqual(AttentionState.waiting, unknown.state);
+
+    // A plain notification is treated as waiting with its title preserved.
+    const plain = parseAttentionState("Build output");
+    try testing.expectEqual(AttentionState.waiting, plain.state);
+    try testing.expectEqualStrings("Build output", plain.title);
+}
+
 pub const Surface = struct {
     app: *App,
     host: ?*Host = null,
@@ -20802,10 +20878,11 @@ pub const Surface = struct {
     /// and the latest desktop-notification text (OSC 9 / OSC 777).
     git_branch: ?[:0]const u8 = null,
     last_notification: ?[:0]const u8 = null,
-    /// paramux M3 attention: true when this pane has raised a notification
-    /// (OSC 9/777 or an agent hook) and hasn't been looked at yet. Drives the
-    /// sidebar status dot + taskbar flash; cleared when the pane is focused.
-    needs_attention: bool = false,
+    /// paramux FR-4 attention: the current agent-attention state for this pane
+    /// (OSC 9/777 or an agent hook via `+notify --state`). Drives the sidebar
+    /// status dot color + taskbar flash; reset to `.none` when the pane is
+    /// focused (viewing acknowledges it).
+    attention_state: AttentionState = .none,
     taskbar_progress: ?win32_taskbar_progress.ProgressReport = null,
     inspector_visible: bool = false,
     paint_pending: bool = false,
@@ -23662,7 +23739,7 @@ pub const Surface = struct {
     fn focusChanged(self: *Surface, focused: bool) void {
         self.window_focused = focused;
         // paramux M3: viewing a pane clears its attention flag.
-        if (focused) self.setNeedsAttention(false);
+        if (focused) self.setAttentionState(.none);
         const focus_state_changed = if (focused) self.app.noteSurfaceFocused(self) else false;
         if (!self.core_initialized) return;
         if (focused) self.app.core_app.focusSurface(self.core());
@@ -24201,11 +24278,12 @@ pub const Surface = struct {
         self.invalidateStatusBarState();
     }
 
-    /// paramux M3: set/clear the pane's needs-attention flag and repaint.
-    fn setNeedsAttention(self: *Surface, value: bool) void {
-        if (self.needs_attention == value) return;
-        self.needs_attention = value;
-        if (value) {
+    /// paramux FR-4: set the pane's attention state and repaint. Transitioning
+    /// into an alerting state (waiting/done/error) also flashes the taskbar.
+    fn setAttentionState(self: *Surface, state: AttentionState) void {
+        if (self.attention_state == state) return;
+        self.attention_state = state;
+        if (state.isAlerting()) {
             if (self.host) |host| host.flashForAttention();
         }
         self.invalidateStatusBarState();
