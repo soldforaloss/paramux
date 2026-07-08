@@ -4855,6 +4855,9 @@ pub const App = struct {
             },
 
             .desktop_notification => {
+                if (self.findSurfaceForTarget(target)) |surface| {
+                    surface.setLastNotification(value.title, value.body) catch {};
+                }
                 try self.showDesktopNotification(target, value.title, value.body);
                 return true;
             },
@@ -12965,7 +12968,13 @@ const Host = struct {
                 .bottom = y + half,
             }, theme.text_primary);
             if (surface.pwd) |pwd| {
-                drawPaletteRowText(hdc, basename(pwd), .{
+                const cwd = basename(pwd);
+                var meta_buf: [320]u8 = undefined;
+                const meta: []const u8 = if (surface.git_branch) |br|
+                    (std.fmt.bufPrint(&meta_buf, "{s}  {s}", .{ br, cwd }) catch cwd)
+                else
+                    cwd;
+                drawPaletteRowText(hdc, meta, .{
                     .left = rect.left + pad,
                     .top = y + half - self.scaled(2),
                     .right = text_right,
@@ -20750,6 +20759,10 @@ pub const Surface = struct {
     scrollbar_paint_cache: ?ScrollbarPaintKey = null,
     pwd: ?[:0]const u8 = null,
     progress_status: ?[:0]const u8 = null,
+    /// paramux M2 sidebar metadata: git branch derived from pwd (.git/HEAD),
+    /// and the latest desktop-notification text (OSC 9 / OSC 777).
+    git_branch: ?[:0]const u8 = null,
+    last_notification: ?[:0]const u8 = null,
     taskbar_progress: ?win32_taskbar_progress.ProgressReport = null,
     inspector_visible: bool = false,
     paint_pending: bool = false,
@@ -24037,6 +24050,14 @@ pub const Surface = struct {
             alloc.free(value);
             self.progress_status = null;
         }
+        if (self.git_branch) |value| {
+            alloc.free(value);
+            self.git_branch = null;
+        }
+        if (self.last_notification) |value| {
+            alloc.free(value);
+            self.last_notification = null;
+        }
 
         self.app.windowDestroyed(self);
         alloc.destroy(self);
@@ -24082,6 +24103,56 @@ pub const Surface = struct {
         if (ownedStringEquals(self.pwd, pwd)) return;
         const alloc = self.app.core_app.alloc;
         try appendOwnedString(alloc, &self.pwd, pwd);
+        self.updateGitBranch(pwd);
+        self.invalidateStatusBarState();
+    }
+
+    /// paramux M2: derive the git branch for `pwd` by walking up to a `.git`
+    /// dir and reading HEAD (cheap file read, no subprocess). Best-effort;
+    /// clears the branch on any failure. Dirty-state is deferred.
+    fn updateGitBranch(self: *Surface, pwd: []const u8) void {
+        const alloc = self.app.core_app.alloc;
+        const new_branch: ?[:0]const u8 = blk: {
+            if (pwd.len == 0) break :blk null;
+            var dir: []const u8 = std.mem.trimRight(u8, pwd, "\\/");
+            if (dir.len == 0) break :blk null;
+            var depth: usize = 0;
+            while (depth < 64) : (depth += 1) {
+                var head_buf: [4096]u8 = undefined;
+                const head_path = std.fmt.bufPrint(&head_buf, "{s}\\.git\\HEAD", .{dir}) catch break :blk null;
+                if (std.fs.cwd().openFile(head_path, .{})) |file| {
+                    defer file.close();
+                    var content: [256]u8 = undefined;
+                    const n = file.readAll(&content) catch 0;
+                    const text = std.mem.trimRight(u8, content[0..n], "\r\n \t");
+                    const prefix = "ref: refs/heads/";
+                    if (std.mem.startsWith(u8, text, prefix)) {
+                        break :blk alloc.dupeZ(u8, text[prefix.len..]) catch null;
+                    }
+                    if (text.len >= 7) break :blk alloc.dupeZ(u8, text[0..7]) catch null;
+                    break :blk null;
+                } else |_| {}
+                const parent = std.fs.path.dirname(dir) orelse break :blk null;
+                if (parent.len >= dir.len) break :blk null;
+                dir = parent;
+            }
+            break :blk null;
+        };
+        if (self.git_branch) |old| alloc.free(old);
+        self.git_branch = new_branch;
+    }
+
+    /// paramux M2: store the most recent desktop-notification text for the
+    /// sidebar row.
+    fn setLastNotification(self: *Surface, title: []const u8, body: []const u8) !void {
+        const alloc = self.app.core_app.alloc;
+        var buf: [512]u8 = undefined;
+        const text: []const u8 = if (title.len > 0 and body.len > 0)
+            (std.fmt.bufPrint(&buf, "{s}: {s}", .{ title, body }) catch body)
+        else if (body.len > 0) body else title;
+        if (text.len == 0) return;
+        if (ownedStringEquals(self.last_notification, text)) return;
+        try appendOwnedString(alloc, &self.last_notification, text);
         self.invalidateStatusBarState();
     }
 
