@@ -2488,6 +2488,20 @@ fn handleNewWindowIpcClient(app: *App, pipe: windows.HANDLE) !void {
     const arguments = try decodeNewWindowIpcPayload(app.core_app.alloc, pipe);
     errdefer freeOwnedArguments(app.core_app.alloc, arguments);
 
+    // paramux: launch forwarding is only correct against the single-instance
+    // primary. Since the automation/notify listener now runs in every process
+    // (including transient `-e` ones, which are forced single-instance=false),
+    // a non-primary process must reject a forwarded new-window so the sender
+    // falls back to spawning a fresh process instead of opening a window inside
+    // the wrong (e.g. agent) process. Automation/notify requests are unaffected.
+    if (app.config.@"single-instance" != .true) {
+        // Ack first: if the write fails, `errdefer` frees `arguments`; on
+        // success we free explicitly (a normal return skips the errdefer).
+        try writeIpcAck(pipe, false);
+        freeOwnedArguments(app.core_app.alloc, arguments);
+        return;
+    }
+
     const mailbox: CoreApp.Mailbox = .{
         .rt_app = app,
         .mailbox = &app.core_app.mailbox,
@@ -2546,6 +2560,23 @@ fn handleSetNotificationIpcClient(app: *App, pipe: windows.HANDLE) !void {
     try writeIpcAck(pipe, true);
 }
 
+/// Wait for an IPC request's UI-thread completion, but bail out with an error if
+/// the server is being torn down. The UI thread only sets `request.done` while
+/// its message loop is draining the mailbox; once that loop exits on shutdown,
+/// a plain `done.wait()` would block forever and `stopIpcServer`'s `thread.join`
+/// would deadlock. Polling `ipc_stop_requested` lets the server thread unwind so
+/// join() completes. (No mailbox drain runs after `stopIpcServer`, so the
+/// abandoned request message is never dereferenced.)
+fn waitForIpcRequestDone(app: *App, done: *std.Thread.ResetEvent) error{IPCFailed}!void {
+    while (true) {
+        done.timedWait(50 * std.time.ns_per_ms) catch {
+            if (app.ipc_stop_requested.load(.acquire)) return error.IPCFailed;
+            continue;
+        };
+        return;
+    }
+}
+
 fn requestAutomationWindowListJson(app: *App, alloc: Allocator) ![]u8 {
     var request: CoreApp.Message.AutomationWindowListRequest = .{
         .alloc = alloc,
@@ -2558,7 +2589,7 @@ fn requestAutomationWindowListJson(app: *App, alloc: Allocator) ![]u8 {
         return error.IPCFailed;
     }
 
-    request.done.wait();
+    try waitForIpcRequestDone(app, &request.done);
     if (request.err) |err| return err;
     return request.result orelse error.IPCFailed;
 }
@@ -2584,7 +2615,7 @@ fn requestAutomationAction(
         return error.IPCFailed;
     }
 
-    request.done.wait();
+    try waitForIpcRequestDone(app, &request.done);
     if (request.err) |err| return err;
 }
 
@@ -2607,7 +2638,7 @@ fn requestSetNotification(
         return error.IPCFailed;
     }
 
-    request.done.wait();
+    try waitForIpcRequestDone(app, &request.done);
     if (request.err) |err| return err;
 }
 
@@ -3842,6 +3873,14 @@ pub const App = struct {
     fn stopIpcServer(self: *App) void {
         if (self.ipc_thread) |thread| {
             self.ipc_stop_requested.store(true, .release);
+            // Wake the accept loop's blocking ConnectNamedPipe by self-connecting.
+            // KNOWN LIMITATION (multi-process only): the pipe name is shared
+            // across same-class processes, so this self-connect can be routed by
+            // Windows to a *different* process's listener, leaving this process's
+            // ConnectNamedPipe blocked and join() hung. It is reliable for the
+            // single-process model paramux targets. The robust fix (overlapped
+            // ConnectNamedPipe + a per-process stop event) belongs with the
+            // per-instance-pipe/token work; see the startIpcServer note.
             if (self.ipc_pipe_name) |pipe_name| {
                 if (connectToIpcPipe(pipe_name)) |pipe| {
                     _ = windows.CloseHandle(pipe);

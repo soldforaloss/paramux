@@ -27,6 +27,10 @@ pub const Options = struct {
     /// the `PARAMUX_SURFACE_ID` environment variable injected into each pane.
     @"surface-id": ?u64 = null,
 
+    /// Set when an explicit `--surface-id=` value failed to parse, so `run` can
+    /// error out instead of silently falling back to the env/console target.
+    _surface_id_invalid: bool = false,
+
     /// The notification message, collected from all positional arguments after
     /// `+notify`.
     _message: std.ArrayList([]const u8) = .empty,
@@ -56,7 +60,10 @@ pub const Options = struct {
             return;
         }
         if (lib.cutPrefix(u8, arg, "--surface-id=")) |rest| {
-            self.@"surface-id" = std.fmt.parseInt(u64, std.mem.trim(u8, rest, &std.ascii.whitespace), 10) catch null;
+            self.@"surface-id" = std.fmt.parseInt(u64, std.mem.trim(u8, rest, &std.ascii.whitespace), 10) catch blk: {
+                self._surface_id_invalid = true;
+                break :blk null;
+            };
             return;
         }
         try self._message.append(alloc, try alloc.dupe(u8, arg));
@@ -114,6 +121,18 @@ pub fn run(alloc: Allocator) !u8 {
         var iter = try args.argsIterator(alloc);
         defer iter.deinit();
         try args.parse(Options, alloc, &opts, &iter);
+    }
+
+    // A malformed explicit --surface-id must not silently fall back to the
+    // env/console target — that would misroute the notification to a different
+    // pane with a success exit code.
+    if (opts._surface_id_invalid) {
+        var buf: [128]u8 = undefined;
+        var stderr_writer = std.fs.File.stderr().writer(&buf);
+        const stderr = &stderr_writer.interface;
+        stderr.writeAll("+notify: invalid --surface-id value\n") catch {};
+        stderr.flush() catch {};
+        return 1;
     }
 
     // Reuse the arena the CLI parser created for our own allocations.
