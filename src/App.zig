@@ -306,6 +306,13 @@ fn drainMailbox(self: *App, rt_app: *apprt.App) !void {
                     request.err = err;
                 };
             },
+            .read_pane => |request| {
+                defer request.done.set();
+                request.result = rt_app.readPaneText(request.target, request.alloc) catch |err| blk: {
+                    request.err = err;
+                    break :blk null;
+                };
+            },
             .close => |surface| self.closeSurface(surface),
             .surface_message => |msg| try self.surfaceMessage(msg.surface, msg.message),
             .redraw_surface => |surface| try self.redrawSurface(rt_app, surface),
@@ -743,6 +750,9 @@ pub const Message = union(enum) {
     /// thread, delivered over IPC (paramux `+notify`).
     set_notification: *SetNotificationRequest,
 
+    /// Read a surface's viewport text on the app thread (paramux `+read-pane`).
+    read_pane: *ReadPaneRequest,
+
     /// Close a surface. This notifies the runtime that a surface
     /// should close.
     close: *Surface,
@@ -782,6 +792,14 @@ pub const Message = union(enum) {
         title: []const u8,
         body: []const u8,
         done: std.Thread.ResetEvent = .{},
+        err: ?anyerror = null,
+    };
+
+    pub const ReadPaneRequest = struct {
+        target: apprt.ipc.AutomationActionTarget,
+        alloc: Allocator,
+        done: std.Thread.ResetEvent = .{},
+        result: ?[]const u8 = null,
         err: ?anyerror = null,
     };
 

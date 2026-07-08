@@ -51,6 +51,22 @@ pub const App = struct {
         return error.Unsupported;
     }
 
+    pub fn performReadPane(
+        _: Allocator,
+        _: apprt.ipc.Target,
+        _: apprt.ipc.AutomationActionTarget,
+    ) !?[]u8 {
+        return null;
+    }
+
+    pub fn readPaneText(
+        _: *App,
+        _: apprt.ipc.AutomationActionTarget,
+        _: Allocator,
+    ) ![]const u8 {
+        return error.Unsupported;
+    }
+
     pub fn buildAutomationWindowListJson(
         _: *App,
         _: Allocator,

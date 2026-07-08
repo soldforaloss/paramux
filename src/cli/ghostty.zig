@@ -23,6 +23,7 @@ const new_window = @import("new_window.zig");
 const list_windows = @import("list_windows.zig");
 const perform_action = @import("perform_action.zig");
 const notify = @import("notify.zig");
+const read_pane = @import("read_pane.zig");
 
 pub const Action = @import("ghostty_action.zig").Action;
 
@@ -79,6 +80,7 @@ fn runMain(self: Action, alloc: Allocator) !u8 {
         .@"list-windows" => try list_windows.run(alloc),
         .@"perform-action" => try perform_action.run(alloc),
         .notify => try notify.run(alloc),
+        .@"read-pane" => try read_pane.run(alloc),
     };
 }
 
@@ -108,6 +110,7 @@ pub fn options(comptime self: Action) type {
             .@"list-windows" => list_windows.Options,
             .@"perform-action" => perform_action.Options,
             .notify => notify.Options,
+            .@"read-pane" => read_pane.Options,
         };
     }
 }

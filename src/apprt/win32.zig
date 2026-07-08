@@ -785,6 +785,7 @@ const IpcRequestKind = enum(u8) {
     list_windows = 2,
     perform_action = 3,
     set_notification = 4,
+    read_pane = 5,
 };
 
 const POINT = win32_types.POINT;
@@ -2086,6 +2087,55 @@ test "encodeSetNotificationIpcRequest byte layout" {
     try testing.expectEqualStrings("hi", req[40..42]);
 }
 
+/// paramux: wire for the `read_pane` IPC kind. Payload after the shared prefix
+/// is just the target: `[u8 target_tag][u64 surface_id]`. The response is a
+/// data response (like list_windows) carrying the pane's viewport text.
+fn encodeReadPaneIpcRequest(
+    alloc: Allocator,
+    target: apprt.ipc.AutomationActionTarget,
+) ![]u8 {
+    var encoded: std.ArrayList(u8) = .empty;
+    errdefer encoded.deinit(alloc);
+
+    try appendU32(&encoded, alloc, ipc_wire_version);
+    try encoded.append(alloc, @intFromEnum(IpcRequestKind.read_pane));
+    try encoded.append(alloc, switch (target) {
+        .focused => 0,
+        .surface_id => 1,
+    });
+    try appendU64(&encoded, alloc, switch (target) {
+        .focused => 0,
+        .surface_id => |id| id,
+    });
+
+    return try encoded.toOwnedSlice(alloc);
+}
+
+fn decodeReadPaneIpcPayload(pipe: windows.HANDLE) !apprt.ipc.AutomationActionTarget {
+    var header: [9]u8 = undefined;
+    try readExactHandle(pipe, &header);
+    return switch (header[0]) {
+        0 => .focused,
+        1 => .{ .surface_id = readU64(header[1..9]) },
+        else => error.InvalidIpcRequest,
+    };
+}
+
+test "encodeReadPaneIpcRequest byte layout" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    const req = try encodeReadPaneIpcRequest(alloc, .{ .surface_id = 0x0102030405060708 });
+    defer alloc.free(req);
+
+    // version(4) kind(1) tag(1) id(8)
+    try testing.expectEqual(@as(usize, 14), req.len);
+    try testing.expectEqual(ipc_wire_version, readU32(req[0..4]));
+    try testing.expectEqual(@intFromEnum(IpcRequestKind.read_pane), req[4]);
+    try testing.expectEqual(@as(u8, 1), req[5]);
+    try testing.expectEqual(@as(u64, 0x0102030405060708), readU64(req[6..14]));
+}
+
 fn writeIpcAck(pipe: windows.HANDLE, success: bool) !void {
     return writeIpcAckStatus(
         pipe,
@@ -2323,6 +2373,25 @@ fn sendSetNotificationIpc(
     return try readIpcAck(pipe);
 }
 
+fn sendReadPaneIpc(
+    alloc: Allocator,
+    pipe_name: [:0]const u16,
+    target: apprt.ipc.AutomationActionTarget,
+) !?[]u8 {
+    const pipe = connectToIpcPipe(pipe_name) catch |err| switch (err) {
+        error.FileNotFound => return null,
+        error.PipeBusy => return error.IPCFailed,
+        else => return err,
+    };
+    defer _ = windows.CloseHandle(pipe);
+
+    const request = try encodeReadPaneIpcRequest(alloc, target);
+    defer alloc.free(request);
+
+    try writeAllHandle(pipe, request);
+    return try readIpcDataResponse(alloc, pipe);
+}
+
 fn applyNewWindowArguments(
     alloc_gpa: Allocator,
     config: *configpkg.Config,
@@ -2481,6 +2550,10 @@ fn handleIpcClient(app: *App, pipe: windows.HANDLE) !void {
             log.warn("failed to process win32 set-notification IPC request err={}", .{err});
             try writeIpcAck(pipe, false);
         },
+        .read_pane => handleReadPaneIpcClient(app, pipe) catch |err| {
+            log.warn("failed to process win32 read-pane IPC request err={}", .{err});
+            try writeIpcDataResponse(pipe, false, "");
+        },
     }
 }
 
@@ -2558,6 +2631,16 @@ fn handleSetNotificationIpcClient(app: *App, pipe: windows.HANDLE) !void {
         return;
     };
     try writeIpcAck(pipe, true);
+}
+
+fn handleReadPaneIpcClient(app: *App, pipe: windows.HANDLE) !void {
+    const target = try decodeReadPaneIpcPayload(pipe);
+    const text: []const u8 = requestReadPane(app, target, app.core_app.alloc) catch {
+        try writeIpcDataResponse(pipe, false, "");
+        return;
+    };
+    defer app.core_app.alloc.free(text);
+    try writeIpcDataResponse(pipe, true, text);
 }
 
 /// Wait for an IPC request's UI-thread completion, but bail out with an error if
@@ -2640,6 +2723,28 @@ fn requestSetNotification(
 
     try waitForIpcRequestDone(app, &request.done);
     if (request.err) |err| return err;
+}
+
+fn requestReadPane(
+    app: *App,
+    target: apprt.ipc.AutomationActionTarget,
+    alloc: Allocator,
+) ![]const u8 {
+    var request: CoreApp.Message.ReadPaneRequest = .{
+        .target = target,
+        .alloc = alloc,
+    };
+    const mailbox: CoreApp.Mailbox = .{
+        .rt_app = app,
+        .mailbox = &app.core_app.mailbox,
+    };
+    if (mailbox.push(.{ .read_pane = &request }, .{ .forever = {} }) == 0) {
+        return error.IPCFailed;
+    }
+
+    try waitForIpcRequestDone(app, &request.done);
+    if (request.err) |err| return err;
+    return request.result orelse error.IPCFailed;
 }
 
 pub fn getProcAddress(name: [*:0]const u8) callconv(.c) ?*const anyopaque {
@@ -5132,6 +5237,16 @@ pub const App = struct {
         return try sendSetNotificationIpc(alloc, pipe_name, action_target, title, body);
     }
 
+    pub fn performReadPane(
+        alloc: Allocator,
+        target: apprt.ipc.Target,
+        action_target: apprt.ipc.AutomationActionTarget,
+    ) !?[]u8 {
+        const pipe_name = try resolveIpcPipeNameForTarget(alloc, target);
+        defer alloc.free(pipe_name);
+        return try sendReadPaneIpc(alloc, pipe_name, action_target);
+    }
+
     pub fn buildAutomationWindowListJson(
         self: *App,
         alloc: Allocator,
@@ -7117,6 +7232,24 @@ pub const App = struct {
         defer alloc.free(body_z);
 
         try self.applyDesktopNotification(.{ .surface = surface.core() }, title_z, body_z);
+    }
+
+    /// paramux: read a pane's current viewport text (for the `+read-pane` IPC
+    /// method). Runs on the UI thread; locks the surface's renderer mutex so the
+    /// dump is safe against concurrent IO-thread writes. Caller owns the result.
+    pub fn readPaneText(
+        self: *App,
+        target: apprt.ipc.AutomationActionTarget,
+        alloc: Allocator,
+    ) ![]const u8 {
+        const surface = switch (target) {
+            .focused => self.focusedSurfaceForUndoRedo() orelse return error.NoAutomationTarget,
+            .surface_id => |id| self.findSurfaceById(id) orelse return error.NoAutomationTarget,
+        };
+        const core = surface.core();
+        core.renderer_state.mutex.lock();
+        defer core.renderer_state.mutex.unlock();
+        return try core.renderer_state.terminal.plainString(alloc);
     }
 
     fn showChildExited(
