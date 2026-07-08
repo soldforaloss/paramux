@@ -2598,19 +2598,21 @@ fn handleIpcClient(app: *App, pipe: windows.HANDLE) !void {
         return err;
     };
 
-    // paramux: gate every mutating method and read_pane (which discloses pane
-    // content) behind the per-instance token. list_windows (structure only) is
-    // left open for discovery. The failure frame matches each method's response
-    // shape so the client never blocks: an ack for the ack-reply methods, a
-    // data response for read_pane.
+    // paramux: gate the live-state control methods (perform_action,
+    // set_notification) and read_pane (which discloses pane content) behind the
+    // per-instance token. list_windows (structure only) and new_window are left
+    // open: new_window is launch-forwarding / single-instance coordination, not
+    // a live-state mutation, and gating it regressed single-instance dedup
+    // (transient `-e` processes overwrite the shared token file). The token file
+    // is user-readable anyway, so gating new_window adds no real same-user
+    // defense. The failure frame matches each method's response shape so the
+    // client never blocks: an ack for the ack-reply methods, a data response
+    // for read_pane.
     const authed = app.ipcTokenValid(header.token());
     switch (header.kind) {
-        .new_window => {
-            if (!authed) return writeIpcAckStatus(pipe, ipc_ack_unauthorized);
-            handleNewWindowIpcClient(app, pipe) catch |err| {
-                log.warn("failed to process win32 new-window IPC request err={}", .{err});
-                try writeIpcAck(pipe, false);
-            };
+        .new_window => handleNewWindowIpcClient(app, pipe) catch |err| {
+            log.warn("failed to process win32 new-window IPC request err={}", .{err});
+            try writeIpcAck(pipe, false);
         },
         .list_windows => handleListWindowsIpcClient(app, pipe) catch |err| {
             log.warn("failed to process win32 automation list IPC request err={}", .{err});
@@ -4029,22 +4031,15 @@ pub const App = struct {
         const pipe_name = try self.resolveIpcPipeName(self.core_app.alloc);
         defer self.core_app.alloc.free(pipe_name);
 
-        // Present the primary's token (from its token file) so the gated
-        // new_window forward is authenticated. If we can't authenticate (no
-        // token file yet), fall back to running standalone rather than failing
-        // startup.
-        const token = readClientIpcToken(self.core_app.alloc) orelse "";
-        defer if (token.len > 0) self.core_app.alloc.free(token);
-
-        return sendNewWindowIpc(
+        // new_window forwarding is unauthenticated, so it does not depend on the
+        // token file (whose last-writer-wins semantics across processes would
+        // otherwise regress single-instance dedup into duplicate windows).
+        return try sendNewWindowIpc(
             self.core_app.alloc,
             pipe_name,
-            token,
+            "",
             arguments,
-        ) catch |err| switch (err) {
-            error.Unauthorized => false,
-            else => return err,
-        };
+        );
     }
 
     fn startIpcServer(self: *App) !void {
@@ -4129,6 +4124,17 @@ pub const App = struct {
     /// Read the token a CLI client should present: the pane's PARAMUX_TOKEN env
     /// var first (set inside every pane), else the token file. Caller owns the
     /// result. Returns null when neither is available (unauthenticated client).
+    ///
+    /// Known limitations (both fail closed — a legit client is denied, never an
+    /// auth bypass; both are multi-process/off-model for paramux's single-
+    /// instance target, and resolved by the per-instance-pipe/token follow-up):
+    ///   - Multi-instance: every instance writes the same token file (last
+    ///     writer wins) while each validates only its own in-memory token, so an
+    ///     external client's file token may be routed (shared pipe) to a
+    ///     non-matching instance and rejected.
+    ///   - A process that outlives its spawning instance keeps a stale
+    ///     PARAMUX_TOKEN env, which takes precedence here over the fresh file
+    ///     token after a restart, so its request is rejected.
     pub fn readClientIpcToken(alloc: Allocator) ?[]const u8 {
         if (std.process.getEnvVarOwned(alloc, "PARAMUX_TOKEN")) |val| {
             if (val.len > 0) return val;
@@ -5377,10 +5383,9 @@ pub const App = struct {
                 const pipe_name = try resolveIpcPipeNameForTarget(alloc, target);
                 defer alloc.free(pipe_name);
 
-                const token = readClientIpcToken(alloc) orelse "";
-                defer if (token.len > 0) alloc.free(token);
-
-                if (try sendNewWindowIpc(alloc, pipe_name, token, value.arguments)) return true;
+                // new_window is unauthenticated (launch forwarding); send an
+                // empty token.
+                if (try sendNewWindowIpc(alloc, pipe_name, "", value.arguments)) return true;
                 return try spawnWindowProcess(alloc, target, value);
             },
         }
