@@ -148,6 +148,7 @@ pub const exp = struct {
             lpBuffer: windows.LPSTR,
             nSize: *windows.DWORD,
         ) callconv(.winapi) windows.BOOL;
+        pub extern "kernel32" fn GetProcessId(Process: windows.HANDLE) callconv(.winapi) windows.DWORD;
     };
 
     pub const PROC_THREAD_ATTRIBUTE_NUMBER = 0x0000FFFF;

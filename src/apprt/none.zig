@@ -69,6 +69,8 @@ pub const App = struct {
 
     pub fn applyGitDirty(_: *App, _: u64, _: u64, _: bool) void {}
 
+    pub fn applyPorts(_: *App, _: u64, _: []const u16) void {}
+
     pub fn buildAutomationWindowListJson(
         _: *App,
         _: Allocator,

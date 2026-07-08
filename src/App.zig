@@ -316,6 +316,9 @@ fn drainMailbox(self: *App, rt_app: *apprt.App) !void {
             .git_dirty_result => |result| {
                 rt_app.applyGitDirty(result.surface_id, result.gen, result.dirty);
             },
+            .ports_result => |result| {
+                rt_app.applyPorts(result.surface_id, result.ports);
+            },
             .close => |surface| self.closeSurface(surface),
             .surface_message => |msg| try self.surfaceMessage(msg.surface, msg.message),
             .redraw_surface => |surface| try self.redrawSurface(rt_app, surface),
@@ -760,6 +763,10 @@ pub const Message = union(enum) {
     /// FR-3 sidebar). Fire-and-forget (a value, not a blocking request).
     git_dirty_result: GitDirtyResult,
 
+    /// Apply a pane's freshly-enumerated listening ports on the app thread
+    /// (paramux FR-3 sidebar). The `ports` slice ownership transfers to the arm.
+    ports_result: PortsResult,
+
     /// Close a surface. This notifies the runtime that a surface
     /// should close.
     close: *Surface,
@@ -814,6 +821,11 @@ pub const Message = union(enum) {
         surface_id: u64,
         gen: u64,
         dirty: bool,
+    };
+
+    pub const PortsResult = struct {
+        surface_id: u64,
+        ports: []const u16,
     };
 
     const NewWindow = struct {

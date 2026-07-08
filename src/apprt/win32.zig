@@ -34,6 +34,7 @@ const win32_surface_drop = @import("win32_surface_drop.zig");
 const win32_surface_drop_target = @import("win32_surface_drop_target.zig");
 const win32_toast_activation = @import("win32_toast_activation.zig");
 const win32_tab_drag = @import("win32_tab_drag.zig");
+const win32_ports = @import("win32_ports.zig");
 const win32_tab_drag_ole = @import("win32_tab_drag_ole.zig");
 const win32_split_resize = @import("win32_split_resize.zig");
 const win32_search_bar = @import("win32_search_bar.zig");
@@ -625,6 +626,9 @@ const SCROLLBAR_TIMER_INTERVAL_MS: UINT = 16;
 const RESIZE_SETTLE_TIMER_ID: UINT_PTR = 0x77684704; // "whgT4" in 32-bit hex
 const RESIZE_SETTLE_TIMER_INTERVAL_MS: UINT = 16;
 const RESIZE_SETTLE_REPAINT_TICKS: u8 = 12;
+// paramux FR-3: periodic refresh of each pane's listening TCP ports.
+const PORTS_TIMER_ID: UINT_PTR = 0x77684705; // "whgT5" in 32-bit hex
+const PORTS_TIMER_INTERVAL_MS: UINT = 3000;
 const FW_NORMAL: i32 = 400;
 const DEFAULT_CHARSET: u8 = 1;
 const OUT_DEFAULT_PRECIS: u8 = 0;
@@ -5946,6 +5950,8 @@ pub const App = struct {
         if (host.current_dpi == 0) host.current_dpi = 96;
         host.chrome_font = host.createChromeFont();
         host.recreateTitlebarIconFonts();
+        // paramux FR-3: poll each pane's listening ports every few seconds.
+        _ = SetTimer(hwnd, PORTS_TIMER_ID, PORTS_TIMER_INTERVAL_MS, null);
         errdefer _ = DestroyWindow(hwnd);
 
         try self.hosts.append(self.core_app.alloc, host);
@@ -7488,6 +7494,24 @@ pub const App = struct {
         if (surface.git_check_gen.load(.monotonic) != gen) return;
         if (surface.git_dirty == dirty) return;
         surface.git_dirty = dirty;
+        surface.invalidateStatusBarState();
+    }
+
+    /// paramux FR-3: store a pane's freshly-enumerated listening ports. Takes
+    /// ownership of `ports`. Skips the repaint when unchanged (the 3s poll must
+    /// not churn the sidebar).
+    pub fn applyPorts(self: *App, surface_id: u64, ports: []const u16) void {
+        const alloc = self.core_app.alloc;
+        const surface = self.findSurfaceById(surface_id) orelse {
+            if (ports.len > 0) alloc.free(ports);
+            return;
+        };
+        if (std.mem.eql(u16, surface.listening_ports, ports)) {
+            if (ports.len > 0) alloc.free(ports);
+            return;
+        }
+        if (surface.listening_ports.len > 0) alloc.free(surface.listening_ports);
+        surface.listening_ports = ports;
         surface.invalidateStatusBarState();
     }
 
@@ -9555,6 +9579,7 @@ const Host = struct {
             if (self.hwnd) |h| _ = KillTimer(h, TWEEN_TIMER_ID);
             self.tween_timer_active = false;
         }
+        if (self.hwnd) |h| _ = KillTimer(h, PORTS_TIMER_ID);
         if (self.search_timer_active) {
             if (self.hwnd) |h| _ = KillTimer(h, SEARCH_TIMER_ID);
             self.search_timer_active = false;
@@ -12467,6 +12492,36 @@ const Host = struct {
         _ = InvalidateRect(hwnd, &rect, 0);
     }
 
+    /// paramux FR-3: the ports-refresh timer tick. Captures each visible pane's
+    /// child pid (lazily, once available) and hands a snapshot to a detached
+    /// worker that enumerates listening ports off the UI thread.
+    fn tickPorts(self: *Host) void {
+        const tab = self.activeTab() orelse return;
+        const alloc = self.app.core_app.alloc;
+        var items = std.ArrayListUnmanaged(PortsCheckItem){};
+        defer items.deinit(alloc);
+        var it = tab.tree.iterator();
+        while (it.next()) |entry| {
+            const surface = entry.view;
+            if (!surface.core_initialized) continue;
+            if (surface.child_pid == null) {
+                if (surface.core().getProcessInfo(.foreground_pid)) |pid| {
+                    surface.child_pid = @intCast(pid);
+                }
+            }
+            if (surface.child_pid) |pid| {
+                items.append(alloc, .{ .surface_id = surface.core().id, .pid = pid }) catch return;
+            }
+        }
+        if (items.items.len == 0) return;
+        const owned = items.toOwnedSlice(alloc) catch return;
+        const thread = std.Thread.spawn(.{}, portsWorker, .{ self.app, owned }) catch {
+            alloc.free(owned);
+            return;
+        };
+        thread.detach();
+    }
+
     /// paramux M3: flash the taskbar button + caption until the window comes
     /// to the foreground, so a background pane raising attention is noticed.
     /// No-op if this window is already foreground.
@@ -13657,14 +13712,20 @@ const Host = struct {
                 .right = text_right,
                 .bottom = y + half,
             }, theme.text_primary);
-            if (surface.pwd) |pwd| {
-                const cwd = basename(pwd);
-                var meta_buf: [320]u8 = undefined;
-                const meta: []const u8 = if (surface.git_branch) |br|
-                    (std.fmt.bufPrint(&meta_buf, "{s}{s}  {s}", .{ br, if (surface.git_dirty) "*" else "", cwd }) catch cwd)
-                else
-                    cwd;
-                drawPaletteRowText(hdc, meta, .{
+            // Metadata line: "[branch[*]  ]cwd[  :port :port]". Ports are
+            // pid-derived (FR-3), so they show even when there's no OSC-7 cwd.
+            {
+                var ports_buf: [128]u8 = undefined;
+                const ports_seg = formatSidebarPorts(&ports_buf, surface.listening_ports);
+                var meta_buf: [384]u8 = undefined;
+                const meta: []const u8 = if (surface.pwd) |pwd| blk: {
+                    const cwd = basename(pwd);
+                    break :blk if (surface.git_branch) |br|
+                        (std.fmt.bufPrint(&meta_buf, "{s}{s}  {s}{s}", .{ br, if (surface.git_dirty) "*" else "", cwd, ports_seg }) catch cwd)
+                    else
+                        (std.fmt.bufPrint(&meta_buf, "{s}{s}", .{ cwd, ports_seg }) catch cwd);
+                } else std.mem.trimLeft(u8, ports_seg, " ");
+                if (meta.len > 0) drawPaletteRowText(hdc, meta, .{
                     .left = rect.left + pad,
                     .top = y + half - self.scaled(2),
                     .right = text_right,
@@ -15576,6 +15637,17 @@ fn drawPaneBorder(hdc: HDC, host_hwnd: HWND, surface_hwnd: HWND, c_rect: RECT, c
     if (br.x < c_rect.right) fillSolidRect(hdc, .{ .left = br.x, .top = tl.y, .right = br.x + bw, .bottom = br.y }, color);
 }
 
+/// paramux FR-3: format a pane's listening ports as " :3000 :5173" (leading
+/// space; empty when there are none), truncating if the buffer fills.
+fn formatSidebarPorts(buf: []u8, ports: []const u16) []const u8 {
+    var len: usize = 0;
+    for (ports) |p| {
+        const seg = std.fmt.bufPrint(buf[len..], " :{d}", .{p}) catch break;
+        len += seg.len;
+    }
+    return buf[0..len];
+}
+
 const CREATE_NO_WINDOW: windows.DWORD = 0x08000000;
 
 extern "kernel32" fn ReadFile(
@@ -15707,6 +15779,23 @@ fn gitDirtyWorker(app: *App, surface_id: u64, gen: u64, pwd: []u8) void {
         .gen = gen,
         .dirty = dirty,
     } }, .{ .forever = {} });
+}
+
+/// paramux FR-3: one pane to enumerate listening ports for. `items` is a
+/// snapshot taken on the UI thread so the worker never touches surface state.
+const PortsCheckItem = struct { surface_id: u64, pid: u32 };
+
+fn portsWorker(app: *App, items: []PortsCheckItem) void {
+    const alloc = app.core_app.alloc;
+    defer alloc.free(items);
+    const mailbox: CoreApp.Mailbox = .{ .rt_app = app, .mailbox = &app.core_app.mailbox };
+    for (items) |item| {
+        const ports = win32_ports.listeningPortsForPid(alloc, item.pid);
+        _ = mailbox.push(.{ .ports_result = .{
+            .surface_id = item.surface_id,
+            .ports = ports,
+        } }, .{ .forever = {} });
+    }
 }
 
 fn utf16GdiTextLen(text: [:0]const u16) i32 {
@@ -19450,6 +19539,10 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                 if (host) |v| v.tickResizeSettleRepaint();
                 return 0;
             }
+            if (wParam == PORTS_TIMER_ID) {
+                if (host) |v| v.tickPorts();
+                return 0;
+            }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
         WM_DRAWITEM => {
@@ -21702,6 +21795,11 @@ pub const Surface = struct {
     /// is bumped on every cwd change so a stale check result is ignored.
     git_dirty: bool = false,
     git_check_gen: std.atomic.Value(u64) = .init(0),
+    /// paramux FR-3: the pane's child (shell) pid, captured lazily once it's
+    /// available, and the TCP ports its process tree is listening on (refreshed
+    /// by a periodic timer). `listening_ports` is owned; empty = none.
+    child_pid: ?u32 = null,
+    listening_ports: []const u16 = &.{},
     last_notification: ?[:0]const u8 = null,
     /// paramux FR-4 attention: the current agent-attention state for this pane
     /// (OSC 9/777 or an agent hook via `+notify --state`). Drives the sidebar
@@ -25008,6 +25106,10 @@ pub const Surface = struct {
         if (self.git_branch) |value| {
             alloc.free(value);
             self.git_branch = null;
+        }
+        if (self.listening_ports.len > 0) {
+            alloc.free(self.listening_ports);
+            self.listening_ports = &.{};
         }
         if (self.last_notification) |value| {
             alloc.free(value);

@@ -1325,6 +1325,20 @@ const Subprocess = struct {
     /// Returns `null` if there was an error getting the information or the
     /// information is not available on a particular platform.
     pub fn getProcessInfo(self: *Subprocess, comptime info: ProcessInfo) ?ProcessInfo.Type(info) {
+        // paramux: the Windows pty can't report the child pid (its getProcessInfo
+        // is a stub), but the child process HANDLE lives on the Command, so
+        // resolve the numeric pid from it directly.
+        if (comptime builtin.os.tag == .windows and info == .foreground_pid) {
+            const proc = self.process orelse return null;
+            const cmd = switch (proc) {
+                .fork_exec => |fe| fe,
+                else => return null,
+            };
+            const handle = cmd.pid orelse return null;
+            const id = windows.exp.kernel32.GetProcessId(handle);
+            return if (id == 0) null else @intCast(id);
+        }
+
         const pty = &(self.pty orelse return null);
         return pty.getProcessInfo(info);
     }
