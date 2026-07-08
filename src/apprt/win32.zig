@@ -769,16 +769,22 @@ const PIPE_WAIT = 0x00000000;
 const PIPE_ACCESS_DUPLEX = 0x00000003;
 const PIPE_UNLIMITED_INSTANCES = 255;
 const ipc_pipe_prefix = "\\\\.\\pipe\\winghostty.";
-const ipc_wire_version: u32 = 1;
+// Wire v2 (paramux): the request header carries a per-instance auth token
+// (`[u32 ver][u8 kind][u16 token_len][token]`). Bumped from v1 so a mismatched
+// build fails the version check cleanly instead of misparsing.
+const ipc_wire_version: u32 = 2;
 const ipc_ack_success: u8 = 0;
 const ipc_ack_failure: u8 = 1;
 const ipc_ack_invalid_automation_action: u8 = 2;
 const ipc_ack_unsafe_automation_action: u8 = 3;
 const ipc_ack_invalid_automation_target: u8 = 4;
 const ipc_ack_no_automation_target: u8 = 5;
+const ipc_ack_unauthorized: u8 = 6;
 const ipc_max_data_response_len: u32 = 16 * 1024 * 1024;
 const ipc_max_action_text_len: u32 = 16 * 1024;
 const ipc_max_new_window_argc: u32 = 4096;
+/// paramux per-instance IPC auth token: 16 random bytes as 32 lowercase hex.
+const ipc_token_len: usize = 32;
 
 const IpcRequestKind = enum(u8) {
     new_window = 1,
@@ -1847,6 +1853,24 @@ fn appendU64(dst: *std.ArrayList(u8), alloc: Allocator, value: u64) !void {
     try dst.appendSlice(alloc, &buf);
 }
 
+/// Write the shared request header `[u32 ver][u8 kind][u16 token_len][token]`.
+/// Every encoder starts with this; the token is empty for unauthenticated
+/// requests (e.g. list_windows).
+fn appendIpcRequestPrefix(
+    dst: *std.ArrayList(u8),
+    alloc: Allocator,
+    kind: IpcRequestKind,
+    token: []const u8,
+) !void {
+    const tlen: u16 = @intCast(@min(token.len, ipc_token_len));
+    try appendU32(dst, alloc, ipc_wire_version);
+    try dst.append(alloc, @intFromEnum(kind));
+    var tlen_buf: [2]u8 = undefined;
+    std.mem.writeInt(u16, &tlen_buf, tlen, .little);
+    try dst.appendSlice(alloc, &tlen_buf);
+    try dst.appendSlice(alloc, token[0..tlen]);
+}
+
 fn readU32(src: []const u8) u32 {
     return std.mem.readInt(u32, src[0..4], .little);
 }
@@ -1864,13 +1888,13 @@ fn freeOwnedArguments(alloc: Allocator, arguments: ?[]const [:0]const u8) void {
 
 fn encodeNewWindowIpcRequest(
     alloc: Allocator,
+    token: []const u8,
     arguments: ?[]const [:0]const u8,
 ) ![]u8 {
     var encoded: std.ArrayList(u8) = .empty;
     errdefer encoded.deinit(alloc);
 
-    try appendU32(&encoded, alloc, ipc_wire_version);
-    try encoded.append(alloc, @intFromEnum(IpcRequestKind.new_window));
+    try appendIpcRequestPrefix(&encoded, alloc, .new_window, token);
 
     const argc: u32 = if (arguments) |argv| @intCast(argv.len) else 0;
     try appendU32(&encoded, alloc, argc);
@@ -1885,12 +1909,11 @@ fn encodeNewWindowIpcRequest(
     return try encoded.toOwnedSlice(alloc);
 }
 
-fn encodeListWindowsIpcRequest(alloc: Allocator) ![]u8 {
+fn encodeListWindowsIpcRequest(alloc: Allocator, token: []const u8) ![]u8 {
     var encoded: std.ArrayList(u8) = .empty;
     errdefer encoded.deinit(alloc);
 
-    try appendU32(&encoded, alloc, ipc_wire_version);
-    try encoded.append(alloc, @intFromEnum(IpcRequestKind.list_windows));
+    try appendIpcRequestPrefix(&encoded, alloc, .list_windows, token);
     // Keep the legacy zero-argc trailer so older servers that still decode
     // through the new-window payload path fail with a bounded ack instead of
     // blocking on a missing payload length.
@@ -1901,6 +1924,7 @@ fn encodeListWindowsIpcRequest(alloc: Allocator) ![]u8 {
 
 fn encodePerformActionIpcRequest(
     alloc: Allocator,
+    token: []const u8,
     target: apprt.ipc.AutomationActionTarget,
     action_text: []const u8,
 ) ![]u8 {
@@ -1911,8 +1935,7 @@ fn encodePerformActionIpcRequest(
     var encoded: std.ArrayList(u8) = .empty;
     errdefer encoded.deinit(alloc);
 
-    try appendU32(&encoded, alloc, ipc_wire_version);
-    try encoded.append(alloc, @intFromEnum(IpcRequestKind.perform_action));
+    try appendIpcRequestPrefix(&encoded, alloc, .perform_action, token);
     try encoded.append(alloc, switch (target) {
         .focused => 0,
         .surface_id => 1,
@@ -1927,14 +1950,30 @@ fn encodePerformActionIpcRequest(
     return try encoded.toOwnedSlice(alloc);
 }
 
-fn decodeIpcRequestKind(
-    pipe: windows.HANDLE,
-) !IpcRequestKind {
+const DecodedRequestHeader = struct {
+    kind: IpcRequestKind,
+    token_buf: [ipc_token_len]u8 = undefined,
+    token_len: usize = 0,
+
+    fn token(self: *const DecodedRequestHeader) []const u8 {
+        return self.token_buf[0..self.token_len];
+    }
+};
+
+fn decodeIpcRequestHeader(pipe: windows.HANDLE) !DecodedRequestHeader {
     var header: [5]u8 = undefined;
     try readExactHandle(pipe, &header);
-
     if (readU32(header[0..4]) != ipc_wire_version) return error.InvalidIpcRequest;
-    return std.meta.intToEnum(IpcRequestKind, header[4]) catch error.InvalidIpcRequest;
+    const kind = std.meta.intToEnum(IpcRequestKind, header[4]) catch return error.InvalidIpcRequest;
+
+    var tlen_buf: [2]u8 = undefined;
+    try readExactHandle(pipe, &tlen_buf);
+    const tlen = std.mem.readInt(u16, &tlen_buf, .little);
+    if (tlen > ipc_token_len) return error.InvalidIpcRequest;
+
+    var result: DecodedRequestHeader = .{ .kind = kind, .token_len = tlen };
+    if (tlen > 0) try readExactHandle(pipe, result.token_buf[0..tlen]);
+    return result;
 }
 
 fn decodeNewWindowIpcPayload(
@@ -2000,6 +2039,7 @@ fn decodePerformActionIpcPayload(
 /// The title may carry the `paramux.state:<state>` attention marker.
 fn encodeSetNotificationIpcRequest(
     alloc: Allocator,
+    token: []const u8,
     target: apprt.ipc.AutomationActionTarget,
     title: []const u8,
     body: []const u8,
@@ -2011,8 +2051,7 @@ fn encodeSetNotificationIpcRequest(
     var encoded: std.ArrayList(u8) = .empty;
     errdefer encoded.deinit(alloc);
 
-    try appendU32(&encoded, alloc, ipc_wire_version);
-    try encoded.append(alloc, @intFromEnum(IpcRequestKind.set_notification));
+    try appendIpcRequestPrefix(&encoded, alloc, .set_notification, token);
     try encoded.append(alloc, switch (target) {
         .focused => 0,
         .surface_id => 1,
@@ -2069,22 +2108,26 @@ test "encodeSetNotificationIpcRequest byte layout" {
 
     const req = try encodeSetNotificationIpcRequest(
         alloc,
+        "ab",
         .{ .surface_id = 0x0102030405060708 },
         "paramux.state:done",
         "hi",
     );
     defer alloc.free(req);
 
-    // version(4) kind(1) tag(1) id(8) title_len(4) title(18) body_len(4) body(2)
-    try testing.expectEqual(@as(usize, 42), req.len);
+    // ver(4) kind(1) token_len(2) token(2) tag(1) id(8) title_len(4) title(18)
+    // body_len(4) body(2)
+    try testing.expectEqual(@as(usize, 46), req.len);
     try testing.expectEqual(ipc_wire_version, readU32(req[0..4]));
     try testing.expectEqual(@intFromEnum(IpcRequestKind.set_notification), req[4]);
-    try testing.expectEqual(@as(u8, 1), req[5]);
-    try testing.expectEqual(@as(u64, 0x0102030405060708), readU64(req[6..14]));
-    try testing.expectEqual(@as(u32, 18), readU32(req[14..18]));
-    try testing.expectEqualStrings("paramux.state:done", req[18..36]);
-    try testing.expectEqual(@as(u32, 2), readU32(req[36..40]));
-    try testing.expectEqualStrings("hi", req[40..42]);
+    try testing.expectEqual(@as(u16, 2), std.mem.readInt(u16, req[5..7], .little));
+    try testing.expectEqualStrings("ab", req[7..9]);
+    try testing.expectEqual(@as(u8, 1), req[9]);
+    try testing.expectEqual(@as(u64, 0x0102030405060708), readU64(req[10..18]));
+    try testing.expectEqual(@as(u32, 18), readU32(req[18..22]));
+    try testing.expectEqualStrings("paramux.state:done", req[22..40]);
+    try testing.expectEqual(@as(u32, 2), readU32(req[40..44]));
+    try testing.expectEqualStrings("hi", req[44..46]);
 }
 
 /// paramux: wire for the `read_pane` IPC kind. Payload after the shared prefix
@@ -2092,13 +2135,13 @@ test "encodeSetNotificationIpcRequest byte layout" {
 /// data response (like list_windows) carrying the pane's viewport text.
 fn encodeReadPaneIpcRequest(
     alloc: Allocator,
+    token: []const u8,
     target: apprt.ipc.AutomationActionTarget,
 ) ![]u8 {
     var encoded: std.ArrayList(u8) = .empty;
     errdefer encoded.deinit(alloc);
 
-    try appendU32(&encoded, alloc, ipc_wire_version);
-    try encoded.append(alloc, @intFromEnum(IpcRequestKind.read_pane));
+    try appendIpcRequestPrefix(&encoded, alloc, .read_pane, token);
     try encoded.append(alloc, switch (target) {
         .focused => 0,
         .surface_id => 1,
@@ -2125,15 +2168,31 @@ test "encodeReadPaneIpcRequest byte layout" {
     const testing = std.testing;
     const alloc = testing.allocator;
 
-    const req = try encodeReadPaneIpcRequest(alloc, .{ .surface_id = 0x0102030405060708 });
+    const req = try encodeReadPaneIpcRequest(alloc, "", .{ .surface_id = 0x0102030405060708 });
     defer alloc.free(req);
 
-    // version(4) kind(1) tag(1) id(8)
-    try testing.expectEqual(@as(usize, 14), req.len);
+    // ver(4) kind(1) token_len(2)=0 tag(1) id(8)
+    try testing.expectEqual(@as(usize, 16), req.len);
     try testing.expectEqual(ipc_wire_version, readU32(req[0..4]));
     try testing.expectEqual(@intFromEnum(IpcRequestKind.read_pane), req[4]);
-    try testing.expectEqual(@as(u8, 1), req[5]);
-    try testing.expectEqual(@as(u64, 0x0102030405060708), readU64(req[6..14]));
+    try testing.expectEqual(@as(u16, 0), std.mem.readInt(u16, req[5..7], .little));
+    try testing.expectEqual(@as(u8, 1), req[7]);
+    try testing.expectEqual(@as(u64, 0x0102030405060708), readU64(req[8..16]));
+}
+
+test "ipcTokenValid rejects wrong, short, empty, and absent tokens" {
+    const testing = std.testing;
+    var app: App = undefined;
+
+    // No token set (server not started): nothing validates.
+    app.ipc_token = null;
+    try testing.expect(!app.ipcTokenValid("anything"));
+
+    app.ipc_token = "0123456789abcdef0123456789abcdef";
+    try testing.expect(app.ipcTokenValid("0123456789abcdef0123456789abcdef"));
+    try testing.expect(!app.ipcTokenValid("0123456789abcdef0123456789abcde0"));
+    try testing.expect(!app.ipcTokenValid("0123456789abcdef")); // too short
+    try testing.expect(!app.ipcTokenValid(""));
 }
 
 fn writeIpcAck(pipe: windows.HANDLE, success: bool) !void {
@@ -2161,6 +2220,7 @@ fn readIpcAck(pipe: windows.HANDLE) !bool {
         ipc_ack_unsafe_automation_action => error.UnsafeAutomationAction,
         ipc_ack_invalid_automation_target => error.InvalidAutomationTarget,
         ipc_ack_no_automation_target => error.NoAutomationTarget,
+        ipc_ack_unauthorized => error.Unauthorized,
         else => error.InvalidIpcResponse,
     };
 }
@@ -2298,6 +2358,7 @@ fn connectToIpcPipe(pipe_name: [:0]const u16) !windows.HANDLE {
 fn sendNewWindowIpc(
     alloc: Allocator,
     pipe_name: [:0]const u16,
+    token: []const u8,
     arguments: ?[]const [:0]const u8,
 ) !bool {
     const pipe = connectToIpcPipe(pipe_name) catch |err| switch (err) {
@@ -2307,7 +2368,7 @@ fn sendNewWindowIpc(
     };
     defer _ = windows.CloseHandle(pipe);
 
-    const request = try encodeNewWindowIpcRequest(alloc, arguments);
+    const request = try encodeNewWindowIpcRequest(alloc, token, arguments);
     defer alloc.free(request);
 
     try writeAllHandle(pipe, request);
@@ -2317,6 +2378,7 @@ fn sendNewWindowIpc(
 fn sendListWindowsIpc(
     alloc: Allocator,
     pipe_name: [:0]const u16,
+    token: []const u8,
 ) !?[]u8 {
     const pipe = connectToIpcPipe(pipe_name) catch |err| switch (err) {
         error.FileNotFound => return null,
@@ -2325,7 +2387,7 @@ fn sendListWindowsIpc(
     };
     defer _ = windows.CloseHandle(pipe);
 
-    const request = try encodeListWindowsIpcRequest(alloc);
+    const request = try encodeListWindowsIpcRequest(alloc, token);
     defer alloc.free(request);
 
     try writeAllHandle(pipe, request);
@@ -2335,6 +2397,7 @@ fn sendListWindowsIpc(
 fn sendPerformActionIpc(
     alloc: Allocator,
     pipe_name: [:0]const u16,
+    token: []const u8,
     target: apprt.ipc.AutomationActionTarget,
     action_text: []const u8,
 ) !bool {
@@ -2345,7 +2408,7 @@ fn sendPerformActionIpc(
     };
     defer _ = windows.CloseHandle(pipe);
 
-    const request = try encodePerformActionIpcRequest(alloc, target, action_text);
+    const request = try encodePerformActionIpcRequest(alloc, token, target, action_text);
     defer alloc.free(request);
 
     try writeAllHandle(pipe, request);
@@ -2355,6 +2418,7 @@ fn sendPerformActionIpc(
 fn sendSetNotificationIpc(
     alloc: Allocator,
     pipe_name: [:0]const u16,
+    token: []const u8,
     target: apprt.ipc.AutomationActionTarget,
     title: []const u8,
     body: []const u8,
@@ -2366,7 +2430,7 @@ fn sendSetNotificationIpc(
     };
     defer _ = windows.CloseHandle(pipe);
 
-    const request = try encodeSetNotificationIpcRequest(alloc, target, title, body);
+    const request = try encodeSetNotificationIpcRequest(alloc, token, target, title, body);
     defer alloc.free(request);
 
     try writeAllHandle(pipe, request);
@@ -2376,6 +2440,7 @@ fn sendSetNotificationIpc(
 fn sendReadPaneIpc(
     alloc: Allocator,
     pipe_name: [:0]const u16,
+    token: []const u8,
     target: apprt.ipc.AutomationActionTarget,
 ) !?[]u8 {
     const pipe = connectToIpcPipe(pipe_name) catch |err| switch (err) {
@@ -2385,7 +2450,7 @@ fn sendReadPaneIpc(
     };
     defer _ = windows.CloseHandle(pipe);
 
-    const request = try encodeReadPaneIpcRequest(alloc, target);
+    const request = try encodeReadPaneIpcRequest(alloc, token, target);
     defer alloc.free(request);
 
     try writeAllHandle(pipe, request);
@@ -2528,31 +2593,49 @@ fn ipcServerMain(app: *App) void {
 }
 
 fn handleIpcClient(app: *App, pipe: windows.HANDLE) !void {
-    const kind = decodeIpcRequestKind(pipe) catch |err| {
+    const header = decodeIpcRequestHeader(pipe) catch |err| {
         writeIpcAck(pipe, false) catch {};
         return err;
     };
 
-    switch (kind) {
-        .new_window => handleNewWindowIpcClient(app, pipe) catch |err| {
-            log.warn("failed to process win32 new-window IPC request err={}", .{err});
-            try writeIpcAck(pipe, false);
+    // paramux: gate every mutating method and read_pane (which discloses pane
+    // content) behind the per-instance token. list_windows (structure only) is
+    // left open for discovery. The failure frame matches each method's response
+    // shape so the client never blocks: an ack for the ack-reply methods, a
+    // data response for read_pane.
+    const authed = app.ipcTokenValid(header.token());
+    switch (header.kind) {
+        .new_window => {
+            if (!authed) return writeIpcAckStatus(pipe, ipc_ack_unauthorized);
+            handleNewWindowIpcClient(app, pipe) catch |err| {
+                log.warn("failed to process win32 new-window IPC request err={}", .{err});
+                try writeIpcAck(pipe, false);
+            };
         },
         .list_windows => handleListWindowsIpcClient(app, pipe) catch |err| {
             log.warn("failed to process win32 automation list IPC request err={}", .{err});
             try writeIpcDataResponse(pipe, false, "");
         },
-        .perform_action => handlePerformActionIpcClient(app, pipe) catch |err| {
-            log.warn("failed to process win32 automation action IPC request err={}", .{err});
-            try writeIpcAck(pipe, false);
+        .perform_action => {
+            if (!authed) return writeIpcAckStatus(pipe, ipc_ack_unauthorized);
+            handlePerformActionIpcClient(app, pipe) catch |err| {
+                log.warn("failed to process win32 automation action IPC request err={}", .{err});
+                try writeIpcAck(pipe, false);
+            };
         },
-        .set_notification => handleSetNotificationIpcClient(app, pipe) catch |err| {
-            log.warn("failed to process win32 set-notification IPC request err={}", .{err});
-            try writeIpcAck(pipe, false);
+        .set_notification => {
+            if (!authed) return writeIpcAckStatus(pipe, ipc_ack_unauthorized);
+            handleSetNotificationIpcClient(app, pipe) catch |err| {
+                log.warn("failed to process win32 set-notification IPC request err={}", .{err});
+                try writeIpcAck(pipe, false);
+            };
         },
-        .read_pane => handleReadPaneIpcClient(app, pipe) catch |err| {
-            log.warn("failed to process win32 read-pane IPC request err={}", .{err});
-            try writeIpcDataResponse(pipe, false, "");
+        .read_pane => {
+            if (!authed) return writeIpcDataResponse(pipe, false, "");
+            handleReadPaneIpcClient(app, pipe) catch |err| {
+                log.warn("failed to process win32 read-pane IPC request err={}", .{err});
+                try writeIpcDataResponse(pipe, false, "");
+            };
         },
     }
 }
@@ -2863,6 +2946,10 @@ pub const App = struct {
     ipc_pipe_name: ?[:0]const u16 = null,
     ipc_thread: ?std.Thread = null,
     ipc_stop_requested: std.atomic.Value(bool) = .init(false),
+    /// paramux per-instance IPC auth token (32 hex chars), generated at server
+    /// start. Gated mutating methods require it; injected into every pane env as
+    /// PARAMUX_TOKEN and written to the token file for external clients.
+    ipc_token: ?[]const u8 = null,
     global_hotkeys: std.ArrayListUnmanaged(RegisteredGlobalHotkey) = .empty,
     global_hotkeys_dirty: bool = false,
     ui_thread_id: DWORD = 0,
@@ -3942,11 +4029,22 @@ pub const App = struct {
         const pipe_name = try self.resolveIpcPipeName(self.core_app.alloc);
         defer self.core_app.alloc.free(pipe_name);
 
-        return try sendNewWindowIpc(
+        // Present the primary's token (from its token file) so the gated
+        // new_window forward is authenticated. If we can't authenticate (no
+        // token file yet), fall back to running standalone rather than failing
+        // startup.
+        const token = readClientIpcToken(self.core_app.alloc) orelse "";
+        defer if (token.len > 0) self.core_app.alloc.free(token);
+
+        return sendNewWindowIpc(
             self.core_app.alloc,
             pipe_name,
+            token,
             arguments,
-        );
+        ) catch |err| switch (err) {
+            error.Unauthorized => false,
+            else => return err,
+        };
     }
 
     fn startIpcServer(self: *App) !void {
@@ -3961,6 +4059,20 @@ pub const App = struct {
         // falls back to its console path in that case.)
         if (self.ipc_thread != null) return;
 
+        // paramux: generate a per-instance auth token, publish it to the token
+        // file (for external clients) and into pane envs (PARAMUX_TOKEN, via
+        // defaultTermioEnv), and require it on mutating IPC methods.
+        if (self.ipc_token == null) {
+            self.ipc_token = try generateIpcToken(self.core_app.alloc);
+            self.writeIpcTokenFile(self.ipc_token.?) catch |err| {
+                log.warn("failed to write paramux IPC token file err={}", .{err});
+            };
+        }
+        errdefer {
+            if (self.ipc_token) |token| self.core_app.alloc.free(token);
+            self.ipc_token = null;
+        }
+
         self.ipc_pipe_name = try self.resolveIpcPipeName(self.core_app.alloc);
         errdefer {
             if (self.ipc_pipe_name) |pipe_name| self.core_app.alloc.free(pipe_name);
@@ -3969,6 +4081,68 @@ pub const App = struct {
 
         self.ipc_stop_requested.store(false, .release);
         self.ipc_thread = try std.Thread.spawn(.{}, ipcServerMain, .{self});
+    }
+
+    /// Generate a 32-hex-char (16-byte) random token.
+    fn generateIpcToken(alloc: Allocator) ![]const u8 {
+        var raw: [ipc_token_len / 2]u8 = undefined;
+        std.crypto.random.bytes(&raw);
+        const hex = std.fmt.bytesToHex(raw, .lower);
+        return try alloc.dupe(u8, &hex);
+    }
+
+    /// Validate a presented token against this instance's token in constant
+    /// time. Absent/empty tokens never validate.
+    fn ipcTokenValid(self: *const App, presented: []const u8) bool {
+        const token = self.ipc_token orelse return false;
+        if (presented.len != token.len) return false;
+        var diff: u8 = 0;
+        for (presented, token) |a, b| diff |= a ^ b;
+        return diff == 0;
+    }
+
+    /// Build the token-file path: `<LocalAppData>\winghostty\paramux-ipc-token`.
+    fn ipcTokenFilePath(alloc: Allocator) !?[]u8 {
+        var buf: [std.fs.max_path_bytes]u8 = undefined;
+        const local = (try internal_os.windows.knownFolderPathUtf8(
+            &internal_os.windows.FOLDERID_LocalAppData,
+            &buf,
+        )) orelse return null;
+        return try std.fs.path.join(alloc, &.{ local, "winghostty", "paramux-ipc-token" });
+    }
+
+    fn writeIpcTokenFile(self: *App, token: []const u8) !void {
+        const alloc = self.core_app.alloc;
+        const path = (try ipcTokenFilePath(alloc)) orelse return;
+        defer alloc.free(path);
+        if (std.fs.path.dirname(path)) |dir| {
+            std.fs.makeDirAbsolute(dir) catch |err| switch (err) {
+                error.PathAlreadyExists => {},
+                else => return err,
+            };
+        }
+        const file = try std.fs.createFileAbsolute(path, .{ .truncate = true });
+        defer file.close();
+        try file.writeAll(token);
+    }
+
+    /// Read the token a CLI client should present: the pane's PARAMUX_TOKEN env
+    /// var first (set inside every pane), else the token file. Caller owns the
+    /// result. Returns null when neither is available (unauthenticated client).
+    pub fn readClientIpcToken(alloc: Allocator) ?[]const u8 {
+        if (std.process.getEnvVarOwned(alloc, "PARAMUX_TOKEN")) |val| {
+            if (val.len > 0) return val;
+            alloc.free(val);
+        } else |_| {}
+
+        const path = (ipcTokenFilePath(alloc) catch return null) orelse return null;
+        defer alloc.free(path);
+        const file = std.fs.openFileAbsolute(path, .{}) catch return null;
+        defer file.close();
+        var buf: [ipc_token_len]u8 = undefined;
+        const n = file.readAll(&buf) catch return null;
+        if (n == 0) return null;
+        return alloc.dupe(u8, buf[0..n]) catch return null;
     }
 
     fn resolveIpcPipeName(self: *const App, alloc: Allocator) ![:0]const u16 {
@@ -3998,6 +4172,10 @@ pub const App = struct {
         if (self.ipc_pipe_name) |pipe_name| {
             self.core_app.alloc.free(pipe_name);
             self.ipc_pipe_name = null;
+        }
+        if (self.ipc_token) |token| {
+            self.core_app.alloc.free(token);
+            self.ipc_token = null;
         }
         self.ipc_stop_requested.store(false, .release);
     }
@@ -5199,7 +5377,10 @@ pub const App = struct {
                 const pipe_name = try resolveIpcPipeNameForTarget(alloc, target);
                 defer alloc.free(pipe_name);
 
-                if (try sendNewWindowIpc(alloc, pipe_name, value.arguments)) return true;
+                const token = readClientIpcToken(alloc) orelse "";
+                defer if (token.len > 0) alloc.free(token);
+
+                if (try sendNewWindowIpc(alloc, pipe_name, token, value.arguments)) return true;
                 return try spawnWindowProcess(alloc, target, value);
             },
         }
@@ -5211,7 +5392,8 @@ pub const App = struct {
     ) !?[]u8 {
         const pipe_name = try resolveIpcPipeNameForTarget(alloc, target);
         defer alloc.free(pipe_name);
-        return try sendListWindowsIpc(alloc, pipe_name);
+        // list_windows is unauthenticated (discovery); send an empty token.
+        return try sendListWindowsIpc(alloc, pipe_name, "");
     }
 
     pub fn performAutomationAction(
@@ -5222,7 +5404,9 @@ pub const App = struct {
     ) !bool {
         const pipe_name = try resolveIpcPipeNameForTarget(alloc, target);
         defer alloc.free(pipe_name);
-        return try sendPerformActionIpc(alloc, pipe_name, action_target, action_text);
+        const token = readClientIpcToken(alloc) orelse "";
+        defer if (token.len > 0) alloc.free(token);
+        return try sendPerformActionIpc(alloc, pipe_name, token, action_target, action_text);
     }
 
     pub fn performSetNotification(
@@ -5234,7 +5418,9 @@ pub const App = struct {
     ) !bool {
         const pipe_name = try resolveIpcPipeNameForTarget(alloc, target);
         defer alloc.free(pipe_name);
-        return try sendSetNotificationIpc(alloc, pipe_name, action_target, title, body);
+        const token = readClientIpcToken(alloc) orelse "";
+        defer if (token.len > 0) alloc.free(token);
+        return try sendSetNotificationIpc(alloc, pipe_name, token, action_target, title, body);
     }
 
     pub fn performReadPane(
@@ -5244,7 +5430,9 @@ pub const App = struct {
     ) !?[]u8 {
         const pipe_name = try resolveIpcPipeNameForTarget(alloc, target);
         defer alloc.free(pipe_name);
-        return try sendReadPaneIpc(alloc, pipe_name, action_target);
+        const token = readClientIpcToken(alloc) orelse "";
+        defer if (token.len > 0) alloc.free(token);
+        return try sendReadPaneIpc(alloc, pipe_name, token, action_target);
     }
 
     pub fn buildAutomationWindowListJson(
@@ -22073,6 +22261,13 @@ pub const Surface = struct {
             }
         }
 
+        // paramux: expose the per-instance IPC auth token so `winghostty
+        // +notify`/`+perform-action`/`+read-pane` run inside this pane are
+        // authenticated automatically (e.g. from agent hooks).
+        if (self.app.ipc_token) |token| {
+            try env.put("PARAMUX_TOKEN", token);
+        }
+
         return env;
     }
 
@@ -29731,13 +29926,15 @@ test "automation-window-list win32 json skips empty hosts kept alive for undo hi
 test "win32 encodeListWindowsIpcRequest preserves legacy zero-argc trailer" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
-    const request = try encodeListWindowsIpcRequest(std.testing.allocator);
+    const request = try encodeListWindowsIpcRequest(std.testing.allocator, "");
     defer std.testing.allocator.free(request);
 
-    try std.testing.expectEqual(@as(usize, 9), request.len);
+    // ver(4) kind(1) token_len(2)=0 argc(4)
+    try std.testing.expectEqual(@as(usize, 11), request.len);
     try std.testing.expectEqual(ipc_wire_version, readU32(request[0..4]));
     try std.testing.expectEqual(@intFromEnum(IpcRequestKind.list_windows), request[4]);
-    try std.testing.expectEqual(@as(u32, 0), readU32(request[5..9]));
+    try std.testing.expectEqual(@as(u16, 0), std.mem.readInt(u16, request[5..7], .little));
+    try std.testing.expectEqual(@as(u32, 0), readU32(request[7..11]));
 }
 
 test "automation-action win32 ipc encodes focused action request" {
@@ -29745,17 +29942,20 @@ test "automation-action win32 ipc encodes focused action request" {
 
     const request = try encodePerformActionIpcRequest(
         std.testing.allocator,
+        "",
         .focused,
         "new_tab",
     );
     defer std.testing.allocator.free(request);
 
+    // ver(4) kind(1) token_len(2)=0 tag(1) id(8) action_len(4) action
     try std.testing.expectEqual(ipc_wire_version, readU32(request[0..4]));
     try std.testing.expectEqual(@intFromEnum(IpcRequestKind.perform_action), request[4]);
-    try std.testing.expectEqual(@as(u8, 0), request[5]);
-    try std.testing.expectEqual(@as(u64, 0), readU64(request[6..14]));
-    try std.testing.expectEqual(@as(u32, 7), readU32(request[14..18]));
-    try std.testing.expectEqualStrings("new_tab", request[18..]);
+    try std.testing.expectEqual(@as(u16, 0), std.mem.readInt(u16, request[5..7], .little));
+    try std.testing.expectEqual(@as(u8, 0), request[7]);
+    try std.testing.expectEqual(@as(u64, 0), readU64(request[8..16]));
+    try std.testing.expectEqual(@as(u32, 7), readU32(request[16..20]));
+    try std.testing.expectEqualStrings("new_tab", request[20..]);
 }
 
 test "automation-action win32 ipc encodes surface action request" {
@@ -29763,6 +29963,7 @@ test "automation-action win32 ipc encodes surface action request" {
 
     const request = try encodePerformActionIpcRequest(
         std.testing.allocator,
+        "",
         .{ .surface_id = 42 },
         "toggle_fullscreen",
     );
@@ -29770,10 +29971,11 @@ test "automation-action win32 ipc encodes surface action request" {
 
     try std.testing.expectEqual(ipc_wire_version, readU32(request[0..4]));
     try std.testing.expectEqual(@intFromEnum(IpcRequestKind.perform_action), request[4]);
-    try std.testing.expectEqual(@as(u8, 1), request[5]);
-    try std.testing.expectEqual(@as(u64, 42), readU64(request[6..14]));
-    try std.testing.expectEqual(@as(u32, 17), readU32(request[14..18]));
-    try std.testing.expectEqualStrings("toggle_fullscreen", request[18..]);
+    try std.testing.expectEqual(@as(u16, 0), std.mem.readInt(u16, request[5..7], .little));
+    try std.testing.expectEqual(@as(u8, 1), request[7]);
+    try std.testing.expectEqual(@as(u64, 42), readU64(request[8..16]));
+    try std.testing.expectEqual(@as(u32, 17), readU32(request[16..20]));
+    try std.testing.expectEqualStrings("toggle_fullscreen", request[20..]);
 }
 
 test "automation-action win32 ipc rejects oversized action before encode" {
@@ -29785,7 +29987,7 @@ test "automation-action win32 ipc rejects oversized action before encode" {
 
     try std.testing.expectError(
         error.InvalidAutomationAction,
-        encodePerformActionIpcRequest(std.testing.allocator, .focused, action_text),
+        encodePerformActionIpcRequest(std.testing.allocator, "", .focused, action_text),
     );
 }
 
