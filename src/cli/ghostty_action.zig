@@ -63,6 +63,10 @@ pub const Action = enum {
     // Forward a safe keybinding action to the running winghostty instance.
     @"perform-action",
 
+    // Emit a desktop-notification escape sequence to flag the current pane
+    // for attention (used by AI-agent hooks).
+    notify,
+
     pub fn detectSpecialCase(arg: []const u8) ?SpecialCase(Action) {
         // If we see a "-e" and we haven't seen a command yet, then
         // we are done looking for commands. This special case enables
