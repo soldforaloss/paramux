@@ -32,6 +32,25 @@ pub const App = struct {
         return false;
     }
 
+    pub fn performSetNotification(
+        _: Allocator,
+        _: apprt.ipc.Target,
+        _: apprt.ipc.AutomationActionTarget,
+        _: []const u8,
+        _: []const u8,
+    ) !bool {
+        return false;
+    }
+
+    pub fn applySetNotification(
+        _: *App,
+        _: apprt.ipc.AutomationActionTarget,
+        _: []const u8,
+        _: []const u8,
+    ) !void {
+        return error.Unsupported;
+    }
+
     pub fn buildAutomationWindowListJson(
         _: *App,
         _: Allocator,

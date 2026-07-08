@@ -4,6 +4,7 @@ const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const actionpkg = @import("action.zig");
 const args = @import("args.zig");
+const apprt = @import("../apprt.zig");
 const lib = @import("../lib/main.zig");
 
 pub const Options = struct {
@@ -20,6 +21,11 @@ pub const Options = struct {
     /// pane's sidebar row by this state (working=blue, waiting=amber,
     /// done=green, error=red) instead of treating it as a plain notification.
     state: []const u8 = "",
+
+    /// Target a specific pane by its `+list-windows` id instead of the pane
+    /// this command runs in. Normally unset — the pane id is discovered from
+    /// the `PARAMUX_SURFACE_ID` environment variable injected into each pane.
+    @"surface-id": ?u64 = null,
 
     /// The notification message, collected from all positional arguments after
     /// `+notify`.
@@ -47,6 +53,10 @@ pub const Options = struct {
         }
         if (lib.cutPrefix(u8, arg, "--state=")) |rest| {
             self.state = try alloc.dupe(u8, rest);
+            return;
+        }
+        if (lib.cutPrefix(u8, arg, "--surface-id=")) |rest| {
+            self.@"surface-id" = std.fmt.parseInt(u64, std.mem.trim(u8, rest, &std.ascii.whitespace), 10) catch null;
             return;
         }
         try self._message.append(alloc, try alloc.dupe(u8, arg));
@@ -87,9 +97,13 @@ pub const Options = struct {
 ///
 ///     winghostty +notify --state=waiting Claude needs your approval
 ///
-/// On Windows the sequence is written directly to the console (`CONOUT$`)
-/// rather than to stdout, so it still reaches the terminal even when the
-/// calling process has had its stdout redirected, as agent hooks do.
+/// Delivery is console-independent when possible: if `PARAMUX_SURFACE_ID` is in
+/// the environment (paramux injects it into every pane) or `--surface-id` is
+/// given, the notification is sent to that pane over the winghostty IPC pipe,
+/// which works even when the caller's console is hidden (as it is for agent
+/// hooks spawned with `windowsHide`). If no instance is listening, it falls
+/// back to writing the OSC 777 sequence to the pane's console (`CONOUT$`),
+/// which reaches the terminal even when stdout has been redirected.
 ///
 /// Available since: 1.2.0
 pub fn run(alloc: Allocator) !u8 {
@@ -115,7 +129,26 @@ pub fn run(alloc: Allocator) !u8 {
     else
         opts.title;
 
-    // Build the OSC 777 desktop-notification sequence:
+    // Preferred path: deliver over IPC straight to the addressed pane. This is
+    // console-independent, so it works from agent hooks whose console is hidden
+    // (Node's default `windowsHide` gives the hook its own console, so a
+    // CONOUT$ write would never reach the pane). The surface id comes from
+    // `--surface-id` or the `PARAMUX_SURFACE_ID` env var injected per pane. On
+    // any failure (no instance listening, surface gone) we fall through to the
+    // console path below.
+    if (opts.@"surface-id" orelse readSurfaceIdEnv(arena)) |id| {
+        const delivered = apprt.App.performSetNotification(
+            alloc,
+            .detect,
+            .{ .surface_id = id },
+            osc_title,
+            message,
+        ) catch false;
+        if (delivered) return 0;
+    }
+
+    // Fallback: write the OSC 777 desktop-notification sequence to the pane's
+    // own console:
     //   ESC ] 777 ; notify ; <title> ; <body> BEL
     //
     // OSC 777 is used instead of the iTerm2-style OSC 9 because its body may
@@ -137,6 +170,14 @@ pub fn run(alloc: Allocator) !u8 {
     };
 
     return 0;
+}
+
+/// Read the `PARAMUX_SURFACE_ID` env var (decimal) injected into every pane, if
+/// present and valid. Returns null when unset or unparseable.
+fn readSurfaceIdEnv(alloc: Allocator) ?u64 {
+    const val = std.process.getEnvVarOwned(alloc, "PARAMUX_SURFACE_ID") catch return null;
+    defer alloc.free(val);
+    return std.fmt.parseInt(u64, std.mem.trim(u8, val, &std.ascii.whitespace), 10) catch null;
 }
 
 /// Write the notification sequence to the controlling terminal.

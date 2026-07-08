@@ -784,6 +784,7 @@ const IpcRequestKind = enum(u8) {
     new_window = 1,
     list_windows = 2,
     perform_action = 3,
+    set_notification = 4,
 };
 
 const POINT = win32_types.POINT;
@@ -1992,6 +1993,99 @@ fn decodePerformActionIpcPayload(
     };
 }
 
+/// paramux: wire for the `set_notification` IPC kind. Layout after the shared
+/// `[u32 version][u8 kind]` prefix:
+///   [u8 target_tag][u64 surface_id][u32 title_len][title][u32 body_len][body]
+/// The title may carry the `paramux.state:<state>` attention marker.
+fn encodeSetNotificationIpcRequest(
+    alloc: Allocator,
+    target: apprt.ipc.AutomationActionTarget,
+    title: []const u8,
+    body: []const u8,
+) ![]u8 {
+    if (title.len > ipc_max_action_text_len or body.len > ipc_max_action_text_len) {
+        return error.InvalidAutomationAction;
+    }
+
+    var encoded: std.ArrayList(u8) = .empty;
+    errdefer encoded.deinit(alloc);
+
+    try appendU32(&encoded, alloc, ipc_wire_version);
+    try encoded.append(alloc, @intFromEnum(IpcRequestKind.set_notification));
+    try encoded.append(alloc, switch (target) {
+        .focused => 0,
+        .surface_id => 1,
+    });
+    try appendU64(&encoded, alloc, switch (target) {
+        .focused => 0,
+        .surface_id => |id| id,
+    });
+    try appendU32(&encoded, alloc, @intCast(title.len));
+    try encoded.appendSlice(alloc, title);
+    try appendU32(&encoded, alloc, @intCast(body.len));
+    try encoded.appendSlice(alloc, body);
+
+    return try encoded.toOwnedSlice(alloc);
+}
+
+fn decodeSetNotificationIpcPayload(
+    alloc: Allocator,
+    pipe: windows.HANDLE,
+) !struct {
+    target: apprt.ipc.AutomationActionTarget,
+    title: []u8,
+    body: []u8,
+} {
+    var header: [13]u8 = undefined;
+    try readExactHandle(pipe, &header);
+
+    const target: apprt.ipc.AutomationActionTarget = switch (header[0]) {
+        0 => .focused,
+        1 => .{ .surface_id = readU64(header[1..9]) },
+        else => return error.InvalidIpcRequest,
+    };
+
+    const title_len = readU32(header[9..13]);
+    if (title_len > ipc_max_action_text_len) return error.InvalidIpcRequest;
+    const title = try alloc.alloc(u8, title_len);
+    errdefer alloc.free(title);
+    try readExactHandle(pipe, title);
+
+    var body_len_buf: [4]u8 = undefined;
+    try readExactHandle(pipe, &body_len_buf);
+    const body_len = readU32(&body_len_buf);
+    if (body_len > ipc_max_action_text_len) return error.InvalidIpcRequest;
+    const body = try alloc.alloc(u8, body_len);
+    errdefer alloc.free(body);
+    try readExactHandle(pipe, body);
+
+    return .{ .target = target, .title = title, .body = body };
+}
+
+test "encodeSetNotificationIpcRequest byte layout" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    const req = try encodeSetNotificationIpcRequest(
+        alloc,
+        .{ .surface_id = 0x0102030405060708 },
+        "paramux.state:done",
+        "hi",
+    );
+    defer alloc.free(req);
+
+    // version(4) kind(1) tag(1) id(8) title_len(4) title(18) body_len(4) body(2)
+    try testing.expectEqual(@as(usize, 42), req.len);
+    try testing.expectEqual(ipc_wire_version, readU32(req[0..4]));
+    try testing.expectEqual(@intFromEnum(IpcRequestKind.set_notification), req[4]);
+    try testing.expectEqual(@as(u8, 1), req[5]);
+    try testing.expectEqual(@as(u64, 0x0102030405060708), readU64(req[6..14]));
+    try testing.expectEqual(@as(u32, 18), readU32(req[14..18]));
+    try testing.expectEqualStrings("paramux.state:done", req[18..36]);
+    try testing.expectEqual(@as(u32, 2), readU32(req[36..40]));
+    try testing.expectEqualStrings("hi", req[40..42]);
+}
+
 fn writeIpcAck(pipe: windows.HANDLE, success: bool) !void {
     return writeIpcAckStatus(
         pipe,
@@ -2208,6 +2302,27 @@ fn sendPerformActionIpc(
     return try readIpcAck(pipe);
 }
 
+fn sendSetNotificationIpc(
+    alloc: Allocator,
+    pipe_name: [:0]const u16,
+    target: apprt.ipc.AutomationActionTarget,
+    title: []const u8,
+    body: []const u8,
+) !bool {
+    const pipe = connectToIpcPipe(pipe_name) catch |err| switch (err) {
+        error.FileNotFound => return false,
+        error.PipeBusy => return error.IPCFailed,
+        else => return err,
+    };
+    defer _ = windows.CloseHandle(pipe);
+
+    const request = try encodeSetNotificationIpcRequest(alloc, target, title, body);
+    defer alloc.free(request);
+
+    try writeAllHandle(pipe, request);
+    return try readIpcAck(pipe);
+}
+
 fn applyNewWindowArguments(
     alloc_gpa: Allocator,
     config: *configpkg.Config,
@@ -2362,6 +2477,10 @@ fn handleIpcClient(app: *App, pipe: windows.HANDLE) !void {
             log.warn("failed to process win32 automation action IPC request err={}", .{err});
             try writeIpcAck(pipe, false);
         },
+        .set_notification => handleSetNotificationIpcClient(app, pipe) catch |err| {
+            log.warn("failed to process win32 set-notification IPC request err={}", .{err});
+            try writeIpcAck(pipe, false);
+        },
     }
 }
 
@@ -2410,6 +2529,23 @@ fn handlePerformActionIpcClient(app: *App, pipe: windows.HANDLE) !void {
     try writeIpcAck(pipe, true);
 }
 
+fn handleSetNotificationIpcClient(app: *App, pipe: windows.HANDLE) !void {
+    const payload = try decodeSetNotificationIpcPayload(app.core_app.alloc, pipe);
+    defer app.core_app.alloc.free(payload.title);
+    defer app.core_app.alloc.free(payload.body);
+
+    requestSetNotification(app, payload.target, payload.title, payload.body) catch |err| {
+        const status: u8 = switch (err) {
+            error.NoAutomationTarget => ipc_ack_no_automation_target,
+            error.InvalidAutomationTarget => ipc_ack_invalid_automation_target,
+            else => return err,
+        };
+        try writeIpcAckStatus(pipe, status);
+        return;
+    };
+    try writeIpcAck(pipe, true);
+}
+
 fn requestAutomationWindowListJson(app: *App, alloc: Allocator) ![]u8 {
     var request: CoreApp.Message.AutomationWindowListRequest = .{
         .alloc = alloc,
@@ -2445,6 +2581,29 @@ fn requestAutomationAction(
         .mailbox = &app.core_app.mailbox,
     };
     if (mailbox.push(.{ .automation_action = &request }, .{ .forever = {} }) == 0) {
+        return error.IPCFailed;
+    }
+
+    request.done.wait();
+    if (request.err) |err| return err;
+}
+
+fn requestSetNotification(
+    app: *App,
+    target: apprt.ipc.AutomationActionTarget,
+    title: []const u8,
+    body: []const u8,
+) !void {
+    var request: CoreApp.Message.SetNotificationRequest = .{
+        .target = target,
+        .title = title,
+        .body = body,
+    };
+    const mailbox: CoreApp.Mailbox = .{
+        .rt_app = app,
+        .mailbox = &app.core_app.mailbox,
+    };
+    if (mailbox.push(.{ .set_notification = &request }, .{ .forever = {} }) == 0) {
         return error.IPCFailed;
     }
 
@@ -3655,7 +3814,15 @@ pub const App = struct {
     }
 
     fn startIpcServer(self: *App) !void {
-        if (self.config.@"single-instance" != .true) return;
+        // paramux: the automation/notify IPC listener is decoupled from
+        // single-instance. Upstream only listened under single-instance, but
+        // that setting governs launch *forwarding*, not automation, and it is
+        // forced to `.false` whenever a command is launched with `-e` (the
+        // exact case for running an agent in a pane). Since the pipe namespace
+        // is deterministic, always listening makes `+notify` / `+list-windows`
+        // / `+perform-action` work out of the box. (With multiple winghostty
+        // *processes* an automation client may reach an arbitrary one; the CLI
+        // falls back to its console path in that case.)
         if (self.ipc_thread != null) return;
 
         self.ipc_pipe_name = try self.resolveIpcPipeName(self.core_app.alloc);
@@ -4866,14 +5033,7 @@ pub const App = struct {
             },
 
             .desktop_notification => {
-                // paramux FR-4/FR-5: a `paramux.state:` title marker selects the
-                // attention state; a plain notification defaults to `.waiting`.
-                const attn = parseAttentionState(value.title);
-                if (self.findSurfaceForTarget(target)) |surface| {
-                    surface.setLastNotification(attn.title, value.body) catch {};
-                    surface.setAttentionState(attn.state);
-                }
-                try self.showDesktopNotification(target, attn.title, value.body);
+                try self.applyDesktopNotification(target, value.title, value.body);
                 return true;
             },
 
@@ -4919,6 +5079,18 @@ pub const App = struct {
         const pipe_name = try resolveIpcPipeNameForTarget(alloc, target);
         defer alloc.free(pipe_name);
         return try sendPerformActionIpc(alloc, pipe_name, action_target, action_text);
+    }
+
+    pub fn performSetNotification(
+        alloc: Allocator,
+        target: apprt.ipc.Target,
+        action_target: apprt.ipc.AutomationActionTarget,
+        title: []const u8,
+        body: []const u8,
+    ) !bool {
+        const pipe_name = try resolveIpcPipeNameForTarget(alloc, target);
+        defer alloc.free(pipe_name);
+        return try sendSetNotificationIpc(alloc, pipe_name, action_target, title, body);
     }
 
     pub fn buildAutomationWindowListJson(
@@ -6864,6 +7036,48 @@ pub const App = struct {
         body: [:0]const u8,
     ) !void {
         try self.showDesktopNotificationWithLaunch(target, title, body, null);
+    }
+
+    /// paramux FR-4/FR-5: apply a desktop notification to a target surface —
+    /// store its last-notification text for the sidebar, set the attention
+    /// state parsed from the `paramux.state:` title marker (plain
+    /// notifications default to `.waiting`), and raise the OS toast. Shared by
+    /// the OSC 9/777 stream path and the `set_notification` IPC path.
+    fn applyDesktopNotification(
+        self: *App,
+        target: apprt.Target,
+        title: [:0]const u8,
+        body: [:0]const u8,
+    ) !void {
+        const attn = parseAttentionState(title);
+        if (self.findSurfaceForTarget(target)) |surface| {
+            surface.setLastNotification(attn.title, body) catch {};
+            surface.setAttentionState(attn.state);
+        }
+        try self.showDesktopNotification(target, attn.title, body);
+    }
+
+    /// paramux: apply a notification delivered over IPC (from `winghostty
+    /// +notify` run inside a pane). Resolves the addressed surface, then reuses
+    /// `applyDesktopNotification`. Runs on the UI thread via the mailbox.
+    pub fn applySetNotification(
+        self: *App,
+        target: apprt.ipc.AutomationActionTarget,
+        title: []const u8,
+        body: []const u8,
+    ) !void {
+        const surface = switch (target) {
+            .focused => self.focusedSurfaceForUndoRedo() orelse return error.NoAutomationTarget,
+            .surface_id => |id| self.findSurfaceById(id) orelse return error.NoAutomationTarget,
+        };
+
+        const alloc = self.core_app.alloc;
+        const title_z = try alloc.dupeZ(u8, title);
+        defer alloc.free(title_z);
+        const body_z = try alloc.dupeZ(u8, body);
+        defer alloc.free(body_z);
+
+        try self.applyDesktopNotification(.{ .surface = surface.core() }, title_z, body_z);
     }
 
     fn showChildExited(

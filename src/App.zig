@@ -296,6 +296,16 @@ fn drainMailbox(self: *App, rt_app: *apprt.App) !void {
                     request.err = err;
                 };
             },
+            .set_notification => |request| {
+                defer request.done.set();
+                rt_app.applySetNotification(
+                    request.target,
+                    request.title,
+                    request.body,
+                ) catch |err| {
+                    request.err = err;
+                };
+            },
             .close => |surface| self.closeSurface(surface),
             .surface_message => |msg| try self.surfaceMessage(msg.surface, msg.message),
             .redraw_surface => |surface| try self.redrawSurface(rt_app, surface),
@@ -729,6 +739,10 @@ pub const Message = union(enum) {
     /// Perform a safe parsed keybinding action on the app thread.
     automation_action: *AutomationActionRequest,
 
+    /// Apply a desktop notification / attention state to a surface on the app
+    /// thread, delivered over IPC (paramux `+notify`).
+    set_notification: *SetNotificationRequest,
+
     /// Close a surface. This notifies the runtime that a surface
     /// should close.
     close: *Surface,
@@ -758,6 +772,15 @@ pub const Message = union(enum) {
     pub const AutomationActionRequest = struct {
         target: apprt.ipc.AutomationActionTarget,
         action_text: []const u8,
+        done: std.Thread.ResetEvent = .{},
+        err: ?anyerror = null,
+    };
+
+    pub const SetNotificationRequest = struct {
+        target: apprt.ipc.AutomationActionTarget,
+        /// The notification title. May carry the `paramux.state:<state>` marker.
+        title: []const u8,
+        body: []const u8,
         done: std.Thread.ResetEvent = .{},
         err: ?anyerror = null,
     };

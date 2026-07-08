@@ -709,6 +709,16 @@ pub fn init(
             std.fmt.bufPrint(&buf, "0x{x:0>16}", .{self.id}) catch unreachable,
         );
 
+        // paramux: expose the surface id in decimal so that `winghostty +notify`
+        // run inside this pane (e.g. from an agent hook whose console is hidden)
+        // can address this exact pane over IPC. Matches the decimal ids from
+        // `+list-windows` and `--surface-id`.
+        var paramux_id_buf: [20]u8 = undefined;
+        try env.put(
+            "PARAMUX_SURFACE_ID",
+            std.fmt.bufPrint(&paramux_id_buf, "{d}", .{self.id}) catch unreachable,
+        );
+
         // Initialize our IO backend
         var io_exec = try termio.Exec.init(alloc, .{
             .command = command,

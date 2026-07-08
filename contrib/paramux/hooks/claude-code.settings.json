@@ -1,0 +1,42 @@
+{
+  "//": "paramux agent-attention hooks for Claude Code. Merge the `hooks` block",
+  "//1": "into your Claude Code settings.json (~/.claude/settings.json for all",
+  "//2": "projects, or .claude/settings.json in a project). Requires winghostty",
+  "//3": "on PATH; otherwise replace `winghostty` with the full path to",
+  "//4": "winghostty.com. Each hook runs inside the pane, so +notify writes to",
+  "//5": "that pane's console and lights exactly that pane. Lifecycle mapping:",
+  "//6": "prompt submitted -> working (blue), needs input -> waiting (amber),",
+  "//7": "finished -> done (green).",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "winghostty +notify --state=working Claude Code is working"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "winghostty +notify --state=waiting Claude Code needs your input"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "winghostty +notify --state=done Claude Code finished responding"
+          }
+        ]
+      }
+    ]
+  }
+}
