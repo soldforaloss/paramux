@@ -2251,6 +2251,7 @@ fn readIpcDataResponse(
     const success = switch (header[4]) {
         ipc_ack_success => true,
         ipc_ack_failure => false,
+        ipc_ack_unauthorized => return error.Unauthorized,
         else => return error.InvalidIpcResponse,
     };
 
@@ -2633,7 +2634,10 @@ fn handleIpcClient(app: *App, pipe: windows.HANDLE) !void {
             };
         },
         .read_pane => {
-            if (!authed) return writeIpcDataResponse(pipe, false, "");
+            // A bare unauthorized ack header (no data length) is a valid
+            // data-response prefix that readIpcDataResponse maps to
+            // error.Unauthorized, letting the client retry with the file token.
+            if (!authed) return writeIpcAckStatus(pipe, ipc_ack_unauthorized);
             handleReadPaneIpcClient(app, pipe) catch |err| {
                 log.warn("failed to process win32 read-pane IPC request err={}", .{err});
                 try writeIpcDataResponse(pipe, false, "");
@@ -4132,15 +4136,22 @@ pub const App = struct {
     ///     writer wins) while each validates only its own in-memory token, so an
     ///     external client's file token may be routed (shared pipe) to a
     ///     non-matching instance and rejected.
-    ///   - A process that outlives its spawning instance keeps a stale
-    ///     PARAMUX_TOKEN env, which takes precedence here over the fresh file
-    ///     token after a restart, so its request is rejected.
+    ///
+    /// The env var is preferred for the fast in-pane path, but it can go stale
+    /// (a process that outlives its instance after a restart); callers retry
+    /// with `readClientIpcTokenFromFile` on `error.Unauthorized` to recover.
     pub fn readClientIpcToken(alloc: Allocator) ?[]const u8 {
         if (std.process.getEnvVarOwned(alloc, "PARAMUX_TOKEN")) |val| {
             if (val.len > 0) return val;
             alloc.free(val);
         } else |_| {}
 
+        return readClientIpcTokenFromFile(alloc);
+    }
+
+    /// Read the token from the authoritative token file only (ignoring the env
+    /// var). Used as a fallback when an env-derived token is rejected as stale.
+    pub fn readClientIpcTokenFromFile(alloc: Allocator) ?[]const u8 {
         const path = (ipcTokenFilePath(alloc) catch return null) orelse return null;
         defer alloc.free(path);
         const file = std.fs.openFileAbsolute(path, .{}) catch return null;
@@ -5401,6 +5412,19 @@ pub const App = struct {
         return try sendListWindowsIpc(alloc, pipe_name, "");
     }
 
+    /// On an `error.Unauthorized` from an env-derived token that has gone stale,
+    /// return the authoritative file token to retry with — but only if it
+    /// differs from what was already tried (else null). Caller owns the result.
+    fn retryTokenAfterUnauthorized(alloc: Allocator, err: anyerror, tried: []const u8) ?[]const u8 {
+        if (err != error.Unauthorized) return null;
+        const file_token = readClientIpcTokenFromFile(alloc) orelse return null;
+        if (std.mem.eql(u8, tried, file_token)) {
+            alloc.free(file_token);
+            return null;
+        }
+        return file_token;
+    }
+
     pub fn performAutomationAction(
         alloc: Allocator,
         target: apprt.ipc.Target,
@@ -5411,7 +5435,11 @@ pub const App = struct {
         defer alloc.free(pipe_name);
         const token = readClientIpcToken(alloc) orelse "";
         defer if (token.len > 0) alloc.free(token);
-        return try sendPerformActionIpc(alloc, pipe_name, token, action_target, action_text);
+        return sendPerformActionIpc(alloc, pipe_name, token, action_target, action_text) catch |err| {
+            const retry = retryTokenAfterUnauthorized(alloc, err, token) orelse return err;
+            defer alloc.free(retry);
+            return try sendPerformActionIpc(alloc, pipe_name, retry, action_target, action_text);
+        };
     }
 
     pub fn performSetNotification(
@@ -5425,7 +5453,11 @@ pub const App = struct {
         defer alloc.free(pipe_name);
         const token = readClientIpcToken(alloc) orelse "";
         defer if (token.len > 0) alloc.free(token);
-        return try sendSetNotificationIpc(alloc, pipe_name, token, action_target, title, body);
+        return sendSetNotificationIpc(alloc, pipe_name, token, action_target, title, body) catch |err| {
+            const retry = retryTokenAfterUnauthorized(alloc, err, token) orelse return err;
+            defer alloc.free(retry);
+            return try sendSetNotificationIpc(alloc, pipe_name, retry, action_target, title, body);
+        };
     }
 
     pub fn performReadPane(
@@ -5437,7 +5469,11 @@ pub const App = struct {
         defer alloc.free(pipe_name);
         const token = readClientIpcToken(alloc) orelse "";
         defer if (token.len > 0) alloc.free(token);
-        return try sendReadPaneIpc(alloc, pipe_name, token, action_target);
+        return sendReadPaneIpc(alloc, pipe_name, token, action_target) catch |err| {
+            const retry = retryTokenAfterUnauthorized(alloc, err, token) orelse return err;
+            defer alloc.free(retry);
+            return try sendReadPaneIpc(alloc, pipe_name, retry, action_target);
+        };
     }
 
     pub fn buildAutomationWindowListJson(
