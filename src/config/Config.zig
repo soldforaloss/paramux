@@ -6030,13 +6030,13 @@ pub const Keybinds = struct {
             );
             try self.set.putFlags(
                 alloc,
-                .{ .key = .{ .unicode = '[' }, .mods = .{ .ctrl = true, .super = true } },
+                .{ .key = .{ .unicode = '[' }, .mods = .{ .ctrl = true, .alt = true } },
                 .{ .goto_split = .previous },
                 .{ .performable = true },
             );
             try self.set.putFlags(
                 alloc,
-                .{ .key = .{ .unicode = ']' }, .mods = .{ .ctrl = true, .super = true } },
+                .{ .key = .{ .unicode = ']' }, .mods = .{ .ctrl = true, .alt = true } },
                 .{ .goto_split = .next },
                 .{ .performable = true },
             );
@@ -6068,25 +6068,25 @@ pub const Keybinds = struct {
             // Resizing splits
             try self.set.putFlags(
                 alloc,
-                .{ .key = .{ .physical = .arrow_up }, .mods = .{ .super = true, .ctrl = true, .shift = true } },
+                .{ .key = .{ .physical = .arrow_up }, .mods = .{ .alt = true, .ctrl = true, .shift = true } },
                 .{ .resize_split = .{ .up, 10 } },
                 .{ .performable = true },
             );
             try self.set.putFlags(
                 alloc,
-                .{ .key = .{ .physical = .arrow_down }, .mods = .{ .super = true, .ctrl = true, .shift = true } },
+                .{ .key = .{ .physical = .arrow_down }, .mods = .{ .alt = true, .ctrl = true, .shift = true } },
                 .{ .resize_split = .{ .down, 10 } },
                 .{ .performable = true },
             );
             try self.set.putFlags(
                 alloc,
-                .{ .key = .{ .physical = .arrow_left }, .mods = .{ .super = true, .ctrl = true, .shift = true } },
+                .{ .key = .{ .physical = .arrow_left }, .mods = .{ .alt = true, .ctrl = true, .shift = true } },
                 .{ .resize_split = .{ .left, 10 } },
                 .{ .performable = true },
             );
             try self.set.putFlags(
                 alloc,
-                .{ .key = .{ .physical = .arrow_right }, .mods = .{ .super = true, .ctrl = true, .shift = true } },
+                .{ .key = .{ .physical = .arrow_right }, .mods = .{ .alt = true, .ctrl = true, .shift = true } },
                 .{ .resize_split = .{ .right, 10 } },
                 .{ .performable = true },
             );
