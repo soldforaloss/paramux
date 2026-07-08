@@ -184,7 +184,7 @@ test "listeningPortsForPid finds a port this test process is listening on" {
     posix.getsockname(sock, &addr.any, &slen) catch return error.SkipZigTest;
     const bound_port = addr.getPort();
 
-    const pid = windows.kernel32.GetCurrentProcessId();
+    const pid = windows.GetCurrentProcessId();
     const ports = listeningPortsForPid(testing.allocator, pid);
     defer testing.allocator.free(ports);
     try testing.expect(std.mem.indexOfScalar(u16, ports, bound_port) != null);
