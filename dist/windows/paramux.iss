@@ -1,6 +1,6 @@
-#define AppName "winghostty"
-#define AppId "io.github.amanthanvi.winghostty"
-#define AppUserModelId "com.ghostty.winghostty"
+#define AppName "paramux"
+#define AppId "io.github.soldforaloss.paramux"
+#define AppUserModelId "io.github.soldforaloss.paramux"
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0-dev"
 #endif
@@ -22,11 +22,11 @@ AppId={#AppId}
 AppName={#AppName}
 AppVersion={#MyAppVersion}
 AppPublisher=Aman Thanvi
-AppPublisherURL=https://github.com/amanthanvi/winghostty
-AppSupportURL=https://github.com/amanthanvi/winghostty/issues
-AppUpdatesURL=https://github.com/amanthanvi/winghostty/releases
-DefaultDirName={autopf}\winghostty
-DefaultGroupName=winghostty
+AppPublisherURL=https://github.com/soldforaloss/paramux
+AppSupportURL=https://github.com/soldforaloss/paramux/issues
+AppUpdatesURL=https://github.com/soldforaloss/paramux/releases
+DefaultDirName={autopf}\paramux
+DefaultGroupName=paramux
 DisableProgramGroupPage=yes
 LicenseFile={#StageDir}\LICENSE
 OutputDir={#OutputDir}
@@ -45,14 +45,14 @@ ChangesAssociations=no
 CloseApplications=yes
 RestartApplications=yes
 UninstallDisplayIcon={app}\paramux.exe
-SetupIconFile={#SourceDir}\dist\windows\winghostty.ico
+SetupIconFile={#SourceDir}\dist\windows\paramux.ico
 VersionInfoVersion={#MyAppVersion}
 VersionInfoTextVersion={#MyAppVersion}
 VersionInfoProductVersion={#MyAppVersion}
 VersionInfoProductTextVersion={#MyAppVersion}
 VersionInfoCompany=Aman Thanvi
-VersionInfoDescription=winghostty Setup
-VersionInfoProductName=winghostty
+VersionInfoDescription=paramux Setup
+VersionInfoProductName=paramux
 VersionInfoOriginalFileName=paramux-{#MyAppVersion}-windows-{#PackageArch}-setup.exe
 
 [Tasks]
@@ -62,9 +62,9 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 Source: "{#StageDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\winghostty"; Filename: "{app}\paramux.exe"; AppUserModelID: "{#AppUserModelId}"
-Name: "{group}\Uninstall winghostty"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\winghostty"; Filename: "{app}\paramux.exe"; Tasks: desktopicon; AppUserModelID: "{#AppUserModelId}"
+Name: "{group}\paramux"; Filename: "{app}\paramux.exe"; AppUserModelID: "{#AppUserModelId}"
+Name: "{group}\Uninstall paramux"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\paramux"; Filename: "{app}\paramux.exe"; Tasks: desktopicon; AppUserModelID: "{#AppUserModelId}"
 
 [Run]
-Filename: "{app}\paramux.exe"; Description: "Launch winghostty"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\paramux.exe"; Description: "Launch paramux"; Flags: nowait postinstall skipifsilent

@@ -43,7 +43,7 @@ const OutputTrace = struct {
     fn init(alloc: Allocator) OutputTrace {
         const owned = (internal_os.getEnvVarOwnedTrimmedNotEmpty(
             alloc,
-            "WINGHOSTTY_TERMIO_TRACE_FILE",
+            "PARAMUX_TERMIO_TRACE_FILE",
         ) catch return .{}) orelse return .{};
 
         return .{

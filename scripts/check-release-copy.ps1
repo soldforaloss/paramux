@@ -119,7 +119,7 @@ $readme = Get-Text -RelativePath "README.md"
 $latestVersion = $null
 if ($null -eq $readme) {
     # Get-Text already recorded the missing-file failure.
-} elseif ($readme -match 'winghostty\s+([0-9]+\.[0-9]+\.[0-9]+)\]\(https://github\.com/amanthanvi/winghostty/releases/tag/v\1\)') {
+} elseif ($readme -match 'paramux\s+([0-9]+\.[0-9]+\.[0-9]+)\]\(https://github\.com/soldforaloss/paramux/releases/tag/v\1\)') {
     $latestVersion = $Matches[1]
 } else {
     Add-Failure "README.md: could not find a self-consistent latest stable release link."
@@ -129,7 +129,7 @@ $forbiddenRules = @(
     @{ Text = "1.3.111"; Reason = "README/docs/site release copy should not point at the stale May 12 release." },
     @{ Text = "1.3.113"; Reason = "README/docs/site release copy should not point at the stale May 24 release." },
     @{ Text = "ARM64 builds are added by the next release"; Reason = "Current releases already publish ARM64 assets." },
-    @{ Text = "winghostty publishes two Windows artifacts"; Reason = "Current releases publish installer, portable, and checksum assets for both x64 and ARM64." },
+    @{ Text = "paramux publishes two Windows artifacts"; Reason = "Current releases publish installer, portable, and checksum assets for both x64 and ARM64." },
     @{ Text = "Releases are currently unsigned"; Reason = "Public releases require signed installers and signed Windows binaries." },
     @{ Text = "Current releases are unsigned"; Reason = "Public releases require signed installers and signed Windows binaries." },
     @{ Text = "Unsigned releases are expected"; Reason = "Public releases require signed installers and signed Windows binaries." },
@@ -154,8 +154,8 @@ Require-Contains -RelativePath "PACKAGING.md" -Needle "legacy alias for existing
 Require-Contains -RelativePath "PACKAGING.md" -Needle "Release workflow requires signing" -Reason "Packaging docs must distinguish local unsigned smoke packaging from public signed releases."
 
 foreach ($docsPath in @("docs/getting-started.md", "docs/windows.md")) {
-    Require-Contains -RelativePath $docsPath -Needle "winghostty-<version>-windows-<arch>-setup.exe" -Reason "Install docs should describe both x64 and ARM64 setup artifacts."
-    Require-Contains -RelativePath $docsPath -Needle "winghostty-<version>-windows-<arch>-portable.zip" -Reason "Install docs should describe both x64 and ARM64 portable artifacts."
+    Require-Contains -RelativePath $docsPath -Needle "paramux-<version>-windows-<arch>-setup.exe" -Reason "Install docs should describe both x64 and ARM64 setup artifacts."
+    Require-Contains -RelativePath $docsPath -Needle "paramux-<version>-windows-<arch>-portable.zip" -Reason "Install docs should describe both x64 and ARM64 portable artifacts."
     Require-Contains -RelativePath $docsPath -Needle "SHA256SUMS-windows-<arch>.txt" -Reason "Checksum guidance should use architecture-specific checksum files."
     Require-Regex -RelativePath $docsPath -Pattern "(?i)\bx64\b" -Reason "Install docs should name the supported release architectures."
     Require-Regex -RelativePath $docsPath -Pattern "(?i)\barm64\b" -Reason "Install docs should name the supported release architectures."
@@ -194,7 +194,7 @@ if ($CheckRemoteLatest) {
     } elseif (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
         Add-Failure "Cannot check remote latest release because gh is not installed."
     } else {
-        $ghOutput = & gh release view --repo amanthanvi/winghostty --json tagName,publishedAt,assets
+        $ghOutput = & gh release view --repo soldforaloss/paramux --json tagName,publishedAt,assets
         if ($LASTEXITCODE -ne 0) {
             Add-Failure "gh release view failed: $ghOutput"
         } else {

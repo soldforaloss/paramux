@@ -1,4 +1,4 @@
-# Winghostty shell integration for PowerShell 5.1+ / pwsh 7+
+# Paramux shell integration for PowerShell 5.1+ / pwsh 7+
 # Emits OSC 133 (command marking) and OSC 7 (current working directory) sequences.
 
 $ESC = [char]27
@@ -63,26 +63,26 @@ function __ghostty_find_command_application {
     return $null
 }
 
-function __ghostty_find_winghostty {
+function __ghostty_find_paramux {
     if (-not [string]::IsNullOrEmpty($env:GHOSTTY_BIN_DIR)) {
-        foreach ($name in @('paramux.com', 'paramux.exe', 'paramux', 'winghostty.com', 'winghostty.exe', 'winghostty')) {
+        foreach ($name in @('paramux.com', 'paramux.exe', 'paramux')) {
             $candidate = Join-Path $env:GHOSTTY_BIN_DIR $name
             if (Test-Path -LiteralPath $candidate -PathType Leaf) {
                 return $candidate
             }
         }
     }
-    return __ghostty_find_command_application @('paramux.com', 'paramux.exe', 'paramux', 'winghostty.com', 'winghostty.exe', 'winghostty')
+    return __ghostty_find_command_application @('paramux.com', 'paramux.exe', 'paramux')
 }
 
 function __ghostty_ssh_cache {
     param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Arguments)
 
-    $winghostty = __ghostty_find_winghostty
-    if ($null -eq $winghostty) { return $false }
+    $paramux = __ghostty_find_paramux
+    if ($null -eq $paramux) { return $false }
 
     try {
-        & $winghostty '+ssh-cache' @Arguments *> $null
+        & $paramux '+ssh-cache' @Arguments *> $null
         return ($LASTEXITCODE -eq 0)
     } catch {
         return $false
@@ -165,7 +165,7 @@ if (__ghostty_has_feature_prefix 'ssh-') {
 
         $ssh_command = __ghostty_find_command_application @('ssh.exe', 'ssh')
         if ($null -eq $ssh_command) {
-            throw 'winghostty PowerShell SSH integration could not find ssh'
+            throw 'paramux PowerShell SSH integration could not find ssh'
         }
 
         [string[]]$ssh_config = @()

@@ -294,7 +294,7 @@ const PAINTSTRUCT = win32_types.PAINTSTRUCT;
 const CREATESTRUCTW = win32_types.CREATESTRUCTW;
 const WNDCLASSEXW = win32_types.WNDCLASSEXW;
 
-const class_name = std.unicode.utf8ToUtf16LeStringLiteral("winghostty.win32.settings");
+const class_name = std.unicode.utf8ToUtf16LeStringLiteral("paramux.win32.settings");
 const edit_text_max_code_units: usize = 4096;
 const edit_text_max_utf8: usize = edit_text_max_code_units * 3;
 
@@ -1286,7 +1286,7 @@ pub const SettingsWindow = struct {
             }
         }
 
-        const title = std.unicode.utf8ToUtf16LeStringLiteral("winghostty settings");
+        const title = std.unicode.utf8ToUtf16LeStringLiteral("paramux settings");
         const hwnd = CreateWindowExW(
             WS_EX_APPWINDOW,
             class_name,
@@ -2325,13 +2325,13 @@ test "win32_settings: direct command edit text quotes argv boundaries" {
     defer arena.deinit();
 
     var source: Config.Command = undefined;
-    try source.parseCLI(arena.allocator(), "direct:cmd.exe /c \"echo hello\" \"C:\\Program Files\\winghostty\"");
+    try source.parseCLI(arena.allocator(), "direct:cmd.exe /c \"echo hello\" \"C:\\Program Files\\paramux\"");
 
     var buf: [256]u8 = undefined;
     var writer: std.Io.Writer = .fixed(&buf);
     try writeCommandForEdit(&writer, source);
     try testing.expectEqualStrings(
-        "direct:cmd.exe /c \"echo hello\" \"C:\\Program Files\\winghostty\"",
+        "direct:cmd.exe /c \"echo hello\" \"C:\\Program Files\\paramux\"",
         writer.buffered(),
     );
 
@@ -2340,7 +2340,7 @@ test "win32_settings: direct command edit text quotes argv boundaries" {
     try testing.expect(round_trip == .direct);
     try testing.expectEqual(@as(usize, 4), round_trip.direct.len);
     try testing.expectEqualStrings("echo hello", round_trip.direct[2]);
-    try testing.expectEqualStrings("C:\\Program Files\\winghostty", round_trip.direct[3]);
+    try testing.expectEqualStrings("C:\\Program Files\\paramux", round_trip.direct[3]);
 }
 
 test "win32_settings: keybinding help points to discoverability commands" {

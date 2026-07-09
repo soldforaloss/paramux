@@ -709,7 +709,7 @@ pub fn init(
             std.fmt.bufPrint(&buf, "0x{x:0>16}", .{self.id}) catch unreachable,
         );
 
-        // paramux: expose the surface id in decimal so that `winghostty +notify`
+        // paramux: expose the surface id in decimal so that `paramux +notify`
         // run inside this pane (e.g. from an agent hook whose console is hidden)
         // can address this exact pane over IPC. Matches the decimal ids from
         // `+list-windows` and `--surface-id`.
@@ -2539,7 +2539,7 @@ fn copySelectionToClipboards(
     }
 
     if (copied and self.config.app_notifications.@"clipboard-copy") {
-        try self.showAppNotification("winghostty", "Copied selection to clipboard");
+        try self.showAppNotification("paramux", "Copied selection to clipboard");
     }
 }
 

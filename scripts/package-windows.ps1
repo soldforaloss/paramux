@@ -41,7 +41,7 @@ $portableRoot = Join-Path $stageBase "paramux"
 $zipPath = Join-Path $stageBase (New-WindowsPackageArtifactName -Version $Version -Architecture $Architecture -Kind portable)
 $installerPath = Join-Path $stageBase (New-WindowsPackageArtifactName -Version $Version -Architecture $Architecture -Kind setup)
 $checksumsPath = Join-Path $stageBase (New-WindowsPackageArtifactName -Version $Version -Architecture $Architecture -Kind checksums)
-$releaseIconPath = Join-Path $stageBase "winghostty-icon.svg"
+$releaseIconPath = Join-Path $stageBase "paramux-icon.svg"
 $zigOutBin = Join-Path $repoRoot "zig-out/bin"
 $zigOutShare = Join-Path $repoRoot "zig-out/share"
 $exePath = Join-Path $zigOutBin "paramux.exe"
@@ -53,9 +53,9 @@ $runtimeFiles = @(
 $licensePath = Join-Path $repoRoot "LICENSE"
 $readmePath = Join-Path $repoRoot "README.md"
 $configTemplatePath = Join-Path $repoRoot "src/config/config-template"
-$innoScriptPath = Join-Path $repoRoot "dist/windows/winghostty.iss"
-$iconPath = Join-Path $repoRoot "dist/windows/winghostty.ico"
-$releaseIconSourcePath = Join-Path $repoRoot "images/winghostty-flag-light.svg"
+$innoScriptPath = Join-Path $repoRoot "dist/windows/paramux.iss"
+$iconPath = Join-Path $repoRoot "dist/windows/paramux.ico"
+$releaseIconSourcePath = Join-Path $repoRoot "images/paramux-flag-light.svg"
 $signingPfxPath = if ($env:WINDOWS_CODESIGN_PFX_PATH) {
     $env:WINDOWS_CODESIGN_PFX_PATH
 } else {
@@ -79,12 +79,12 @@ $signingTimestampUrl = if ($env:WINDOWS_CODESIGN_TIMESTAMP_URL) {
 $signingDescription = if ($env:WINDOWS_CODESIGN_DESCRIPTION) {
     $env:WINDOWS_CODESIGN_DESCRIPTION
 } else {
-    "winghostty"
+    "paramux"
 }
 $signingUrl = if ($env:WINDOWS_CODESIGN_URL) {
     $env:WINDOWS_CODESIGN_URL
 } else {
-    "https://github.com/amanthanvi/winghostty"
+    "https://github.com/soldforaloss/paramux"
 }
 $trustSelfSignedSigningCert = if ($env:WINDOWS_CODESIGN_TRUST_SELF_SIGNED) {
     $env:WINDOWS_CODESIGN_TRUST_SELF_SIGNED
@@ -270,7 +270,7 @@ function New-TemporaryPfxFile {
         throw "WINDOWS_CODESIGN_PFX_BASE64 was not valid base64."
     }
 
-    $path = Join-Path ([System.IO.Path]::GetTempPath()) ("winghostty-signing-" + [System.Guid]::NewGuid().ToString("N") + ".pfx")
+    $path = Join-Path ([System.IO.Path]::GetTempPath()) ("paramux-signing-" + [System.Guid]::NewGuid().ToString("N") + ".pfx")
     [System.IO.File]::WriteAllBytes($path, $bytes)
     return $path
 }
@@ -460,8 +460,11 @@ try {
     Copy-Item -LiteralPath $licensePath -Destination (Join-Path $portableRoot "LICENSE") -Force
     Copy-Item -LiteralPath $configTemplatePath -Destination (Join-Path $portableRoot "config-template.ghostty") -Force
     Copy-Item -LiteralPath $readmePath -Destination (Join-Path $portableRoot "README.md") -Force
-    Copy-Item -LiteralPath $iconPath -Destination (Join-Path $portableRoot "winghostty.ico") -Force
+    Copy-Item -LiteralPath $iconPath -Destination (Join-Path $portableRoot "paramux.ico") -Force
     Copy-Item -LiteralPath $releaseIconSourcePath -Destination $releaseIconPath -Force
+    # PATH installer so `paramux` works as a command (run install-paramux.cmd).
+    Copy-Item -LiteralPath (Join-Path $repoRoot "dist/windows/install-paramux.ps1") -Destination (Join-Path $portableRoot "install-paramux.ps1") -Force
+    Copy-Item -LiteralPath (Join-Path $repoRoot "dist/windows/install-paramux.cmd") -Destination (Join-Path $portableRoot "install-paramux.cmd") -Force
 
     if (Test-Path -LiteralPath $zigOutShare) {
         Copy-Tree -Source $zigOutShare -Destination $portableRoot

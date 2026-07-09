@@ -48,7 +48,7 @@ pub const Options = struct {
     }
 };
 
-/// Windows Terminal scheme key -> winghostty config line. Ordered: the ANSI
+/// Windows Terminal scheme key -> paramux config line. Ordered: the ANSI
 /// palette (0-15) then the surface colors.
 const AnsiKey = struct { key: []const u8, index: u8 };
 const ansi_keys = [_]AnsiKey{
@@ -71,10 +71,10 @@ const ansi_keys = [_]AnsiKey{
 };
 
 /// The `import-theme` command converts a Windows Terminal color scheme into a
-/// winghostty theme (which is just a config file: `palette`, `background`,
+/// paramux theme (which is just a config file: `palette`, `background`,
 /// `foreground`, etc.). Print it and redirect it into a theme file, e.g.:
 ///
-///     winghostty +import-theme settings.json --scheme="One Half Dark" > OneHalfDark
+///     paramux +import-theme settings.json --scheme="One Half Dark" > OneHalfDark
 ///
 /// The input may be a Windows Terminal `settings.json` (which has a top-level
 /// `schemes` array — use `--scheme` to pick one, or omit it if there is exactly

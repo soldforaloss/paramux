@@ -93,20 +93,20 @@ pub const Options = struct {
 ///
 /// The message is taken from all arguments after `+notify`:
 ///
-///     winghostty +notify Claude is waiting for your input
+///     paramux +notify Claude is waiting for your input
 ///
 /// An optional title may be set with `--title=`:
 ///
-///     winghostty +notify --title=Claude review complete
+///     paramux +notify --title=Claude review complete
 ///
 /// For agent hooks, `--state=` colors the pane by attention state, one of
 /// `working`, `waiting`, `done`, or `error`:
 ///
-///     winghostty +notify --state=waiting Claude needs your approval
+///     paramux +notify --state=waiting Claude needs your approval
 ///
 /// Delivery is console-independent when possible: if `PARAMUX_SURFACE_ID` is in
 /// the environment (paramux injects it into every pane) or `--surface-id` is
-/// given, the notification is sent to that pane over the winghostty IPC pipe,
+/// given, the notification is sent to that pane over the paramux IPC pipe,
 /// which works even when the caller's console is hidden (as it is for agent
 /// hooks spawned with `windowsHide`). If no instance is listening, it falls
 /// back to writing the OSC 777 sequence to the pane's console (`CONOUT$`),

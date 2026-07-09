@@ -15,12 +15,12 @@ $textFiles = Get-ChildItem -Path $siteRoot -Recurse -File | Where-Object {
 }
 
 $forbiddenRules = @(
-    @{ Pattern = "(?i)\bscoop install winghostty\b(?!/)"; Regex = $true; Reason = "Official Scoop installs should use the bucket-qualified command: scoop install winghostty/winghostty." },
-    @{ Pattern = "winget install winghostty"; Reason = "Official WinGet installs should use the package id: winget install AmanThanvi.winghostty." },
+    @{ Pattern = "(?i)\bscoop install paramux\b(?!/)"; Regex = $true; Reason = "Official Scoop installs should use the bucket-qualified command: scoop install paramux/paramux." },
+    @{ Pattern = "winget install paramux"; Reason = "Official WinGet installs should use the package id: winget install AmanThanvi.paramux." },
     @{ Pattern = "D3D11"; Reason = "The shipping Windows renderer is OpenGL 4.3 via WGL." },
     @{ Pattern = "DirectX 11"; Reason = "The shipping Windows renderer is OpenGL 4.3 via WGL." },
-    @{ Pattern = "%APPDATA%\winghostty\config"; Reason = "Windows docs use %LOCALAPPDATA%\\winghostty\\config.ghostty." },
-    @{ Pattern = "%APPDATA%/winghostty/config"; Reason = "Windows docs use %LOCALAPPDATA%\\winghostty\\config.ghostty." },
+    @{ Pattern = "%APPDATA%\paramux\config"; Reason = "Windows docs use %LOCALAPPDATA%\\paramux\\config.ghostty." },
+    @{ Pattern = "%APPDATA%/paramux/config"; Reason = "Windows docs use %LOCALAPPDATA%\\paramux\\config.ghostty." },
     @{ Pattern = "replaces binaries silently"; Reason = "Updater apply must stay user-initiated." },
     @{ Pattern = "downloads updates automatically"; Reason = "Avoid implying automatic install/apply." },
     @{ Pattern = "silent auto-update"; Reason = "Updater apply must stay user-initiated." },
@@ -33,12 +33,12 @@ $forbiddenRules = @(
 )
 
 $requiredRules = @(
-    @{ Path = Join-Path $siteRoot "bundle.js"; Pattern = "https://github.com/amanthanvi/winghostty/releases/latest"; Reason = "Primary download CTA should point to latest release." },
-    @{ Path = Join-Path $siteRoot "bundle.js"; Pattern = "%LOCALAPPDATA%\\winghostty\\config.ghostty"; Reason = "Landing page should mention the real Windows config path." },
-    @{ Path = Join-Path $siteRoot "bundle.js"; Pattern = "https://github.com/amanthanvi/winghostty"; Reason = "Landing page should keep a repo link." },
-    @{ Path = Join-Path $siteRoot "bundle.js"; Pattern = "winget install AmanThanvi.winghostty"; Reason = "Hero copy should surface the official WinGet install command." },
-    @{ Path = Join-Path $siteRoot "bundle.js"; Pattern = "scoop install winghostty/winghostty"; Reason = "Copied install text should include the official Scoop install command." },
-    @{ Path = Join-Path $siteRoot "bundle.js"; Pattern = "https://github.com/amanthanvi/scoop-winghostty"; Reason = "Copied Scoop install text should include the official bucket source." }
+    @{ Path = Join-Path $siteRoot "bundle.js"; Pattern = "https://github.com/soldforaloss/paramux/releases/latest"; Reason = "Primary download CTA should point to latest release." },
+    @{ Path = Join-Path $siteRoot "bundle.js"; Pattern = "%LOCALAPPDATA%\\paramux\\config.ghostty"; Reason = "Landing page should mention the real Windows config path." },
+    @{ Path = Join-Path $siteRoot "bundle.js"; Pattern = "https://github.com/soldforaloss/paramux"; Reason = "Landing page should keep a repo link." },
+    @{ Path = Join-Path $siteRoot "bundle.js"; Pattern = "winget install AmanThanvi.paramux"; Reason = "Hero copy should surface the official WinGet install command." },
+    @{ Path = Join-Path $siteRoot "bundle.js"; Pattern = "scoop install paramux/paramux"; Reason = "Copied install text should include the official Scoop install command." },
+    @{ Path = Join-Path $siteRoot "bundle.js"; Pattern = "https://github.com/amanthanvi/scoop-paramux"; Reason = "Copied Scoop install text should include the official bucket source." }
 )
 
 $failures = New-Object System.Collections.Generic.List[string]

@@ -57,10 +57,10 @@ pub const Action = enum {
     // Use IPC to tell the running Ghostty to open a new window.
     @"new-window",
 
-    // List read-only automation state for the running winghostty instance.
+    // List read-only automation state for the running paramux instance.
     @"list-windows",
 
-    // Forward a safe keybinding action to the running winghostty instance.
+    // Forward a safe keybinding action to the running paramux instance.
     @"perform-action",
 
     // Emit a desktop-notification escape sequence to flag the current pane
@@ -70,7 +70,7 @@ pub const Action = enum {
     // Read a pane's current viewport text from the running instance.
     @"read-pane",
 
-    // Convert a Windows Terminal color scheme into a winghostty theme.
+    // Convert a Windows Terminal color scheme into a paramux theme.
     @"import-theme",
 
     pub fn detectSpecialCase(arg: []const u8) ?SpecialCase(Action) {

@@ -1,8 +1,8 @@
 .{
-    .name = .winghostty,
+    .name = .paramux,
     .version = "1.3.2-dev",
     .paths = .{""},
-    .fingerprint = 0x3b92d6b5a312488b,
+    .fingerprint = 0xfebddcad6c5ec039,
     .minimum_zig_version = "0.15.2",
     .dependencies = .{
         // Zig libs

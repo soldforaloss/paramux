@@ -129,7 +129,7 @@ function Get-InteractiveWin11LaunchArguments {
 
     return @(
         '--single-instance=false'
-        "--class=winghostty-interactive-$($Layout.SandboxId)"
+        "--class=paramux-interactive-$($Layout.SandboxId)"
     )
 }
 
@@ -245,7 +245,7 @@ function Get-InteractiveWin11ExePath {
         [Parameter(Mandatory)] [string] $RepoRoot
     )
 
-    return Get-InteractiveWin11NormalizedPath -Path (Join-Path $RepoRoot 'zig-out\bin\winghostty.exe')
+    return Get-InteractiveWin11NormalizedPath -Path (Join-Path $RepoRoot 'zig-out\bin\paramux.exe')
 }
 
 function Invoke-InteractiveWin11Build {
@@ -308,7 +308,7 @@ function Assert-InteractiveWin11ExeExists {
     )
 
     if (-not [System.IO.File]::Exists($ExePath)) {
-        throw "Missing winghostty.exe at $ExePath"
+        throw "Missing paramux.exe at $ExePath"
     }
 }
 
@@ -409,7 +409,7 @@ function Wait-InteractiveWin11Until {
 
     while ([DateTime]::UtcNow -lt $Deadline) {
         if ($null -ne $Process -and $Process.HasExited) {
-            throw "winghostty exited while waiting for ${Description} (exit code $($Process.ExitCode))"
+            throw "paramux exited while waiting for ${Description} (exit code $($Process.ExitCode))"
         }
 
         if (& $Condition) {
@@ -505,7 +505,7 @@ function Get-InteractiveWin11LaunchAction {
     if ([System.IO.File]::Exists($resolvedExePath)) {
         if (Test-InteractiveWin11InputNewerThanBinary -ExePath $resolvedExePath -BuildInputs $BuildInputs) {
             if ($NoBuild) {
-                throw "winghostty.exe at $resolvedExePath is older than the requested build inputs; rerun without -NoBuild or pass -Rebuild."
+                throw "paramux.exe at $resolvedExePath is older than the requested build inputs; rerun without -NoBuild or pass -Rebuild."
             }
             return 'build'
         }
@@ -513,7 +513,7 @@ function Get-InteractiveWin11LaunchAction {
     }
 
     if ($NoBuild) {
-        throw "Missing winghostty.exe at $resolvedExePath"
+        throw "Missing paramux.exe at $resolvedExePath"
     }
 
     return 'build'

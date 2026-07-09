@@ -121,9 +121,9 @@ function Resolve-DumpbinPath {
         }
         return (Resolve-Path -LiteralPath $Override).Path
     }
-    if (-not [string]::IsNullOrWhiteSpace($env:WINGHOSTTY_DUMPBIN)) {
-        if (Test-Path -LiteralPath $env:WINGHOSTTY_DUMPBIN) {
-            return (Resolve-Path -LiteralPath $env:WINGHOSTTY_DUMPBIN).Path
+    if (-not [string]::IsNullOrWhiteSpace($env:PARAMUX_DUMPBIN)) {
+        if (Test-Path -LiteralPath $env:PARAMUX_DUMPBIN) {
+            return (Resolve-Path -LiteralPath $env:PARAMUX_DUMPBIN).Path
         }
     }
     $cmd = Get-Command dumpbin.exe -ErrorAction SilentlyContinue
@@ -382,7 +382,7 @@ $dumpbin = Resolve-DumpbinPath -Override $DumpbinPath
 $candidateList = ($candidates | ForEach-Object { $_.Bytes + " @ RVA 0x" + ("{0:X}" -f $_.Rva) }) -join "; "
 
 if ($null -eq $dumpbin) {
-    throw ("Windows x64 baseline check: found {0} candidate SSE4a byte pattern(s) that must be confirmed at an instruction boundary, but no disassembler (dumpbin.exe) was found to verify them. Install the Windows SDK / MSVC (dumpbin ships with it), or pass -DumpbinPath / set `$env:WINGHOSTTY_DUMPBIN. Candidates: {1}" -f $candidates.Count, $candidateList)
+    throw ("Windows x64 baseline check: found {0} candidate SSE4a byte pattern(s) that must be confirmed at an instruction boundary, but no disassembler (dumpbin.exe) was found to verify them. Install the Windows SDK / MSVC (dumpbin ships with it), or pass -DumpbinPath / set `$env:PARAMUX_DUMPBIN. Candidates: {1}" -f $candidates.Count, $candidateList)
 }
 
 $textStartAbs = [uint64]$imageBase + [uint64]$textSection.VirtualAddress

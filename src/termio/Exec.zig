@@ -78,9 +78,9 @@ fn addGhosttyBinToPath(
     }
 
     const updated_path = if (builtin.os.tag == .windows)
-        // Windows shells resolve bare `winghostty` from PATH/PATHEXT.
+        // Windows shells resolve bare `paramux` from PATH/PATHEXT.
         // Put the current install first so an older shim/exe earlier on
-        // PATH doesn't shadow our local `winghostty.com`.
+        // PATH doesn't shadow our local `paramux.com`.
         try internal_os.prependEnv(alloc, path, exe_dir)
     else
         try internal_os.appendEnv(alloc, path, exe_dir);
@@ -1878,11 +1878,11 @@ test "addGhosttyBinToPath prepends on windows" {
 
     try env.put("PATH", "C:\\Users\\amant\\scoop\\shims;C:\\Windows\\System32");
 
-    try addGhosttyBinToPath(testing.allocator, &env, "C:\\Program Files\\winghostty");
+    try addGhosttyBinToPath(testing.allocator, &env, "C:\\Program Files\\paramux");
 
-    try testing.expectEqualStrings("C:\\Program Files\\winghostty", env.get("GHOSTTY_BIN_DIR").?);
+    try testing.expectEqualStrings("C:\\Program Files\\paramux", env.get("GHOSTTY_BIN_DIR").?);
     try testing.expectEqualStrings(
-        "C:\\Program Files\\winghostty;C:\\Users\\amant\\scoop\\shims;C:\\Windows\\System32",
+        "C:\\Program Files\\paramux;C:\\Users\\amant\\scoop\\shims;C:\\Windows\\System32",
         env.get("PATH").?,
     );
 }
@@ -1894,13 +1894,13 @@ test "addGhosttyBinToPath avoids duplicate windows entry" {
     var env: EnvMap = .init(testing.allocator);
     defer env.deinit();
 
-    try env.put("PATH", "C:\\Program Files\\Winghostty;C:\\Windows\\System32");
+    try env.put("PATH", "C:\\Program Files\\Paramux;C:\\Windows\\System32");
 
-    try addGhosttyBinToPath(testing.allocator, &env, "c:\\program files\\winghostty");
+    try addGhosttyBinToPath(testing.allocator, &env, "c:\\program files\\paramux");
 
-    try testing.expectEqualStrings("c:\\program files\\winghostty", env.get("GHOSTTY_BIN_DIR").?);
+    try testing.expectEqualStrings("c:\\program files\\paramux", env.get("GHOSTTY_BIN_DIR").?);
     try testing.expectEqualStrings(
-        "C:\\Program Files\\Winghostty;C:\\Windows\\System32",
+        "C:\\Program Files\\Paramux;C:\\Windows\\System32",
         env.get("PATH").?,
     );
 }
@@ -1914,14 +1914,14 @@ test "addGhosttyBinToPath prepends existing windows entry when not first" {
 
     try env.put(
         "PATH",
-        "C:\\Users\\amant\\scoop\\shims;C:\\Program Files\\Winghostty;C:\\Windows\\System32",
+        "C:\\Users\\amant\\scoop\\shims;C:\\Program Files\\Paramux;C:\\Windows\\System32",
     );
 
-    try addGhosttyBinToPath(testing.allocator, &env, "c:\\program files\\winghostty");
+    try addGhosttyBinToPath(testing.allocator, &env, "c:\\program files\\paramux");
 
-    try testing.expectEqualStrings("c:\\program files\\winghostty", env.get("GHOSTTY_BIN_DIR").?);
+    try testing.expectEqualStrings("c:\\program files\\paramux", env.get("GHOSTTY_BIN_DIR").?);
     try testing.expectEqualStrings(
-        "c:\\program files\\winghostty;C:\\Users\\amant\\scoop\\shims;C:\\Program Files\\Winghostty;C:\\Windows\\System32",
+        "c:\\program files\\paramux;C:\\Users\\amant\\scoop\\shims;C:\\Program Files\\Paramux;C:\\Windows\\System32",
         env.get("PATH").?,
     );
 }

@@ -154,21 +154,21 @@ pub const compatibility = std.StaticStringMap(
     .{ "gtk-single-instance", compatGtkSingleInstance },
 });
 
-/// Set winghostty's graphical user interface language to a language other than the
+/// Set paramux's graphical user interface language to a language other than the
 /// system default language. For example:
 ///
 ///     language = de
 ///
-/// will force the strings in winghostty's graphical user interface to be in German
+/// will force the strings in paramux's graphical user interface to be in German
 /// rather than the system default.
 ///
-/// This will not affect the language used by programs run _within_ winghostty.
+/// This will not affect the language used by programs run _within_ paramux.
 /// Those will continue to use the default system language. There are also many
-/// non-GUI elements in winghostty that are not translated - this setting will have
+/// non-GUI elements in paramux that are not translated - this setting will have
 /// no effect on those.
 ///
 /// Warning: This setting cannot be reloaded at runtime. To change the language
-/// you must fully restart winghostty.
+/// you must fully restart paramux.
 ///
 /// Supported in the Windows-only fork.
 /// Available since 1.3.0.
@@ -178,7 +178,7 @@ language: ?[:0]const u8 = null,
 ///
 /// You can generate the list of valid values using the CLI:
 ///
-///     winghostty +list-fonts
+///     paramux +list-fonts
 ///
 /// This configuration can be repeated multiple times to specify preferred
 /// fallback fonts when the requested codepoint is not available in the primary
@@ -192,10 +192,10 @@ language: ?[:0]const u8 = null,
 /// The specific styles (bold, italic, bold italic) do not need to be
 /// explicitly set. If a style is not set, then the regular style (font-family)
 /// will be searched for stylistic variants. If a stylistic variant is not
-/// found, winghostty will use the regular style. This prevents falling back to a
+/// found, paramux will use the regular style. This prevents falling back to a
 /// different font family just to get a style such as bold. This also applies
 /// if you explicitly specify a font family for a style. For example, if you
-/// set `font-family-bold = FooBar` and "FooBar" cannot be found, winghostty will
+/// set `font-family-bold = FooBar` and "FooBar" cannot be found, paramux will
 /// use whatever font is set for `font-family` for the bold style.
 ///
 /// Finally, some styles may be synthesized if they are not supported.
@@ -243,10 +243,10 @@ language: ?[:0]const u8 = null,
 @"font-style-italic": FontStyle = .{ .default = {} },
 @"font-style-bold-italic": FontStyle = .{ .default = {} },
 
-/// Control whether winghostty should synthesize a style if the requested style is
+/// Control whether paramux should synthesize a style if the requested style is
 /// not available in the specified font-family.
 ///
-/// winghostty can synthesize bold, italic, and bold italic styles if the font
+/// paramux can synthesize bold, italic, and bold italic styles if the font
 /// does not have a specific style. For bold, this is done by drawing an
 /// outline around the glyph of varying thickness. For italic, this is done by
 /// applying a slant to the glyph. For bold italic, both of these are applied.
@@ -288,7 +288,7 @@ language: ?[:0]const u8 = null,
 ///
 /// The syntax is fairly loose, but invalid settings will be silently ignored.
 ///
-/// The font feature will apply to all fonts rendered by winghostty. A future
+/// The font feature will apply to all fonts rendered by paramux. A future
 /// enhancement will allow targeting specific faces.
 ///
 /// To disable programming ligatures, use `-calt` since this is the typical
@@ -577,11 +577,11 @@ language: ?[:0]const u8 = null,
 @"freetype-load-flags": FreetypeLoadFlags = .{},
 
 /// A theme to use. This can be a built-in theme name, a custom theme
-/// name, or an absolute path to a custom theme file. winghostty also supports
+/// name, or an absolute path to a custom theme file. paramux also supports
 /// specifying a different theme to use for light and dark mode. Each
 /// option is documented below.
 ///
-/// If the theme is an absolute pathname, winghostty will attempt to load that
+/// If the theme is an absolute pathname, paramux will attempt to load that
 /// file as a theme. If that file does not exist or is inaccessible, an error
 /// will be logged and no other directories will be searched.
 ///
@@ -590,26 +590,26 @@ language: ?[:0]const u8 = null,
 /// systems with case-sensitive filesystems. It is an error for a theme name to
 /// include path separators unless it is an absolute pathname.
 ///
-/// The first directory is the `themes` subdirectory of your winghostty
-/// configuration directory. This is `$XDG_CONFIG_HOME/winghostty/themes` or
-/// `~/.config/winghostty/themes`.
+/// The first directory is the `themes` subdirectory of your paramux
+/// configuration directory. This is `$XDG_CONFIG_HOME/paramux/themes` or
+/// `~/.config/paramux/themes`.
 ///
-/// The second directory is the `themes` subdirectory of the winghostty resources
-/// directory. winghostty ships with a multitude of themes that will be installed
+/// The second directory is the `themes` subdirectory of the paramux resources
+/// directory. paramux ships with a multitude of themes that will be installed
 /// into this directory. In this Windows fork, the bundled themes live in the
 /// `share/ghostty/themes` directory next to the built application. When
 /// running from the source tree, this is typically `zig-out/share/ghostty/themes`.
 ///
-/// To see a list of available themes, run `winghostty +list-themes`.
+/// To see a list of available themes, run `paramux +list-themes`.
 ///
-/// A theme file is simply another winghostty configuration file. They share
+/// A theme file is simply another paramux configuration file. They share
 /// the same syntax and can set most configuration options. A theme is not
 /// limited to colors, so only use theme files from sources you trust. The
 /// built-in themes are audited to only set safe configuration options.
 ///
 /// Some options cannot be set within theme files. The reason these are not
 /// supported should be self-evident. A theme file cannot set `theme` or
-/// `config-file`. At the time of writing this, winghostty will not show any
+/// `config-file`. At the time of writing this, paramux will not show any
 /// warnings or errors if you set these options in a theme file but they will
 /// be silently ignored.
 ///
@@ -644,11 +644,11 @@ foreground: Color = .{ .r = 0xFF, .g = 0xFF, .b = 0xFF },
 ///
 /// The background image is currently per-terminal, not per-window. If
 /// you are a heavy split user, the background image will be repeated across
-/// splits. A future improvement to winghostty will address this.
+/// splits. A future improvement to paramux will address this.
 ///
 /// WARNING: Background images are currently duplicated in VRAM per-terminal.
 /// For sufficiently large images, this could lead to a large increase in
-/// memory usage (specifically VRAM usage). A future winghostty improvement
+/// memory usage (specifically VRAM usage). A future paramux improvement
 /// will resolve this by sharing image textures across terminals.
 ///
 /// Available since: 1.2.0
@@ -1460,8 +1460,8 @@ maximize: bool = false,
 ///   * `true` - Start in native fullscreen
 fullscreen: Fullscreen = .false,
 
-/// The title winghostty will use for the window. This will force the title of the
-/// window to be this title at all times and winghostty will ignore any set title
+/// The title paramux will use for the window. This will force the title of the
+/// window to be this title at all times and paramux will ignore any set title
 /// escape sequences programs (such as Neovim) may send.
 ///
 /// If you want a blank title, set this to one or more spaces by quoting
@@ -1476,23 +1476,23 @@ fullscreen: Fullscreen = .false,
 /// to get the new title.
 title: ?[:0]const u8 = null,
 
-/// The setting that controls the winghostty instance namespace.
+/// The setting that controls the paramux instance namespace.
 ///
 /// In this Windows fork, this value is used as the instance identifier for
 /// single-instance behavior and IPC routing. Changing it between invocations
-/// creates a separate winghostty instance namespace, so commands such as
-/// `winghostty +new-window` will only target processes launched with the same
+/// creates a separate paramux instance namespace, so commands such as
+/// `paramux +new-window` will only target processes launched with the same
 /// `class` value.
 ///
-/// The default is `io.github.amanthanvi.winghostty`.
+/// The default is `io.github.soldforaloss.paramux`.
 class: ?[:0]const u8 = null,
 
-/// If `true`, winghostty will prefer reusing an existing instance namespace and
+/// If `true`, paramux will prefer reusing an existing instance namespace and
 /// opening a new window inside it.
 ///
-/// If `false`, each new `winghostty.exe` launch will prefer a dedicated process.
+/// If `false`, each new `paramux.exe` launch will prefer a dedicated process.
 ///
-/// If `detect`, winghostty assumes single-instance behavior unless the CLI
+/// If `detect`, paramux assumes single-instance behavior unless the CLI
 /// invocation clearly carries custom configuration that should not be inherited
 /// by an already-running process.
 ///
@@ -1506,7 +1506,7 @@ class: ?[:0]const u8 = null,
 /// The directory to change to after starting the command.
 ///
 /// This setting is secondary to the `window-inherit-working-directory`
-/// setting. If a previous winghostty terminal exists in the same process,
+/// setting. If a previous paramux terminal exists in the same process,
 /// `window-inherit-working-directory` will take precedence. Otherwise, this
 /// setting will be used. Typically, this setting is used only for the first
 /// window.
@@ -1526,7 +1526,7 @@ class: ?[:0]const u8 = null,
 
 /// Key bindings. The format is `trigger=action`. Duplicate triggers will
 /// overwrite previously set values. The list of actions is available in
-/// the documentation or using the `winghostty +list-actions` command.
+/// the documentation or using the `paramux +list-actions` command.
 ///
 /// Trigger: `+`-separated list of keys and modifiers. Example: `ctrl+a`,
 /// `ctrl+shift+b`, `up`.
@@ -1657,7 +1657,7 @@ class: ?[:0]const u8 = null,
 ///     e.g. `text:\x15` sends Ctrl-U.
 ///
 ///   * All other actions can be found in the documentation or by using the
-///     `winghostty +list-actions` command.
+///     `paramux +list-actions` command.
 ///
 /// Some notes for the action:
 ///
@@ -2411,7 +2411,7 @@ keybind: Keybinds = .{},
 
 /// When this is true, the default configuration file paths will be loaded.
 /// The default configuration file paths are currently only the XDG
-/// config path ($XDG_CONFIG_HOME/winghostty/config.ghostty).
+/// config path ($XDG_CONFIG_HOME/paramux/config.ghostty).
 ///
 /// If this is false, the default configuration paths will not be loaded.
 /// This is targeted directly at using Ghostty from the CLI in a way
@@ -2742,7 +2742,7 @@ keybind: Keybinds = .{},
 ///     (Available since: 1.2.0)
 ///
 ///   * `ssh-terminfo` - Enable automatic terminfo installation on remote hosts.
-///     Attempts to install winghostty's terminfo entry using `infocmp` and `tic` when
+///     Attempts to install paramux's terminfo entry using `infocmp` and `tic` when
 ///     connecting to hosts that lack it. Requires `infocmp` to be available locally
 ///     and `tic` to be available on remote hosts. Once terminfo is installed on a
 ///     remote host, it will be automatically "cached" to avoid repeat installations.
@@ -2750,13 +2750,13 @@ keybind: Keybinds = .{},
 ///     cache manually using various arguments.
 ///     (Available since: 1.2.0)
 ///
-///   * `path` - Add winghostty's binary directory to PATH. This ensures the `winghostty`
+///   * `path` - Add paramux's binary directory to PATH. This ensures the `paramux`
 ///     command is available in the shell even if shell init scripts reset PATH.
 ///     This is particularly useful on macOS where PATH is often overridden by
 ///     system scripts. The directory is only added if not already present.
 ///
 /// SSH features work independently and can be combined for optimal experience:
-/// when both `ssh-env` and `ssh-terminfo` are enabled, winghostty will install its
+/// when both `ssh-env` and `ssh-terminfo` are enabled, paramux will install its
 /// terminfo on remote hosts and use `xterm-ghostty` as TERM, falling back to
 /// `xterm-256color` with environment variables if terminfo installation fails.
 @"shell-integration-features": ShellIntegrationFeatures = .{},
@@ -2782,7 +2782,7 @@ keybind: Keybinds = .{},
 /// command-palette-entry = title:Reset Font Style, action:csi:0m
 /// command-palette-entry = title:Crash on Main Thread,description:Causes a crash on the main (UI) thread.,action:crash:main
 /// command-palette-entry = title:Focus Split: Right,description:"Focus the split to the right, if it exists.",action:goto_split:right
-/// command-palette-entry = title:"winghostty",description:"Add a little winghostty to your terminal.",action:"text:\xf0\x9f\x91\xbb"
+/// command-palette-entry = title:"paramux",description:"Add a little paramux to your terminal.",action:"text:\xf0\x9f\x91\xbb"
 /// ```
 ///
 /// By default, the command palette is preloaded with most actions that might
@@ -3208,7 +3208,7 @@ term: []const u8 = "xterm-ghostty",
 /// Available since: 1.2.0
 @"async-backend": AsyncBackend = .auto,
 
-/// Control the auto-update functionality of winghostty.
+/// Control the auto-update functionality of paramux.
 ///
 /// The Windows runtime supports stable update checks backed by GitHub
 /// Releases. Downloads are staged only after checksum verification and a
@@ -3228,9 +3228,9 @@ term: []const u8 = "xterm-ghostty",
 /// The release channel to use for auto-updates.
 ///
 /// The default value of this matches the release channel of the currently
-/// running winghostty version. If you download a pre-release version of winghostty
+/// running paramux version. If you download a pre-release version of paramux
 /// then this will be set to `tip` and you will receive pre-release updates.
-/// If you download a stable version of winghostty then this will be set to
+/// If you download a stable version of paramux then this will be set to
 /// `stable` and you will receive stable updates.
 ///
 /// Valid values are:
@@ -3457,7 +3457,7 @@ fn writeConfigTemplate(path: []const u8) !void {
 }
 
 /// Load configurations from the default configuration files. The default
-/// configuration file is at `$XDG_CONFIG_HOME/winghostty/config.ghostty`.
+/// configuration file is at `$XDG_CONFIG_HOME/paramux/config.ghostty`.
 ///
 /// The legacy `config` file (without extension) is first loaded,
 /// then `config.ghostty`.

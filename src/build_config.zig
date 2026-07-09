@@ -12,9 +12,9 @@ const RendererBackend = @import("renderer/backend.zig").Backend;
 const BuildConfig = @import("build/Config.zig");
 
 pub const ReleaseChannel = BuildConfig.ReleaseChannel;
-pub const app_name = "winghostty";
+pub const app_name = "paramux";
 pub const exe_name = "paramux.exe";
-pub const data_dir_name = "winghostty";
+pub const data_dir_name = "paramux";
 pub const legacy_data_dir_name = "ghostty";
 
 /// The semantic version of this build.
@@ -49,7 +49,7 @@ pub const custom_shaders: bool = config.custom_shaders;
 /// Stable application identifier used by the Windows-only fork for
 /// instance naming and shared resource identity. It remains hardcoded
 /// because many paths assume a compile-time constant.
-pub const bundle_id = "io.github.amanthanvi.winghostty";
+pub const bundle_id = "io.github.soldforaloss.paramux";
 
 /// True if we should have "slow" runtime safety checks. The initial motivation
 /// for this was terminal page/pagelist integrity checks. These were VERY

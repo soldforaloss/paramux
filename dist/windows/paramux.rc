@@ -2,12 +2,12 @@
 LANGUAGE 0, 0
 
 #define RT_MANIFEST 1
-RT_MANIFEST 24 "winghostty.manifest"
+RT_MANIFEST 24 "paramux.manifest"
 
 #define ID_ICON_GHOSTTY 1
 // GhosttyExe.zig passes an icon-content hash define so .ico-only changes
 // invalidate Zig's cached resource compilation.
-ID_ICON_GHOSTTY ICON "winghostty.ico"
+ID_ICON_GHOSTTY ICON "paramux.ico"
 
 VS_VERSION_INFO VERSIONINFO
 //FILEVERSION     VERSION_MAJOR,VERSION_MINOR,VERSION_PATCH,VERSION_COMMIT_HEIGHT

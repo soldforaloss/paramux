@@ -11,12 +11,12 @@ const Pager = @import("Pager.zig");
 pub const Options = struct {
     /// The config option to explain. For example:
     ///
-    ///   winghostty +explain-config --option=font-size
+    ///   paramux +explain-config --option=font-size
     option: ?[]const u8 = null,
 
     /// The keybind action to explain. For example:
     ///
-    ///   winghostty +explain-config --keybind=copy_to_clipboard
+    ///   paramux +explain-config --keybind=copy_to_clipboard
     keybind: ?[]const u8 = null,
 
     pub fn deinit(self: Options) void {
@@ -31,14 +31,14 @@ pub const Options = struct {
 };
 
 /// The `explain-config` command prints the documentation for a single
-/// winghostty configuration option or keybind action.
+/// paramux configuration option or keybind action.
 ///
 /// Examples:
 ///
-///   winghostty +explain-config font-size
-///   winghostty +explain-config copy_to_clipboard
-///   winghostty +explain-config --option=font-size
-///   winghostty +explain-config --keybind=copy_to_clipboard
+///   paramux +explain-config font-size
+///   paramux +explain-config copy_to_clipboard
+///   paramux +explain-config --option=font-size
+///   paramux +explain-config --keybind=copy_to_clipboard
 ///
 /// Flags:
 ///
@@ -78,9 +78,9 @@ pub fn run(alloc: Allocator) !u8 {
         var stderr: std.fs.File = .stderr();
         var buffer: [4096]u8 = undefined;
         var stderr_writer = stderr.writer(&buffer);
-        try stderr_writer.interface.writeAll("Usage: winghostty +explain-config <option>\n");
-        try stderr_writer.interface.writeAll("       winghostty +explain-config --option=<option>\n");
-        try stderr_writer.interface.writeAll("       winghostty +explain-config --keybind=<action>\n");
+        try stderr_writer.interface.writeAll("Usage: paramux +explain-config <option>\n");
+        try stderr_writer.interface.writeAll("       paramux +explain-config --option=<option>\n");
+        try stderr_writer.interface.writeAll("       paramux +explain-config --keybind=<action>\n");
         try stderr_writer.end();
         return 1;
     };

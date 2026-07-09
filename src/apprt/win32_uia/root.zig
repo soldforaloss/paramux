@@ -1,4 +1,4 @@
-//! Root `IRawElementProviderSimple` for the winghostty host HWND.
+//! Root `IRawElementProviderSimple` for the paramux host HWND.
 //!
 //! Returned from `WM_GETOBJECT` when the client asks for
 //! `UiaRootObjectId`. Reports:
@@ -64,11 +64,11 @@ pub const RootProvider = struct {
         return com.SysAllocString(literal);
     }
 
-    /// Allocate a BSTR for the current HWND title, or a "winghostty"
+    /// Allocate a BSTR for the current HWND title, or a "paramux"
     /// fallback if the title is empty or the query fails. Runs per
     /// property query — caching is unsafe because the caller frees.
     fn allocNameBstr(self: *RootProvider) ?[*:0]u16 {
-        const fallback = std.unicode.utf8ToUtf16LeStringLiteral("winghostty");
+        const fallback = std.unicode.utf8ToUtf16LeStringLiteral("paramux");
         const len = com.GetWindowTextLengthW(self.hwnd);
         if (len <= 0) return com.SysAllocString(fallback);
 

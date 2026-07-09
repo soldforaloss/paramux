@@ -1,4 +1,4 @@
-//! AppUserModelID (AUMID) registration for winghostty.
+//! AppUserModelID (AUMID) registration for paramux.
 //!
 //! AUMID is the Windows identity that drives:
 //!   * Taskbar grouping (duplicates collapse under one icon).
@@ -18,7 +18,7 @@
 //!      allow HKCU writes, and the registry entry alone is enough for
 //!      warm-start toast attribution to look correct.
 //!
-//! The AUMID string `com.ghostty.winghostty` is deliberately distinct
+//! The AUMID string `io.github.soldforaloss.paramux` is deliberately distinct
 //! from upstream Ghostty's `com.ghostty.ghostty` so a side-by-side
 //! install doesn't collide. If upstream ever unifies packaging with
 //! this fork, bump the second segment on the fork side.
@@ -72,8 +72,8 @@ extern "advapi32" fn RegSetValueExW(
 
 extern "advapi32" fn RegCloseKey(hKey: HKEY) callconv(.winapi) i32;
 
-const aumid_wide: [*:0]const u16 = std.unicode.utf8ToUtf16LeStringLiteral("com.ghostty.winghostty");
-pub const aumid_utf8 = "com.ghostty.winghostty";
+const aumid_wide: [*:0]const u16 = std.unicode.utf8ToUtf16LeStringLiteral("io.github.soldforaloss.paramux");
+pub const aumid_utf8 = "io.github.soldforaloss.paramux";
 
 /// Set the AUMID for the current process. Must run before any HWND is
 /// created; Windows copies the identity into the process's taskbar-
@@ -87,13 +87,13 @@ pub fn setProcessAumid() void {
     }
 }
 
-/// Write `HKCU\Software\Classes\AppUserModelId\com.ghostty.winghostty`
+/// Write `HKCU\Software\Classes\AppUserModelId\io.github.soldforaloss.paramux`
 /// with DisplayName + IconUri + ShowInSettings. Idempotent; writes every
 /// launch (cost is negligible and this keeps shell attribution in sync
 /// with the active dev/build path).
 pub fn registerAumidDisplayName(alloc: std.mem.Allocator) void {
     const subkey = std.unicode.utf8ToUtf16LeStringLiteral(
-        "Software\\Classes\\AppUserModelId\\com.ghostty.winghostty",
+        "Software\\Classes\\AppUserModelId\\io.github.soldforaloss.paramux",
     );
 
     var hkey: HKEY = undefined;
@@ -114,7 +114,7 @@ pub fn registerAumidDisplayName(alloc: std.mem.Allocator) void {
     }
     defer _ = RegCloseKey(hkey);
 
-    const display_name = std.unicode.utf8ToUtf16LeStringLiteral("winghostty");
+    const display_name = std.unicode.utf8ToUtf16LeStringLiteral("paramux");
     const set_rc = writeRegSz(hkey, std.unicode.utf8ToUtf16LeStringLiteral("DisplayName"), display_name);
     if (set_rc != ERROR_SUCCESS) {
         std.log.warn("AUMID: write DisplayName failed rc={d}", .{set_rc});
@@ -164,5 +164,5 @@ fn writeRegSz(hkey: HKEY, value_name: LPCWSTR, value: [:0]const u16) i32 {
 
 test "aumid string shape" {
     const testing = std.testing;
-    try testing.expectEqualStrings("com.ghostty.winghostty", aumid_utf8);
+    try testing.expectEqualStrings("io.github.soldforaloss.paramux", aumid_utf8);
 }

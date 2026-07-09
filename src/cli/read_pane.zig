@@ -11,7 +11,7 @@ pub const Options = struct {
     _arena: ?ArenaAllocator = null,
 
     /// If set, query a custom single-instance namespace instead of the default
-    /// local winghostty instance.
+    /// local paramux instance.
     class: ?[:0]const u8 = null,
 
     /// Read a specific pane by its `+list-windows` id. Defaults to the focused
@@ -31,15 +31,15 @@ pub const Options = struct {
 };
 
 /// The `read-pane` command prints a pane's current viewport text from a running
-/// winghostty instance, over the same IPC channel as `+list-windows`.
+/// paramux instance, over the same IPC channel as `+list-windows`.
 ///
 /// The default target is the focused pane, or — when run inside a pane — the
 /// pane identified by the `PARAMUX_SURFACE_ID` environment variable. Use
-/// `--surface-id` (a pane id from `winghostty +list-windows`) to read a
+/// `--surface-id` (a pane id from `paramux +list-windows`) to read a
 /// specific pane.
 ///
-///   * `winghostty +read-pane`
-///   * `winghostty +read-pane --surface-id=42`
+///   * `paramux +read-pane`
+///   * `paramux +read-pane --surface-id=42`
 ///
 /// This lets a script drive a workspace and read an agent's output back.
 ///
@@ -94,7 +94,7 @@ pub fn run(alloc: Allocator) !u8 {
         try stderr.print("Reading the pane via IPC failed: {}\n", .{err});
         return 1;
     } orelse {
-        try stderr.print("No matching winghostty instance is listening for automation queries.\n", .{});
+        try stderr.print("No matching paramux instance is listening for automation queries.\n", .{});
         return 1;
     };
     defer alloc.free(text);
