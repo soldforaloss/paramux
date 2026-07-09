@@ -41,3 +41,6 @@ vgcore.*
 .cursor/
 
 .zig-global-cache/
+
+# paramux: packaging output (build artifacts, never commit)
+dist/artifacts/
