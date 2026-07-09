@@ -579,6 +579,9 @@ const host_tab_label_max_len: usize = default_metrics.tab_label_max_len;
 // paramux M2: docked left metadata sidebar (width + per-row height, unscaled).
 const host_sidebar_width: i32 = 240;
 const host_sidebar_row_height: i32 = 48;
+// paramux FR-4: uniform gutter around/between panes, so a full-perimeter
+// focus/attention ring fits in the surrounding chrome (unscaled px).
+const host_pane_gutter: i32 = 5;
 const host_tab_min_button_width: i32 = default_metrics.tab_min_width;
 /// Non-owning view over the palette's command lists. Points into
 /// config arena storage — lifetime matches `app.config`. Re-exported
@@ -9693,7 +9696,7 @@ const Host = struct {
         const active_tab = self.activeTab() orelse return null;
         if (active_tab.tree.zoomed != null) return null;
         if (active_tab.leafCount() <= 1) return null;
-        const content_rect = self.contentRect() catch return null;
+        const content_rect = self.paneLayoutRect() catch return null;
         const content_y = content_rect.top;
         const content_width = @max(1, content_rect.right - content_rect.left);
         const content_height = @max(1, content_rect.bottom - content_rect.top);
@@ -12615,6 +12618,22 @@ const Host = struct {
         };
     }
 
+    /// paramux FR-4: the rect panes actually lay out within — `contentRect`
+    /// inset by a uniform gutter so every pane (single or split) has room for a
+    /// full-perimeter focus/attention ring painted in the surrounding chrome.
+    /// MUST be used identically by `layout()` and `dividerAtPoint()` so the
+    /// drag-resize hit region lines up with the painted panes.
+    fn paneLayoutRect(self: *Host) !RECT {
+        const cr = try self.contentRect();
+        const g = self.scaled(host_pane_gutter);
+        return .{
+            .left = cr.left + g,
+            .top = cr.top + g,
+            .right = @max(cr.left + g + 1, cr.right - g),
+            .bottom = @max(cr.top + g + 1, cr.bottom - g),
+        };
+    }
+
     fn close(self: *Host) void {
         const alloc = self.app.core_app.alloc;
         const fallback_hwnd = self.hwnd;
@@ -13398,7 +13417,7 @@ const Host = struct {
         var chrome_layout_changed = false;
         if (!self.layoutChromeForRect(rect, &chrome_layout_changed)) return;
 
-        const content_rect = try self.contentRect();
+        const content_rect = try self.paneLayoutRect();
         const content_y = content_rect.top;
         const content_width = @max(1, content_rect.right - content_rect.left);
         const content_height = @max(1, content_rect.bottom - content_rect.top);
@@ -14311,22 +14330,25 @@ const Host = struct {
             }
         }
 
-        // Paint pane divider gaps between split panes
+        // paramux FR-4: paint the pane gutter + focus/attention rings. Panes are
+        // laid out inset by `host_pane_gutter` (paneLayoutRect), so this runs for
+        // single-pane tabs too — every pane gets a full-perimeter ring. Skip when
+        // a pane is zoomed (it fills the whole content area, no gutter to ring).
         if (paint_content) {
             if (self.activeTab()) |active_tab| {
-                if (active_tab.leafCount() > 1) {
+                if (active_tab.tree.zoomed == null) {
                     const c_rect = content_rect;
-                    // Fill entire content area with divider color first (gap pixels)
+                    // Fill the whole content area with the gutter/divider color; each
+                    // GL pane then covers its (inset) rect, leaving the gutter + gaps.
                     fillSolidRect(hdc, c_rect, theme.pane_divider);
-                    // Draw the thin focus border around the focused pane.
+                    // Thin focus border around the focused pane.
                     if (self.activeSurface()) |surface| {
                         if (surface.hwnd) |surface_hwnd| {
                             drawPaneBorder(hdc, hwnd, surface_hwnd, c_rect, theme.pane_divider_focused, 1);
                         }
                     }
-                    // paramux FR-4: draw a thicker colored attention ring around
-                    // every pane whose state is alerting (waiting/done/error),
-                    // after the focus border so an alerting focused pane shows
+                    // Thicker colored attention ring around every alerting pane,
+                    // drawn after the focus border so an alerting focused pane shows
                     // its state color. Same palette as the sidebar dot + tab.
                     var it = active_tab.tree.iterator();
                     while (it.next()) |entry| {
