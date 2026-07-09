@@ -65,14 +65,14 @@ function __ghostty_find_command_application {
 
 function __ghostty_find_winghostty {
     if (-not [string]::IsNullOrEmpty($env:GHOSTTY_BIN_DIR)) {
-        foreach ($name in @('winghostty.com', 'winghostty.exe', 'winghostty')) {
+        foreach ($name in @('paramux.com', 'paramux.exe', 'paramux', 'winghostty.com', 'winghostty.exe', 'winghostty')) {
             $candidate = Join-Path $env:GHOSTTY_BIN_DIR $name
             if (Test-Path -LiteralPath $candidate -PathType Leaf) {
                 return $candidate
             }
         }
     }
-    return __ghostty_find_command_application @('winghostty.com', 'winghostty.exe', 'winghostty')
+    return __ghostty_find_command_application @('paramux.com', 'paramux.exe', 'paramux', 'winghostty.com', 'winghostty.exe', 'winghostty')
 }
 
 function __ghostty_ssh_cache {

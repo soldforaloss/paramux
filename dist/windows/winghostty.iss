@@ -30,7 +30,7 @@ DefaultGroupName=winghostty
 DisableProgramGroupPage=yes
 LicenseFile={#StageDir}\LICENSE
 OutputDir={#OutputDir}
-OutputBaseFilename=winghostty-{#MyAppVersion}-windows-{#PackageArch}-setup
+OutputBaseFilename=paramux-{#MyAppVersion}-windows-{#PackageArch}-setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -44,7 +44,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 ChangesAssociations=no
 CloseApplications=yes
 RestartApplications=yes
-UninstallDisplayIcon={app}\winghostty.exe
+UninstallDisplayIcon={app}\paramux.exe
 SetupIconFile={#SourceDir}\dist\windows\winghostty.ico
 VersionInfoVersion={#MyAppVersion}
 VersionInfoTextVersion={#MyAppVersion}
@@ -53,7 +53,7 @@ VersionInfoProductTextVersion={#MyAppVersion}
 VersionInfoCompany=Aman Thanvi
 VersionInfoDescription=winghostty Setup
 VersionInfoProductName=winghostty
-VersionInfoOriginalFileName=winghostty-{#MyAppVersion}-windows-{#PackageArch}-setup.exe
+VersionInfoOriginalFileName=paramux-{#MyAppVersion}-windows-{#PackageArch}-setup.exe
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
@@ -62,9 +62,9 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 Source: "{#StageDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\winghostty"; Filename: "{app}\winghostty.exe"; AppUserModelID: "{#AppUserModelId}"
+Name: "{group}\winghostty"; Filename: "{app}\paramux.exe"; AppUserModelID: "{#AppUserModelId}"
 Name: "{group}\Uninstall winghostty"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\winghostty"; Filename: "{app}\winghostty.exe"; Tasks: desktopicon; AppUserModelID: "{#AppUserModelId}"
+Name: "{autodesktop}\winghostty"; Filename: "{app}\paramux.exe"; Tasks: desktopicon; AppUserModelID: "{#AppUserModelId}"
 
 [Run]
-Filename: "{app}\winghostty.exe"; Description: "Launch winghostty"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\paramux.exe"; Description: "Launch winghostty"; Flags: nowait postinstall skipifsilent

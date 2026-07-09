@@ -13,7 +13,7 @@ const BuildConfig = @import("build/Config.zig");
 
 pub const ReleaseChannel = BuildConfig.ReleaseChannel;
 pub const app_name = "winghostty";
-pub const exe_name = "winghostty.exe";
+pub const exe_name = "paramux.exe";
 pub const data_dir_name = "winghostty";
 pub const legacy_data_dir_name = "ghostty";
 

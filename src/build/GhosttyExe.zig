@@ -16,7 +16,7 @@ command_install_step: ?*std.Build.Step.InstallFile = null,
 
 pub fn init(b: *std.Build, cfg: *const Config, deps: *const SharedDeps) !Ghostty {
     const exe: *std.Build.Step.Compile = b.addExecutable(.{
-        .name = "winghostty",
+        .name = "paramux",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = cfg.target,
@@ -63,7 +63,7 @@ pub fn init(b: *std.Build, cfg: *const Config, deps: *const SharedDeps) !Ghostty
             command.subsystem = .Console;
             _ = try deps.add(command);
             command_exe = command;
-            command_install_step = b.addInstallBinFile(command.getEmittedBin(), "winghostty.com");
+            command_install_step = b.addInstallBinFile(command.getEmittedBin(), "paramux.com");
         },
 
         else => {},

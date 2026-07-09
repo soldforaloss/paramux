@@ -2,6 +2,7 @@ const std = @import("std");
 const posix = std.posix;
 const Allocator = std.mem.Allocator;
 
+const build_config = @import("build_config.zig");
 const cli_action = @import("cli/action.zig");
 const cli_ghostty_action = @import("cli/ghostty_action.zig");
 const process_shared = @import("process_shared.zig");
@@ -41,7 +42,7 @@ fn spawnGuiProcess(alloc: Allocator) !void {
     defer alloc.free(self_path);
 
     const dir = std.fs.path.dirname(self_path) orelse return error.FileNotFound;
-    const gui_path = try std.fs.path.join(alloc, &.{ dir, "winghostty.exe" });
+    const gui_path = try std.fs.path.join(alloc, &.{ dir, build_config.exe_name });
     defer alloc.free(gui_path);
 
     var argv = try std.process.argsAlloc(alloc);
@@ -64,6 +65,6 @@ fn reportGuiLaunchFailure(err: anyerror) !void {
     var buffer: [1024]u8 = undefined;
     var stderr_writer = std.fs.File.stderr().writer(&buffer);
     const stderr = &stderr_writer.interface;
-    try stderr.print("winghostty command launcher could not start winghostty.exe: {}\n", .{err});
+    try stderr.print("paramux command launcher could not start {s}: {}\n", .{ build_config.exe_name, err });
     try stderr.flush();
 }

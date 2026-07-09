@@ -36,18 +36,18 @@ $localAppData = if ($env:LOCALAPPDATA) {
     Join-Path $userHome "AppData\Local"
 }
 $zigTarget = $archInfo.ZigTarget
-$stageBase = Join-Path $outputRootPath "winghostty-$Version-windows-$Architecture"
-$portableRoot = Join-Path $stageBase "winghostty"
+$stageBase = Join-Path $outputRootPath "paramux-$Version-windows-$Architecture"
+$portableRoot = Join-Path $stageBase "paramux"
 $zipPath = Join-Path $stageBase (New-WindowsPackageArtifactName -Version $Version -Architecture $Architecture -Kind portable)
 $installerPath = Join-Path $stageBase (New-WindowsPackageArtifactName -Version $Version -Architecture $Architecture -Kind setup)
 $checksumsPath = Join-Path $stageBase (New-WindowsPackageArtifactName -Version $Version -Architecture $Architecture -Kind checksums)
 $releaseIconPath = Join-Path $stageBase "winghostty-icon.svg"
 $zigOutBin = Join-Path $repoRoot "zig-out/bin"
 $zigOutShare = Join-Path $repoRoot "zig-out/share"
-$exePath = Join-Path $zigOutBin "winghostty.exe"
+$exePath = Join-Path $zigOutBin "paramux.exe"
 $runtimeFiles = @(
-    "winghostty.com",
-    "winghostty.exe",
+    "paramux.com",
+    "paramux.exe",
     "ghostty-vt.dll"
 )
 $licensePath = Join-Path $repoRoot "LICENSE"
