@@ -11318,17 +11318,19 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_STRING, CTX_FIND, std.unicode.utf8ToUtf16LeStringLiteral("Find...\tCtrl+Shift+F"));
         _ = AppendMenuW(menu, MF_STRING, CTX_COMMAND_PALETTE, std.unicode.utf8ToUtf16LeStringLiteral("Command Palette\tCtrl+Shift+P"));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
-        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New Tab"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New Tab\tCtrl+Shift+T"));
 
-        // Split submenu with all four directions
-        const split_menu = CreatePopupMenu() orelse return;
-        _ = AppendMenuW(split_menu, MF_STRING, CTX_SPLIT_RIGHT, std.unicode.utf8ToUtf16LeStringLiteral("Split Right"));
-        _ = AppendMenuW(split_menu, MF_STRING, CTX_SPLIT_DOWN, std.unicode.utf8ToUtf16LeStringLiteral("Split Down"));
-        _ = AppendMenuW(split_menu, MF_STRING, CTX_SPLIT_LEFT, std.unicode.utf8ToUtf16LeStringLiteral("Split Left"));
-        _ = AppendMenuW(split_menu, MF_STRING, CTX_SPLIT_UP, std.unicode.utf8ToUtf16LeStringLiteral("Split Up"));
-        _ = AppendMenuW(menu, MF_POPUP, @intFromPtr(split_menu), std.unicode.utf8ToUtf16LeStringLiteral("Split"));
+        // Split directions as direct, top-level items (not a buried submenu) so
+        // creating a split is discoverable, with the keyboard shortcut shown so
+        // users learn it. Right/Down are the common cases and carry binds; the
+        // Left/Up variants follow for completeness.
+        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_RIGHT, std.unicode.utf8ToUtf16LeStringLiteral("Split Right\tCtrl+Shift+O"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_DOWN, std.unicode.utf8ToUtf16LeStringLiteral("Split Down\tCtrl+Shift+E"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_LEFT, std.unicode.utf8ToUtf16LeStringLiteral("Split Left"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_UP, std.unicode.utf8ToUtf16LeStringLiteral("Split Up"));
+        _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
 
-        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_WINDOW, std.unicode.utf8ToUtf16LeStringLiteral("New Window"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_WINDOW, std.unicode.utf8ToUtf16LeStringLiteral("New Window\tCtrl+Shift+N"));
 
         // Menu must be owned by top-level host HWND to avoid dismiss bugs
         _ = SetForegroundWindow(hwnd);
@@ -11465,9 +11467,12 @@ const Host = struct {
             if (profiles.len > 0) _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
         }
 
-        // Utility items
-        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("Open a new tab"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_WINDOW, std.unicode.utf8ToUtf16LeStringLiteral("New Window"));
+        // Utility items. Split lives here too (not just the right-click menu) so
+        // the one obvious "more actions" control advertises how to split a pane.
+        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New tab\tCtrl+Shift+T"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_RIGHT, std.unicode.utf8ToUtf16LeStringLiteral("Split right\tCtrl+Shift+O"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_DOWN, std.unicode.utf8ToUtf16LeStringLiteral("Split down\tCtrl+Shift+E"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_WINDOW, std.unicode.utf8ToUtf16LeStringLiteral("New window\tCtrl+Shift+N"));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
         _ = AppendMenuW(menu, MF_STRING, CTX_COMMAND_PALETTE, std.unicode.utf8ToUtf16LeStringLiteral("Command Palette\tCtrl+Shift+P"));
         _ = AppendMenuW(menu, MF_STRING, CTX_FIND, std.unicode.utf8ToUtf16LeStringLiteral("Find...\tCtrl+Shift+F"));
@@ -11511,6 +11516,12 @@ const Host = struct {
             },
             CTX_NEW_TAB => {
                 self.postDeferredNewTab();
+            },
+            CTX_SPLIT_RIGHT => {
+                runUiActionOrLog("overflow split right failed", self.app.performAction(.{ .surface = surface.core() }, .new_split, .right));
+            },
+            CTX_SPLIT_DOWN => {
+                runUiActionOrLog("overflow split down failed", self.app.performAction(.{ .surface = surface.core() }, .new_split, .down));
             },
             CTX_NEW_WINDOW => {
                 runUiActionOrLog("overflow new window failed", self.app.performAction(.{ .surface = surface.core() }, .new_window, .{}));
