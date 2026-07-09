@@ -3,7 +3,12 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      # Plain-semver release tags only (e.g. v1.3.100). The signed-release +
+      # winget/Scoop pipeline needs plain X.Y.Z and configured signing secrets,
+      # so it must NOT fire on the private prerelease tags (v*-paramux.N), which
+      # are published manually via `gh release create`.
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "!v*-*"
   workflow_dispatch:
     inputs:
       version:

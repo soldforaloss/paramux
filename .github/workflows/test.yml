@@ -18,15 +18,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Site copy checks
-        shell: pwsh
-        run: ./scripts/check-site-copy.ps1
-
-      - name: Release copy checks
-        shell: pwsh
-        # Keep CI local-only; manual release-copy validation uses -CheckRemoteLatest
-        # to avoid making PR checks depend on GitHub release API availability.
-        run: ./scripts/check-release-copy.ps1
+      # NOTE: the marketing/landing-page copy checks (scripts/check-site-copy.ps1
+      # and scripts/check-release-copy.ps1) are intentionally NOT run here. They
+      # enforce a public marketing site + winget/Scoop package listings that
+      # paramux does not have yet (private fork). Re-enable them once the public
+      # site and package manifests exist and their expected copy is real.
 
       - name: Setup Zig
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
