@@ -1272,6 +1272,7 @@ const host_overlay_surface_title_label_utf8 = "Window title:";
 const host_overlay_tab_title_label_utf8 = "Tab title:";
 const host_overlay_command_palette_label = std.unicode.utf8ToUtf16LeStringLiteral("Command:");
 const host_tab_new_button_label = std.unicode.utf8ToUtf16LeStringLiteral("+");
+const host_tab_split_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{25EB}"); // ◫ square bisected = split
 const host_tab_dropdown_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{25BE}"); // dropdown chevron
 const titlebar_icon_font_fluent = std.unicode.utf8ToUtf16LeStringLiteral("Segoe Fluent Icons");
 const titlebar_icon_font_mdl2 = std.unicode.utf8ToUtf16LeStringLiteral("Segoe MDL2 Assets");
@@ -1280,6 +1281,7 @@ const titlebar_glyph_maximize = std.unicode.utf8ToUtf16LeStringLiteral("\u{E922}
 const titlebar_glyph_restore = std.unicode.utf8ToUtf16LeStringLiteral("\u{E923}");
 const titlebar_glyph_close = std.unicode.utf8ToUtf16LeStringLiteral("\u{E8BB}");
 const titlebar_glyph_new_tab = std.unicode.utf8ToUtf16LeStringLiteral("\u{E710}");
+const titlebar_glyph_split = std.unicode.utf8ToUtf16LeStringLiteral("\u{E90D}");
 const titlebar_glyph_dropdown = std.unicode.utf8ToUtf16LeStringLiteral("\u{E70D}");
 const host_banner_inspector_inactive = "Inspector hidden. Terminal view is active.";
 const search_results_idle = "Type to search";
@@ -7931,6 +7933,7 @@ const TitlebarButtonRole = enum {
     maximize,
     close,
     new_tab,
+    split,
     dropdown,
 };
 
@@ -7940,6 +7943,7 @@ const TitlebarGlyphKind = enum {
     restore,
     close,
     new_tab,
+    split,
     dropdown,
 };
 
@@ -7986,6 +7990,7 @@ fn titlebarGlyphCodepoint(kind: TitlebarGlyphKind) u16 {
         .restore => 0xE923,
         .close => 0xE8BB,
         .new_tab => 0xE710,
+        .split => 0xE90D, // Segoe "DockRight" — reads as split-into-a-right-pane
         .dropdown => 0xE70D,
     };
 }
@@ -7997,6 +8002,7 @@ fn titlebarGlyphText(kind: TitlebarGlyphKind) [*:0]const u16 {
         .restore => titlebar_glyph_restore,
         .close => titlebar_glyph_close,
         .new_tab => titlebar_glyph_new_tab,
+        .split => titlebar_glyph_split,
         .dropdown => titlebar_glyph_dropdown,
     };
 }
@@ -8008,6 +8014,7 @@ fn titlebarFallbackIcon(kind: TitlebarGlyphKind) win32_icons.Kind {
         .restore => .restore,
         .close => .close,
         .new_tab => .plus,
+        .split => .plus, // fallback bitmap only; the Segoe glyph is the real icon
         .dropdown => .arrow_down,
     };
 }
@@ -8061,20 +8068,20 @@ fn titlebarButtonVisual(
     }
 
     const idle_glyph = switch (role) {
-        .new_tab, .dropdown => theme.button_chrome_fg,
+        .new_tab, .split, .dropdown => theme.button_chrome_fg,
         else => theme.text_primary,
     };
     if (!active) return .{ .bg = null, .glyph = idle_glyph };
 
     const target_bg = switch (role) {
         .close => rgb(0xC4, 0x2B, 0x1C),
-        .minimize, .maximize, .new_tab, .dropdown => titlebarSubtleFill(parent_bg, theme.is_dark, pressed),
+        .minimize, .maximize, .new_tab, .split, .dropdown => titlebarSubtleFill(parent_bg, theme.is_dark, pressed),
         .none => parent_bg,
     };
     const target_glyph = switch (role) {
         .close => if (pressed) blendColorRGB(target_bg, rgb(0xFF, 0xFF, 0xFF), 0.70) else rgb(0xFF, 0xFF, 0xFF),
         .minimize, .maximize => theme.text_primary,
-        .new_tab, .dropdown => theme.text_primary,
+        .new_tab, .split, .dropdown => theme.text_primary,
         .none => idle_glyph,
     };
 
@@ -8405,6 +8412,8 @@ const Host = struct {
     chrome_button_prev_proc: ?*const anyopaque = null,
     new_tab_hwnd: ?HWND = null,
     new_tab_placement: ChildPlacement = .{},
+    split_hwnd: ?HWND = null, // one-click split-pane button (◫)
+    split_placement: ChildPlacement = .{},
     overlay_label_placement: ChildPlacement = .{},
     overlay_edit_placement: ChildPlacement = .{},
     overlay_hint_placement: ChildPlacement = .{},
@@ -9667,6 +9676,7 @@ const Host = struct {
         const chrome_prev = self.chrome_button_prev_proc;
         self.chrome_button_prev_proc = null;
         destroySubclassedWindowWithPrev(&self.new_tab_hwnd, chrome_prev);
+        destroySubclassedWindowWithPrev(&self.split_hwnd, chrome_prev);
         destroySubclassedWindowWithPrev(&self.overflow_hwnd, chrome_prev);
 
         destroyChildWindow(&self.palette_list_hwnd);
@@ -10205,6 +10215,7 @@ const Host = struct {
     fn titlebarActionButtonRole(self: *Host, child: HWND) TitlebarButtonRole {
         if (!self.usingIntegratedTitlebar()) return .none;
         if (self.new_tab_hwnd != null and child == self.new_tab_hwnd.?) return .new_tab;
+        if (self.split_hwnd != null and child == self.split_hwnd.?) return .split;
         if (self.overflow_hwnd != null and child == self.overflow_hwnd.?) return .dropdown;
         return .none;
     }
@@ -10220,6 +10231,9 @@ const Host = struct {
             .minimize, .maximize, .close => self.repaintTopChrome(),
             .new_tab => {
                 if (self.new_tab_hwnd) |hwnd| _ = InvalidateRect(hwnd, null, 0);
+            },
+            .split => {
+                if (self.split_hwnd) |hwnd| _ = InvalidateRect(hwnd, null, 0);
             },
             .dropdown => {
                 if (self.overflow_hwnd) |hwnd| _ = InvalidateRect(hwnd, null, 0);
@@ -10617,6 +10631,24 @@ const Host = struct {
                 null,
             ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
             self.subclassButton(self.new_tab_hwnd.?, &hostButtonProc, &self.chrome_button_prev_proc);
+        }
+
+        if (self.split_hwnd == null) {
+            self.split_hwnd = CreateWindowExW(
+                0,
+                prompt_button_class,
+                host_tab_split_button_label,
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+                0,
+                0,
+                host_tab_small_button_width,
+                host_tab_height - 8,
+                hwnd,
+                @ptrFromInt(1905),
+                self.app.hinstance,
+                null,
+            ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
+            self.subclassButton(self.split_hwnd.?, &hostButtonProc, &self.chrome_button_prev_proc);
         }
 
         if (self.overflow_hwnd == null) {
@@ -11894,6 +11926,7 @@ const Host = struct {
 
         const glyph: TitlebarGlyphKind = switch (role) {
             .new_tab => .new_tab,
+            .split => .split,
             .dropdown => .dropdown,
             else => return,
         };
@@ -12454,9 +12487,10 @@ const Host = struct {
 
     fn rightButtonsWidth(self: *const Host) i32 {
         if (self.usingIntegratedTitlebar()) {
-            return self.scaled(host_titlebar_action_button_size) * 2 + self.scaled(12);
+            return self.scaled(host_titlebar_action_button_size) * 3 + self.scaled(12);
         }
         return self.scaled(host_tab_small_button_width) + // new tab (+)
+            self.scaled(host_tab_small_button_width) + // split (◫)
             self.scaled(host_tab_overflow_button_width) + // dropdown chevron (▾)
             self.scaled(12); // gap + margins
     }
@@ -13286,6 +13320,22 @@ const Host = struct {
                 ),
             ) or changed.*;
             changed.* = applyChildVisibility(button_hwnd, &self.overflow_placement, true) or changed.*;
+        }
+        button_x -= self.scaled(4);
+        if (self.split_hwnd) |button_hwnd| {
+            const split_width = if (titlebar_actions) action_size else self.scaled(host_tab_small_button_width);
+            button_x -= split_width;
+            changed.* = applyChildRect(
+                button_hwnd,
+                &self.split_placement,
+                childRect(
+                    button_x,
+                    if (titlebar_actions) action_y else button_y,
+                    split_width,
+                    if (titlebar_actions) action_size else button_height,
+                ),
+            ) or changed.*;
+            changed.* = applyChildVisibility(button_hwnd, &self.split_placement, true) or changed.*;
         }
         button_x -= self.scaled(4);
         if (self.new_tab_hwnd) |button_hwnd| {
@@ -19981,6 +20031,12 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     },
                     1904 => {
                         v.postDeferredNewTab();
+                        return 0;
+                    },
+                    1905 => {
+                        if (v.activeSurface()) |surface| {
+                            runUiActionOrLog("split button failed", v.app.performAction(.{ .surface = surface.core() }, .new_split, .right));
+                        }
                         return 0;
                     },
                     1911 => {
