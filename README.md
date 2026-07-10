@@ -83,11 +83,11 @@ path today.
 ## Try the current prerelease
 
 The current test build is
-[`v0.1.0-paramux.7`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.7),
+[`v0.1.0-paramux.8`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.8),
 published 2026-07-10 for Windows x64:
 
-- [`paramux-0.1.0-paramux.7-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.7/paramux-0.1.0-paramux.7-windows-x64-portable.zip)
-- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.7/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.0-paramux.8-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.8/paramux-0.1.0-paramux.8-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.8/SHA256SUMS-windows-x64.txt)
 
 This build adds CLI lifecycle management (`+install`, `+uninstall`,
 checksum-verified in-place `+update`) on top of the `v0.1.0-paramux.6`
@@ -103,7 +103,7 @@ first release the CLI can update FROM: future releases apply with
    release checksum:
 
 ```powershell
-Get-FileHash .\paramux-0.1.0-paramux.7-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\paramux-0.1.0-paramux.8-windows-x64-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 

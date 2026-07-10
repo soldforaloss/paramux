@@ -7,12 +7,12 @@ separate from the current user path.
 ## Current distribution contract
 
 As of 2026-07-10, the current build is the public prerelease
-[`v0.1.0-paramux.7`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.7).
+[`v0.1.0-paramux.8`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.8).
 The release is visible only to people who can access `soldforaloss/paramux`.
 
 It publishes exactly these two assets:
 
-- `paramux-0.1.0-paramux.7-windows-x64-portable.zip`
+- `paramux-0.1.0-paramux.8-windows-x64-portable.zip`
 - `SHA256SUMS-windows-x64.txt`
 
 This artifact is branding-complete: its embedded README, command completions,
@@ -78,7 +78,7 @@ The app binaries are written to `zig-out\bin\paramux.exe` and
 Use the Windows packaging script with an explicit architecture:
 
 ```powershell
-$version = "0.1.0-paramux.7"
+$version = "0.1.0-paramux.8"
 powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1 `
   -Version $version `
   -Architecture x64 `
@@ -88,7 +88,7 @@ powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1 `
 The portable output is staged beneath:
 
 ```text
-dist\artifacts\paramux-0.1.0-paramux.7-windows-x64\
+dist\artifacts\paramux-0.1.0-paramux.8-windows-x64\
 ```
 
 The packaging script performs its own package smoke checks and emits the
@@ -111,7 +111,7 @@ powershell -ExecutionPolicy Bypass -File scripts/check-windows-x64-baseline.ps1 
   -Path zig-out\bin\paramux.exe
 
 Get-FileHash `
-  .\dist\artifacts\paramux-0.1.0-paramux.7-windows-x64\paramux-0.1.0-paramux.7-windows-x64-portable.zip `
+  .\dist\artifacts\paramux-0.1.0-paramux.8-windows-x64\paramux-0.1.0-paramux.8-windows-x64-portable.zip `
   -Algorithm SHA256
 ```
 
@@ -123,7 +123,7 @@ temporary directory and verify:
 Get-AuthenticodeSignature .\paramux\paramux.exe | Select-Object Status, StatusMessage
 ```
 
-For `v0.1.0-paramux.7`, `NotSigned` is the expected signature status. A future
+For `v0.1.0-paramux.8`, `NotSigned` is the expected signature status. A future
 signed channel must instead fail closed unless the expected Authenticode signer
 and checksum both validate.
 
