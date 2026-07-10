@@ -165,7 +165,7 @@ function Assert-HookCommand {
 
     Assert-Equal $Hook.type 'command' 'Claude hook type'
     Assert-Equal $Hook.command '__PARAMUX_EXECUTABLE__?RUN_INSTALL_PARAMUX_PS1' 'Claude hook template executable'
-    Assert-Sequence @($Hook.args) @('+notify', "--state=$ExpectedState", $ExpectedMessage) 'Claude hook args'
+    Assert-Sequence @($Hook.args) @('notify', "--state=$ExpectedState", $ExpectedMessage) 'Claude hook args'
 }
 
 $claudePath = Join-Path $hooksRoot 'claude-code.settings.json'
@@ -383,7 +383,7 @@ if (!["ENOENT", "EINVAL"].includes(result.error.code)) process.exit(94);
     $calls = Read-FakeCalls $fakeLog
     Assert-Equal $calls.Count 3 'Codex fake call count'
     for ($index = 0; $index -lt $codexCases.Count; $index++) {
-        Assert-Sequence @($calls[$index].Arguments) @('+notify', "--state=$($codexCases[$index].State)", $codexCases[$index].Message) "Codex call $index args"
+        Assert-Sequence @($calls[$index].Arguments) @('notify', "--state=$($codexCases[$index].State)", $codexCases[$index].Message) "Codex call $index args"
     }
 
     Remove-Item -LiteralPath $fakeLog -Force
@@ -400,7 +400,7 @@ if (!["ENOENT", "EINVAL"].includes(result.error.code)) process.exit(94);
     $calls = Read-FakeCalls $fakeLog
     Assert-Equal $calls.Count 3 'Gemini fake call count'
     for ($index = 0; $index -lt $geminiCases.Count; $index++) {
-        Assert-Sequence @($calls[$index].Arguments) @('+notify', "--state=$($geminiCases[$index].State)", $geminiCases[$index].Message) "Gemini call $index args"
+        Assert-Sequence @($calls[$index].Arguments) @('notify', "--state=$($geminiCases[$index].State)", $geminiCases[$index].Message) "Gemini call $index args"
     }
 
     foreach ($adapterPath in @($codexAdapterPath, $geminiAdapterPath)) {
@@ -469,7 +469,7 @@ await plugin.event({ event: { type: "session.status", properties: { sessionID: "
     $calls = Read-FakeCalls $fakeLog
     Assert-Equal $calls.Count 4 'OpenCode fake call count and error precedence'
     for ($index = 0; $index -lt $openCodeCases.Count; $index++) {
-        Assert-Sequence @($calls[$index].Arguments) @('+notify', "--state=$($openCodeCases[$index].State)", $openCodeCases[$index].Message) "OpenCode call $index args"
+        Assert-Sequence @($calls[$index].Arguments) @('notify', "--state=$($openCodeCases[$index].State)", $openCodeCases[$index].Message) "OpenCode call $index args"
     }
 
     Assert-True (-not (Test-Path -LiteralPath $hostileLog)) 'No hostile working-directory launcher may execute'
