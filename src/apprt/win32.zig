@@ -686,6 +686,10 @@ const CTX_SPLIT_LEFT: usize = 4011;
 const CTX_SPLIT_UP: usize = 4012;
 const CTX_CLOSE_SURFACE: usize = 4013;
 const CTX_TAB_OVERVIEW: usize = 4014;
+const CTX_ZOOM_PANE: usize = 4015;
+const CTX_EQUALIZE_SPLITS: usize = 4016;
+const CTX_MERGE_PANES: usize = 4017;
+const CTX_SETTINGS: usize = 4018;
 const CTX_TAB_RENAME: usize = 4020;
 const CTX_TAB_CLOSE: usize = 4021;
 const CTX_TAB_CLOSE_OTHERS: usize = 4022;
@@ -703,6 +707,37 @@ const SEARCH_RESULTS_ID: usize = 2107;
 const SEARCH_CLOSE_ID: usize = 2108;
 const MF_POPUP: UINT = 0x00000010;
 const MF_CHECKED: UINT = 0x00000008;
+
+// Tooltip control (comctl32 "tooltips_class32"). One tooltip window per
+// Host; each icon-only chrome button registers as a TTF_SUBCLASS tool so
+// hover relay is automatic (no TTM_RELAYEVENT plumbing).
+const tooltips_class_name = std.unicode.utf8ToUtf16LeStringLiteral("tooltips_class32");
+const TTS_ALWAYSTIP: DWORD = 0x01;
+const TTS_NOPREFIX: DWORD = 0x02;
+const TTF_IDISHWND: u32 = 0x0001;
+const TTF_SUBCLASS: u32 = 0x0010;
+const TTM_ADDTOOLW: UINT = 0x0400 + 50;
+const TTM_SETMAXTIPWIDTH: UINT = 0x0400 + 24;
+const ICC_WIN95_CLASSES: u32 = 0x000000FF;
+
+const INITCOMMONCONTROLSEX = extern struct {
+    dwSize: u32,
+    dwICC: u32,
+};
+
+const TOOLINFOW = extern struct {
+    cbSize: u32,
+    uFlags: u32,
+    hwnd: ?HWND,
+    uId: usize,
+    rect: RECT,
+    hinst: ?*anyopaque,
+    lpszText: ?[*:0]const u16,
+    lParam: LPARAM,
+    lpReserved: ?*anyopaque,
+};
+
+extern "comctl32" fn InitCommonControlsEx(picce: *const INITCOMMONCONTROLSEX) callconv(.winapi) BOOL;
 
 const WNDPROC = win32_types.WNDPROC;
 const SHORT = i16;
@@ -1291,7 +1326,18 @@ const host_overlay_surface_title_label_utf8 = "Window title:";
 const host_overlay_tab_title_label_utf8 = "Tab title:";
 const host_overlay_command_palette_label = std.unicode.utf8ToUtf16LeStringLiteral("Command:");
 const host_tab_new_button_label = std.unicode.utf8ToUtf16LeStringLiteral("+");
+const tooltip_new_tab = std.unicode.utf8ToUtf16LeStringLiteral("New tab (Ctrl+Shift+T)\nRight-click: new window \u{00B7} Middle-click: split");
+const tooltip_split_right = std.unicode.utf8ToUtf16LeStringLiteral("Split right (Ctrl+Shift+O)");
+const tooltip_split_down = std.unicode.utf8ToUtf16LeStringLiteral("Split down (Ctrl+Shift+E)");
+const tooltip_more_actions = std.unicode.utf8ToUtf16LeStringLiteral("More actions");
+const tooltip_search_prev = std.unicode.utf8ToUtf16LeStringLiteral("Previous match (Shift+Enter)");
+const tooltip_search_next = std.unicode.utf8ToUtf16LeStringLiteral("Next match (Enter)");
+const tooltip_search_regex = std.unicode.utf8ToUtf16LeStringLiteral("Regular expression");
+const tooltip_search_case = std.unicode.utf8ToUtf16LeStringLiteral("Match case");
+const tooltip_search_word = std.unicode.utf8ToUtf16LeStringLiteral("Whole word");
+const tooltip_search_close = std.unicode.utf8ToUtf16LeStringLiteral("Close search (Esc)");
 const host_tab_split_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{25EB}"); // ◫ square bisected = split
+const host_tab_split_down_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{229F}"); // ⊟ squared minus = split down
 const host_tab_dropdown_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{25BE}"); // dropdown chevron
 const titlebar_icon_font_fluent = std.unicode.utf8ToUtf16LeStringLiteral("Segoe Fluent Icons");
 const titlebar_icon_font_mdl2 = std.unicode.utf8ToUtf16LeStringLiteral("Segoe MDL2 Assets");
@@ -1301,6 +1347,7 @@ const titlebar_glyph_restore = std.unicode.utf8ToUtf16LeStringLiteral("\u{E923}"
 const titlebar_glyph_close = std.unicode.utf8ToUtf16LeStringLiteral("\u{E8BB}");
 const titlebar_glyph_new_tab = std.unicode.utf8ToUtf16LeStringLiteral("\u{E710}");
 const titlebar_glyph_split = std.unicode.utf8ToUtf16LeStringLiteral("\u{E90D}");
+const titlebar_glyph_split_down = std.unicode.utf8ToUtf16LeStringLiteral("\u{E90E}");
 const titlebar_glyph_dropdown = std.unicode.utf8ToUtf16LeStringLiteral("\u{E70D}");
 const host_banner_inspector_inactive = "Inspector hidden. Terminal view is active.";
 const search_results_idle = "Type to search";
@@ -8451,6 +8498,7 @@ const TitlebarButtonRole = enum {
     close,
     new_tab,
     split,
+    split_down,
     dropdown,
 };
 
@@ -8461,6 +8509,7 @@ const TitlebarGlyphKind = enum {
     close,
     new_tab,
     split,
+    split_down,
     dropdown,
 };
 
@@ -8508,6 +8557,7 @@ fn titlebarGlyphCodepoint(kind: TitlebarGlyphKind) u16 {
         .close => 0xE8BB,
         .new_tab => 0xE710,
         .split => 0xE90D, // Segoe "DockRight" — reads as split-into-a-right-pane
+        .split_down => 0xE90E, // Segoe "DockBottom" — split-into-a-bottom-pane
         .dropdown => 0xE70D,
     };
 }
@@ -8520,6 +8570,7 @@ fn titlebarGlyphText(kind: TitlebarGlyphKind) [*:0]const u16 {
         .close => titlebar_glyph_close,
         .new_tab => titlebar_glyph_new_tab,
         .split => titlebar_glyph_split,
+        .split_down => titlebar_glyph_split_down,
         .dropdown => titlebar_glyph_dropdown,
     };
 }
@@ -8532,6 +8583,7 @@ fn titlebarFallbackIcon(kind: TitlebarGlyphKind) win32_icons.Kind {
         .close => .close,
         .new_tab => .plus,
         .split => .plus, // fallback bitmap only; the Segoe glyph is the real icon
+        .split_down => .plus, // fallback bitmap only; the Segoe glyph is the real icon
         .dropdown => .arrow_down,
     };
 }
@@ -8585,20 +8637,20 @@ fn titlebarButtonVisual(
     }
 
     const idle_glyph = switch (role) {
-        .new_tab, .split, .dropdown => theme.button_chrome_fg,
+        .new_tab, .split, .split_down, .dropdown => theme.button_chrome_fg,
         else => theme.text_primary,
     };
     if (!active) return .{ .bg = null, .glyph = idle_glyph };
 
     const target_bg = switch (role) {
         .close => rgb(0xC4, 0x2B, 0x1C),
-        .minimize, .maximize, .new_tab, .split, .dropdown => titlebarSubtleFill(parent_bg, theme.is_dark, pressed),
+        .minimize, .maximize, .new_tab, .split, .split_down, .dropdown => titlebarSubtleFill(parent_bg, theme.is_dark, pressed),
         .none => parent_bg,
     };
     const target_glyph = switch (role) {
         .close => if (pressed) blendColorRGB(target_bg, rgb(0xFF, 0xFF, 0xFF), 0.70) else rgb(0xFF, 0xFF, 0xFF),
         .minimize, .maximize => theme.text_primary,
-        .new_tab, .split, .dropdown => theme.text_primary,
+        .new_tab, .split, .split_down, .dropdown => theme.text_primary,
         .none => idle_glyph,
     };
 
@@ -8927,11 +8979,14 @@ const Host = struct {
 
     overflow_hwnd: ?HWND = null, // dropdown chevron (▾)
     overflow_placement: ChildPlacement = .{},
+    tooltip_hwnd: ?HWND = null, // shared tooltip control for icon-only buttons
     chrome_button_prev_proc: ?*const anyopaque = null,
     new_tab_hwnd: ?HWND = null,
     new_tab_placement: ChildPlacement = .{},
     split_hwnd: ?HWND = null, // one-click split-pane button (◫)
     split_placement: ChildPlacement = .{},
+    split_down_hwnd: ?HWND = null, // one-click split-down button (⊟)
+    split_down_placement: ChildPlacement = .{},
     overlay_label_placement: ChildPlacement = .{},
     overlay_edit_placement: ChildPlacement = .{},
     overlay_hint_placement: ChildPlacement = .{},
@@ -10195,7 +10250,9 @@ const Host = struct {
         self.chrome_button_prev_proc = null;
         destroySubclassedWindowWithPrev(&self.new_tab_hwnd, chrome_prev);
         destroySubclassedWindowWithPrev(&self.split_hwnd, chrome_prev);
+        destroySubclassedWindowWithPrev(&self.split_down_hwnd, chrome_prev);
         destroySubclassedWindowWithPrev(&self.overflow_hwnd, chrome_prev);
+        destroyChildWindow(&self.tooltip_hwnd);
 
         destroyChildWindow(&self.palette_list_hwnd);
 
@@ -10774,6 +10831,7 @@ const Host = struct {
         if (!self.usingIntegratedTitlebar()) return .none;
         if (self.new_tab_hwnd != null and child == self.new_tab_hwnd.?) return .new_tab;
         if (self.split_hwnd != null and child == self.split_hwnd.?) return .split;
+        if (self.split_down_hwnd != null and child == self.split_down_hwnd.?) return .split_down;
         if (self.overflow_hwnd != null and child == self.overflow_hwnd.?) return .dropdown;
         return .none;
     }
@@ -10792,6 +10850,9 @@ const Host = struct {
             },
             .split => {
                 if (self.split_hwnd) |hwnd| _ = InvalidateRect(hwnd, null, 0);
+            },
+            .split_down => {
+                if (self.split_down_hwnd) |hwnd| _ = InvalidateRect(hwnd, null, 0);
             },
             .dropdown => {
                 if (self.overflow_hwnd) |hwnd| _ = InvalidateRect(hwnd, null, 0);
@@ -11199,6 +11260,54 @@ const Host = struct {
         self.hideOverlay();
     }
 
+    /// Lazily create the per-Host tooltip control. Advisory: a null return
+    /// just means no tooltips (never worth failing chrome creation over).
+    fn ensureTooltipWindow(self: *Host) ?HWND {
+        if (self.tooltip_hwnd) |tip| return tip;
+        const hwnd = self.hwnd orelse return null;
+        var icc = INITCOMMONCONTROLSEX{
+            .dwSize = @sizeOf(INITCOMMONCONTROLSEX),
+            .dwICC = ICC_WIN95_CLASSES,
+        };
+        _ = InitCommonControlsEx(&icc);
+        self.tooltip_hwnd = CreateWindowExW(
+            0,
+            tooltips_class_name,
+            null,
+            WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+            0,
+            0,
+            0,
+            0,
+            hwnd,
+            null,
+            self.app.hinstance,
+            null,
+        );
+        if (self.tooltip_hwnd) |tip| {
+            // Any positive max width enables multi-line ("\n") tips.
+            _ = SendMessageW(tip, TTM_SETMAXTIPWIDTH, 0, 480);
+        }
+        return self.tooltip_hwnd;
+    }
+
+    /// Attach hover tooltip text to a child control.
+    fn addTooltip(self: *Host, tool_hwnd: HWND, text: [*:0]const u16) void {
+        const tip = self.ensureTooltipWindow() orelse return;
+        var info = TOOLINFOW{
+            .cbSize = @sizeOf(TOOLINFOW),
+            .uFlags = TTF_IDISHWND | TTF_SUBCLASS,
+            .hwnd = self.hwnd,
+            .uId = @intFromPtr(tool_hwnd),
+            .rect = std.mem.zeroes(RECT),
+            .hinst = null,
+            .lpszText = text,
+            .lParam = 0,
+            .lpReserved = null,
+        };
+        _ = SendMessageW(tip, TTM_ADDTOOLW, 0, @bitCast(@intFromPtr(&info)));
+    }
+
     fn ensureChromeButtons(self: *Host) !void {
         const hwnd = self.hwnd orelse return;
 
@@ -11218,6 +11327,7 @@ const Host = struct {
                 null,
             ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
             self.subclassButton(self.new_tab_hwnd.?, &hostButtonProc, &self.chrome_button_prev_proc);
+            self.addTooltip(self.new_tab_hwnd.?, tooltip_new_tab);
         }
 
         if (self.split_hwnd == null) {
@@ -11236,6 +11346,26 @@ const Host = struct {
                 null,
             ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
             self.subclassButton(self.split_hwnd.?, &hostButtonProc, &self.chrome_button_prev_proc);
+            self.addTooltip(self.split_hwnd.?, tooltip_split_right);
+        }
+
+        if (self.split_down_hwnd == null) {
+            self.split_down_hwnd = CreateWindowExW(
+                0,
+                prompt_button_class,
+                host_tab_split_down_button_label,
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+                0,
+                0,
+                host_tab_small_button_width,
+                host_tab_height - 8,
+                hwnd,
+                @ptrFromInt(1906),
+                self.app.hinstance,
+                null,
+            ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
+            self.subclassButton(self.split_down_hwnd.?, &hostButtonProc, &self.chrome_button_prev_proc);
+            self.addTooltip(self.split_down_hwnd.?, tooltip_split_down);
         }
 
         if (self.overflow_hwnd == null) {
@@ -11254,6 +11384,7 @@ const Host = struct {
                 null,
             ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
             self.subclassButton(self.overflow_hwnd.?, &hostButtonProc, &self.chrome_button_prev_proc);
+            self.addTooltip(self.overflow_hwnd.?, tooltip_more_actions);
         }
     }
 
@@ -11948,11 +12079,20 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_DOWN, std.unicode.utf8ToUtf16LeStringLiteral("Split Down\tCtrl+Shift+E"));
         _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_LEFT, std.unicode.utf8ToUtf16LeStringLiteral("Split Left"));
         _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_UP, std.unicode.utf8ToUtf16LeStringLiteral("Split Up"));
+
+        // Multi-pane layout actions. Grayed with a single pane so the menu
+        // teaches what becomes possible once you split.
         const pane_count = if (self.activeTab()) |tab| tab.leafCount() else 1;
+        const is_zoomed = if (self.activeTab()) |tab| tab.tree.zoomed != null else false;
+        const multi_flag: UINT = if (pane_count > 1) MF_STRING else MF_GRAYED;
+        _ = AppendMenuW(menu, multi_flag, CTX_ZOOM_PANE, zoomPaneMenuLabel(is_zoomed));
+        _ = AppendMenuW(menu, multi_flag, CTX_EQUALIZE_SPLITS, std.unicode.utf8ToUtf16LeStringLiteral("Equalize Splits"));
+        _ = AppendMenuW(menu, multi_flag, CTX_MERGE_PANES, std.unicode.utf8ToUtf16LeStringLiteral("Merge Panes (Close Others)"));
         _ = AppendMenuW(menu, MF_STRING, CTX_CLOSE_SURFACE, closeSurfaceMenuLabel(pane_count));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
 
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_WINDOW, std.unicode.utf8ToUtf16LeStringLiteral("New Window\tCtrl+Shift+N"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_SETTINGS, std.unicode.utf8ToUtf16LeStringLiteral("Settings...\tCtrl+,"));
 
         // Menu must be owned by top-level host HWND to avoid dismiss bugs
         _ = SetForegroundWindow(hwnd);
@@ -12002,11 +12142,23 @@ const Host = struct {
             CTX_SPLIT_UP => {
                 runUiActionOrLog("context menu split up failed", self.app.performAction(.{ .surface = surface.core() }, .new_split, .up));
             },
+            CTX_ZOOM_PANE => {
+                runUiActionOrLog("context menu zoom pane failed", self.app.performAction(.{ .surface = surface.core() }, .toggle_split_zoom, {}));
+            },
+            CTX_EQUALIZE_SPLITS => {
+                runUiActionOrLog("context menu equalize splits failed", self.app.performAction(.{ .surface = surface.core() }, .equalize_splits, {}));
+            },
+            CTX_MERGE_PANES => {
+                self.mergePanesKeepFocused();
+            },
             CTX_CLOSE_SURFACE => {
                 runUiActionOrLog("context menu close pane failed", surface.core_surface.performBindingAction(.{ .close_surface = {} }));
             },
             CTX_NEW_WINDOW => {
                 runUiActionOrLog("context menu new window failed", self.app.performAction(.{ .surface = surface.core() }, .new_window, .{}));
+            },
+            CTX_SETTINGS => {
+                runUiActionOrLog("context menu settings failed", self.app.openConfig());
             },
             else => {}, // 0 = cancel, ignore
         }
@@ -12097,17 +12249,23 @@ const Host = struct {
 
         // Utility items. Split lives here too (not just the right-click menu) so
         // the one obvious "more actions" control advertises how to split a pane.
-        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New tab\tCtrl+Shift+T"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New Tab\tCtrl+Shift+T"));
         _ = AppendMenuW(menu, MF_STRING, CTX_TAB_OVERVIEW, std.unicode.utf8ToUtf16LeStringLiteral("Tabs / Workspaces..."));
-        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_RIGHT, std.unicode.utf8ToUtf16LeStringLiteral("Split right\tCtrl+Shift+O"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_DOWN, std.unicode.utf8ToUtf16LeStringLiteral("Split down\tCtrl+Shift+E"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_RIGHT, std.unicode.utf8ToUtf16LeStringLiteral("Split Right\tCtrl+Shift+O"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_DOWN, std.unicode.utf8ToUtf16LeStringLiteral("Split Down\tCtrl+Shift+E"));
         const pane_count = if (self.activeTab()) |tab| tab.leafCount() else 1;
+        const is_zoomed = if (self.activeTab()) |tab| tab.tree.zoomed != null else false;
+        const multi_flag: UINT = if (pane_count > 1) MF_STRING else MF_GRAYED;
+        _ = AppendMenuW(menu, multi_flag, CTX_ZOOM_PANE, zoomPaneMenuLabel(is_zoomed));
+        _ = AppendMenuW(menu, multi_flag, CTX_EQUALIZE_SPLITS, std.unicode.utf8ToUtf16LeStringLiteral("Equalize Splits"));
+        _ = AppendMenuW(menu, multi_flag, CTX_MERGE_PANES, std.unicode.utf8ToUtf16LeStringLiteral("Merge Panes (Close Others)"));
         _ = AppendMenuW(menu, MF_STRING, CTX_CLOSE_SURFACE, closeSurfaceMenuLabel(pane_count));
-        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_WINDOW, std.unicode.utf8ToUtf16LeStringLiteral("New window\tCtrl+Shift+N"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_WINDOW, std.unicode.utf8ToUtf16LeStringLiteral("New Window\tCtrl+Shift+N"));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
         _ = AppendMenuW(menu, MF_STRING, CTX_COMMAND_PALETTE, std.unicode.utf8ToUtf16LeStringLiteral("Command Palette\tCtrl+Shift+P"));
         _ = AppendMenuW(menu, MF_STRING, CTX_FIND, std.unicode.utf8ToUtf16LeStringLiteral("Find...\tCtrl+Shift+F"));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
+        _ = AppendMenuW(menu, MF_STRING, CTX_SETTINGS, std.unicode.utf8ToUtf16LeStringLiteral("Settings...\tCtrl+,"));
         _ = AppendMenuW(menu, MF_STRING, CTX_INSPECTOR, std.unicode.utf8ToUtf16LeStringLiteral("Toggle Inspector"));
 
         _ = SetForegroundWindow(hwnd);
@@ -12157,16 +12315,102 @@ const Host = struct {
             CTX_SPLIT_DOWN => {
                 runUiActionOrLog("overflow split down failed", self.app.performAction(.{ .surface = surface.core() }, .new_split, .down));
             },
+            CTX_ZOOM_PANE => {
+                runUiActionOrLog("overflow zoom pane failed", self.app.performAction(.{ .surface = surface.core() }, .toggle_split_zoom, {}));
+            },
+            CTX_EQUALIZE_SPLITS => {
+                runUiActionOrLog("overflow equalize splits failed", self.app.performAction(.{ .surface = surface.core() }, .equalize_splits, {}));
+            },
+            CTX_MERGE_PANES => {
+                self.mergePanesKeepFocused();
+            },
             CTX_CLOSE_SURFACE => {
                 runUiActionOrLog("overflow close pane failed", surface.core_surface.performBindingAction(.{ .close_surface = {} }));
             },
             CTX_NEW_WINDOW => {
                 runUiActionOrLog("overflow new window failed", self.app.performAction(.{ .surface = surface.core() }, .new_window, .{}));
             },
+            CTX_SETTINGS => {
+                runUiActionOrLog("overflow settings failed", self.app.openConfig());
+            },
             CTX_INSPECTOR => {
                 runUiActionOrLog("overflow inspector toggle failed", self.app.toggleInspectorForSurface(surface));
             },
             else => {},
+        }
+    }
+
+    /// "Merge Panes": keep the focused pane, close every other pane in the
+    /// active tab so the focused one takes the whole tab. Mirrors per-pane
+    /// close semantics — asks once (via the confirm overlay) iff any victim
+    /// pane protects a running process, otherwise merges immediately.
+    fn mergePanesKeepFocused(self: *Host) void {
+        const tab = self.activeTab() orelse return;
+        if (tab.leafCount() <= 1) return;
+        const focused_surface = tab.focusedSurface() orelse return;
+
+        var victim_count: usize = 0;
+        var needs_confirm = false;
+        var it = tab.tree.iterator();
+        while (it.next()) |entry| {
+            if (entry.view == focused_surface) continue;
+            victim_count += 1;
+            if (entry.view.core_initialized and entry.view.core_surface.needsConfirmQuit()) {
+                needs_confirm = true;
+            }
+        }
+        if (victim_count == 0) return;
+
+        if (!needs_confirm) {
+            self.mergePanesDestroyOthers();
+            return;
+        }
+
+        var body_buf: [128]u8 = undefined;
+        const body = std.fmt.bufPrint(
+            &body_buf,
+            "This closes {d} other pane{s} in this tab. Running processes in them will be terminated.",
+            .{ victim_count, if (victim_count == 1) "" else "s" },
+        ) catch "This closes the other panes in this tab. Running processes in them will be terminated.";
+        self.showConfirm(
+            "Merge panes?",
+            body,
+            "Merge",
+            "Cancel",
+            &hostConfirmMergePanesAccept,
+            null,
+            @ptrCast(self),
+        ) catch |err| {
+            std.log.warn("merge panes confirm overlay unavailable err={}; declining merge", .{err});
+        };
+    }
+
+    /// Accept path for `mergePanesKeepFocused`. Re-derives the victim list
+    /// from the CURRENT tree (panes may have changed while the confirm was
+    /// up), then destroys each victim window; `windowDestroyed` collapses
+    /// the split tree one removal at a time.
+    fn mergePanesDestroyOthers(self: *Host) void {
+        const tab = self.activeTab() orelse return;
+        const focused_surface = tab.focusedSurface() orelse return;
+        const alloc = self.app.core_app.alloc;
+
+        var victims: std.ArrayList(*Surface) = .empty;
+        defer victims.deinit(alloc);
+        var it = tab.tree.iterator();
+        while (it.next()) |entry| {
+            if (entry.view == focused_surface) continue;
+            victims.append(alloc, entry.view) catch return;
+        }
+
+        for (victims.items) |victim| {
+            victim.invalidateStructuralHistoryForClose();
+            if (victim.hwnd) |victim_hwnd| _ = DestroyWindow(victim_hwnd);
+        }
+
+        // A single remaining pane has nothing to zoom against; drop any
+        // zoom the removals migrated onto it.
+        if (self.activeTab()) |merged_tab| {
+            if (merged_tab.leafCount() <= 1) merged_tab.tree.zoom(null);
         }
     }
 
@@ -12532,6 +12776,7 @@ const Host = struct {
         const glyph: TitlebarGlyphKind = switch (role) {
             .new_tab => .new_tab,
             .split => .split,
+            .split_down => .split_down,
             .dropdown => .dropdown,
             else => return,
         };
@@ -13092,12 +13337,13 @@ const Host = struct {
 
     fn rightButtonsWidth(self: *const Host) i32 {
         if (self.usingIntegratedTitlebar()) {
-            return self.scaled(host_titlebar_action_button_size) * 3 + self.scaled(12);
+            return self.scaled(host_titlebar_action_button_size) * 4 + self.scaled(16);
         }
         return self.scaled(host_tab_small_button_width) + // new tab (+)
             self.scaled(host_tab_small_button_width) + // split (◫)
+            self.scaled(host_tab_small_button_width) + // split down (⊟)
             self.scaled(host_tab_overflow_button_width) + // dropdown chevron (▾)
-            self.scaled(12); // gap + margins
+            self.scaled(16); // gaps + margins
     }
 
     /// Pixels reserved for the 3 caption buttons (min / max / close)
@@ -13925,6 +14171,22 @@ const Host = struct {
                 ),
             ) or changed.*;
             changed.* = applyChildVisibility(button_hwnd, &self.overflow_placement, true) or changed.*;
+        }
+        button_x -= self.scaled(4);
+        if (self.split_down_hwnd) |button_hwnd| {
+            const split_down_width = if (titlebar_actions) action_size else self.scaled(host_tab_small_button_width);
+            button_x -= split_down_width;
+            changed.* = applyChildRect(
+                button_hwnd,
+                &self.split_down_placement,
+                childRect(
+                    button_x,
+                    if (titlebar_actions) action_y else button_y,
+                    split_down_width,
+                    if (titlebar_actions) action_size else button_height,
+                ),
+            ) or changed.*;
+            changed.* = applyChildVisibility(button_hwnd, &self.split_down_placement, true) or changed.*;
         }
         button_x -= self.scaled(4);
         if (self.split_hwnd) |button_hwnd| {
@@ -16681,6 +16943,15 @@ fn surfaceConfirmCloseAccept(userdata: ?*anyopaque) void {
     if (surface.hwnd) |hwnd| _ = DestroyWindow(hwnd);
 }
 
+/// Accept callback for the "Merge panes?" overlay. `userdata` is the
+/// `*Host` that raised it; the Host outlives the overlay (the overlay is
+/// its own child UI), so the pointer is valid here.
+fn hostConfirmMergePanesAccept(userdata: ?*anyopaque) void {
+    const ud = userdata orelse return;
+    const host: *Host = @ptrCast(@alignCast(ud));
+    host.mergePanesDestroyOthers();
+}
+
 /// Accept callback for a deferred paste confirm. Ownership of the
 /// duplicated payload passes here and is released after synchronous
 /// core ingestion.
@@ -18376,6 +18647,17 @@ fn searchBarButtonLabel(role: SearchBarButtonRole) LPCWSTR {
         .case_sensitive => search_case_label,
         .whole_word => search_word_label,
         .close => search_close_label,
+    };
+}
+
+fn searchBarButtonTooltip(role: SearchBarButtonRole) [*:0]const u16 {
+    return switch (role) {
+        .prev => tooltip_search_prev,
+        .next => tooltip_search_next,
+        .regex => tooltip_search_regex,
+        .case_sensitive => tooltip_search_case,
+        .whole_word => tooltip_search_word,
+        .close => tooltip_search_close,
     };
 }
 
@@ -20663,6 +20945,12 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                         }
                         return 0;
                     },
+                    1906 => {
+                        if (v.activeSurface()) |surface| {
+                            runUiActionOrLog("split down button failed", v.app.performAction(.{ .surface = surface.core() }, .new_split, .down));
+                        }
+                        return 0;
+                    },
                     1911 => {
                         v.showOverflowMenu();
                         return 0;
@@ -20777,6 +21065,24 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                         .horizontal => IDC_SIZEWE,
                         .vertical => IDC_SIZENS,
                     }));
+                    return 0;
+                }
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+
+        WM_RBUTTONUP => {
+            if (host) |v| {
+                const mx = signedLowWord(lParamBits(lParam));
+                const my = signedHighWord(lParamBits(lParam));
+                // Right-click on a sidebar row: focus that pane first, then
+                // offer the pane menu — it targets the active surface, which
+                // is now the clicked row's pane.
+                if (v.activateSidebarRowAtPoint(mx, my)) {
+                    var pt = POINT{ .x = mx, .y = my };
+                    if (ClientToScreen(hwnd, &pt) != 0) {
+                        v.showContextMenu(pt.x, pt.y);
+                    }
                     return 0;
                 }
             }
@@ -21157,9 +21463,16 @@ fn sidebarRowIndexAtPoint(rect: RECT, row_height: i32, x: i32, y: i32, row_count
 
 fn closeSurfaceMenuLabel(pane_count: usize) [*:0]const u16 {
     return if (pane_count > 1)
-        std.unicode.utf8ToUtf16LeStringLiteral("Close pane\tCtrl+Shift+W")
+        std.unicode.utf8ToUtf16LeStringLiteral("Close Pane\tCtrl+Shift+W")
     else
-        std.unicode.utf8ToUtf16LeStringLiteral("Close tab\tCtrl+Shift+W");
+        std.unicode.utf8ToUtf16LeStringLiteral("Close Tab\tCtrl+Shift+W");
+}
+
+fn zoomPaneMenuLabel(zoomed: bool) [*:0]const u16 {
+    return if (zoomed)
+        std.unicode.utf8ToUtf16LeStringLiteral("Unzoom Pane\tCtrl+Shift+Enter")
+    else
+        std.unicode.utf8ToUtf16LeStringLiteral("Zoom Pane\tCtrl+Shift+Enter");
 }
 
 fn pointInRect(point: POINT, rect: RECT) bool {
@@ -24481,6 +24794,7 @@ pub const Surface = struct {
             &hostButtonProc,
             &self.search_bar_button_prev_procs[@intFromEnum(role)],
         );
+        host.addTooltip(hwnd, searchBarButtonTooltip(role));
         return hwnd;
     }
 
@@ -34878,6 +35192,8 @@ test "win32 titlebar glyph mapping uses Win11 glyph codepoints" {
     try std.testing.expectEqual(@as(u16, 0xE923), titlebarGlyphCodepoint(.restore));
     try std.testing.expectEqual(@as(u16, 0xE8BB), titlebarGlyphCodepoint(.close));
     try std.testing.expectEqual(@as(u16, 0xE710), titlebarGlyphCodepoint(.new_tab));
+    try std.testing.expectEqual(@as(u16, 0xE90D), titlebarGlyphCodepoint(.split));
+    try std.testing.expectEqual(@as(u16, 0xE90E), titlebarGlyphCodepoint(.split_down));
     try std.testing.expectEqual(@as(u16, 0xE70D), titlebarGlyphCodepoint(.dropdown));
 }
 
