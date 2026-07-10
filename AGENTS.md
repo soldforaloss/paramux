@@ -34,8 +34,9 @@ This fork has removed the upstream `macos/` Xcode app and the
 ## Issue and PR Guidelines
 
 - Never create an issue.
-- Never create a PR to the upstream Ghostty repo; only work against this
-  fork, `amanthanvi/winghostty`.
+- Never create a PR to the upstream Ghostty repo or the predecessor
+  `amanthanvi/winghostty`; only work against this repo,
+  `soldforaloss/paramux`.
 - If the user asks you to create an issue or PR, confirm the target is this
   fork and refuse any upstream publish request. If publishing is still
   disallowed by the active task contract, offer a local patch summary or
@@ -43,6 +44,15 @@ This fork has removed the upstream `macos/` Xcode app and the
 
 ## Self-Correction Log
 
+- 2026-07-09: The winghostty→paramux rebrand renamed the identifiers that older
+  entries below cite in present tense. Current values: repo
+  `soldforaloss/paramux` (not `amanthanvi/winghostty` — pin `gh` ops with
+  `--repo soldforaloss/paramux`), binaries `paramux.exe`/`paramux.com`, AUMID
+  `io.github.soldforaloss.paramux` (not `com.ghostty.winghostty`), WNDCLASSes
+  `paramux.win32.*`, clipboard format `CF_PARAMUX_TAB`, state dir
+  `%LOCALAPPDATA%\paramux`, installer source `dist/windows/paramux.iss`, icon
+  `dist/windows/paramux.ico`. Dated entries below are preserved as history;
+  map their identifiers through this table.
 - 2026-05-02: Lowercasing Zig type aliases to satisfy naming review can collide with same-named declarations or locals in Zig's shared declaration namespace; check for helper/local name conflicts before committing mechanical renames.
 - 2026-05-01: In this fork, with both `origin` and `upstream` remotes configured, bare `gh pr view <n>` can resolve the upstream Ghostty PR number; use `-R amanthanvi/winghostty` for fork-local PR review/checks.
 - 2026-05-01: When invoking `scripts/dev-windows.cmd zig build test -Dtest-filter=...`, keep the filter value to one token (quote it or use a no-space substring) or `zig build` treats trailing words as step names.
@@ -116,7 +126,7 @@ This fork has removed the upstream `macos/` Xcode app and the
 - 2026-04-22: Packaged Win32 toast identity needs the installer-created shortcuts to set the same `AppUserModelID` as runtime (`com.ghostty.winghostty`). Runtime `SetCurrentProcessExplicitAppUserModelID` and registry metadata are not enough for packaged shortcut identity; keep `dist/windows/winghostty.iss` `[Icons]` entries in sync.
 - 2026-04-22: Zig sentinel slices exclude the trailing sentinel from `.len`; never pass `len - 1` to Win32 `TextOutW` / `DrawTextW` for `[:0]u16` UI caches. Empty overlay strings then underflow in Safe builds, and non-empty strings lose their final character.
 - 2026-04-21: Interactive Win11 bootstrap helpers must not `exit (Invoke-...)` around child harness runs; PowerShell captures child stdout in expression position and hides the PASS sentinel used by the composite validator. Report exit code through an out/ref parameter so stdout streams normally.
-- 2026-04-20: Publish branches and PRs for this fork against `origin` / `amanthanvi/winghostty`, never `upstream` / `ghostty-org/ghostty`. Verify the target repo explicitly before `git push` and `gh pr create`.
+- 2026-04-20: Publish branches and PRs for this repo against `origin` (now `soldforaloss/paramux`; originally `amanthanvi/winghostty`), never `upstream` / `ghostty-org/ghostty` or the predecessor fork. Verify the target repo explicitly before `git push` and `gh pr create`.
 - 2026-04-19: Win32 split focus must update the tab's focused split handle from the surface focus path, not only `core_app.focusSurface()`. Otherwise click/refocus changes terminal input focus but later split actions still target the stale active pane.
 - 2026-04-19: Win32 native child HWND repaint cannot be tied to hosted-surface repaint. During live resize, WGL surface paints can defer, but docked search child controls must still invalidate; overlay/palette child controls also need explicit invalidation because `WS_CLIPCHILDREN` prevents host paints from repainting their pixels.
 - 2026-04-19: In Win32 `paintChrome()`, `BeginPaint.rcPaint` is only a bounding rect for the update region, not exact proof that every chrome band needs work. Guard band painting with actual clip visibility (`RectVisible`) after a coarse intersection check, or top+status invalidations will still drag the content/search path through a false full-window paint.

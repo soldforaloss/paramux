@@ -1,238 +1,199 @@
-# Packaging winghostty for Distribution
+# Packaging Paramux for Windows
 
-This repository publishes Windows user artifacts directly from GitHub Releases.
-The public packaging targets are:
+Paramux is currently distributed as a private Windows prerelease. This page
+describes the artifacts that exist today and keeps future distribution work
+separate from the current user path.
 
-- `winghostty-<version>-windows-x64-setup.exe`
-- `winghostty-<version>-windows-x64-portable.zip`
-- `winghostty-<version>-windows-arm64-setup.exe`
-- `winghostty-<version>-windows-arm64-portable.zip`
+## Current distribution contract
+
+As of 2026-07-09, the current build is the private prerelease
+[`v0.1.0-paramux.4`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.4).
+The release is visible only to people who can access `soldforaloss/paramux`.
+
+It publishes exactly these two assets:
+
+- `paramux-0.1.0-paramux.4-windows-x64-portable.zip`
 - `SHA256SUMS-windows-x64.txt`
-- `SHA256SUMS-windows-arm64.txt`
-- `SHA256SUMS.txt` legacy alias for existing x64 auto-update clients
 
-Primary distribution URL:
+The live v4 legacy test artifact predates the package-level Paramux rebrand: its embedded README
+and command-completion aliases still use the predecessor name, and its launcher
+VERSIONINFO is blank. The current packaging source rejects all three defects.
+A new prerelease is required before distributing a branding-complete artifact.
 
-```text
-https://github.com/amanthanvi/winghostty/releases
-```
+The executable is **unsigned**. The ZIP is a portable build, and
+`install-paramux.cmd` inside it is a convenience script that unblocks the
+extracted files and adds that folder to the current user's `PATH`. It is not a
+Windows installer and does not install Paramux under Program Files.
 
-## Release Inputs
+The following distribution channels are planned, not current:
 
-winghostty releases use plain semver tags such as `v1.3.100`.
+- an Authenticode-signed installer
+- signed portable binaries
+- a public stable release channel
+- WinGet and Scoop packages
+- ARM64 release artifacts
 
-Release versioning standard:
+Do not advertise commands or artifacts for those channels until the required
+signing identity, manifests, release assets, and hardware verification exist.
 
-- `major.minor` track the Ghostty upstream compatibility line
-- `patch` is the winghostty release number on that line
-- fork releases should start at patch `100` for a new upstream line
+## Portable package contents
 
-The exact upstream base release is stored in
-`dist/windows/release-metadata.json`. For example, a release tagged
-`v1.3.105` can still declare `upstreamBaseVersion = 1.3.2`.
+The staged `paramux` directory contains the runnable binaries and their resource
+tree, including:
 
-The release workflow builds the Windows executable, stages runtime files, then
-produces:
+- `paramux.exe` and the console launcher `paramux.com`
+- `install-paramux.cmd` and `install-paramux.ps1`
+- concrete Claude Code, Codex, Gemini CLI, and OpenCode adapters under
+  `agent-hooks`, plus the root `paramux-codex-hook.cmd` launcher
+- `config-presets\tmux-prefix.ghostty`, validated by the packaged binary
+- `ghostty-vt.dll`
+- the packaged `share` tree used for themes, terminfo, and shell integration
+- `config-template.ghostty`, `paramux.ico`, `README.md`, and `LICENSE`
 
-1. An Inno Setup installer
-2. A portable ZIP
-3. SHA256 checksums for published assets
-4. A release icon asset
-5. Generated package-manager metadata
+Keep the extracted tree together. Copying only `paramux.exe` drops resources
+that the app expects at runtime. The `.ghostty` config extension,
+`libghostty-vt` name, and Ghostty resource names are intentionally retained
+from the terminal core lineage.
 
-Local unsigned packaging is still allowed for smoke validation, but the GitHub
-Release workflow requires signing and fails closed when signing is absent. The
-release installer and Windows PE files inside the portable ZIP are
-Authenticode-signed; the ZIP container itself is checksummed, not
-Authenticode-signed. SmartScreen and publisher trust should still be treated as
-incomplete until winghostty moves from internal/self-signed signing to a
-publicly trusted certificate.
+## Build locally
 
-## Local Packaging
-
-Build the app first:
+The repository is pinned to Zig `0.15.2` in CI. From the repository root:
 
 ```powershell
 zig build -Demit-exe=true
 ```
 
-If Zig cannot hydrate its dependency cache automatically in your environment,
-seed the Windows build dependency cache first:
+If Zig cannot hydrate the dependency cache automatically, seed it first:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/fetch-zig-deps.ps1
 zig build -Demit-exe=true
 ```
 
-Then stage release assets:
+The app binaries are written to `zig-out\bin\paramux.exe` and
+`zig-out\bin\paramux.com`.
+
+## Stage an x64 portable package
+
+Use the Windows packaging script with an explicit architecture:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1 -Version 1.3.100
+$version = "0.1.0-paramux.4"
+powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1 `
+  -Version $version `
+  -Architecture x64 `
+  -SkipInstaller
 ```
 
-In a native Windows ARM64 PowerShell process, the packaging script defaults to
-ARM64. An x64/emulated shell defaults to x64, even on ARM64 hardware. Pass
-`-Architecture x64` or `-Architecture arm64` explicitly when you need a specific
-target.
+The portable output is staged beneath:
 
-If Inno Setup is available on the machine, the packaging script can also build
-the installer. If it is not installed, the portable artifact and checksums are
-still produced so packaging can be validated locally.
+```text
+dist\artifacts\paramux-0.1.0-paramux.4-windows-x64\
+```
 
-To exercise the local signing path, export these environment variables first:
+The packaging script performs its own package smoke checks and emits the
+portable ZIP plus `SHA256SUMS-windows-x64.txt`. Unsigned local packaging is the
+expected path for the current private prerelease.
+
+`-SkipInstaller` keeps prerelease suffixes out of Inno Setup's numeric version
+fields and produces only the artifact that exists today. A separate numeric
+version plus `-RequireInstaller` and `-RequireSigning` exercises the future
+signed distribution path; it is not part of rebuilding the current portable
+prerelease.
+
+## Verify a portable package
+
+Run the x64 baseline guard and inspect the staged files before uploading:
 
 ```powershell
-$env:WINDOWS_CODESIGN_PFX_PATH = "C:\secure\winghostty-signing.pfx"
+powershell -ExecutionPolicy Bypass -File scripts/check-windows-x64-baseline.ps1 -SelfTest
+powershell -ExecutionPolicy Bypass -File scripts/check-windows-x64-baseline.ps1 `
+  -Path zig-out\bin\paramux.exe
+
+Get-FileHash `
+  .\dist\artifacts\paramux-0.1.0-paramux.4-windows-x64\paramux-0.1.0-paramux.4-windows-x64-portable.zip `
+  -Algorithm SHA256
+```
+
+Compare the hash with `SHA256SUMS-windows-x64.txt`, then extract the ZIP to a
+temporary directory and verify:
+
+```powershell
+.\paramux\paramux.com +version
+Get-AuthenticodeSignature .\paramux\paramux.exe | Select-Object Status, StatusMessage
+```
+
+For `v0.1.0-paramux.4`, `NotSigned` is the expected signature status. A future
+signed channel must instead fail closed unless the expected Authenticode signer
+and checksum both validate.
+
+## Private prerelease checklist
+
+For the current release lane:
+
+1. Run targeted tests for the changed code, followed by `zig build`.
+2. Run the x64 baseline check.
+3. Stage the x64 portable package with the intended prerelease version.
+4. Confirm the ZIP contains the full resource tree and both PATH-helper files.
+5. Confirm `paramux.com +version` runs from the extracted ZIP.
+6. Confirm the checksum file matches the uploaded ZIP.
+7. Publish to `soldforaloss/paramux` as a **prerelease**, not a stable release.
+8. Upload only the artifacts that were actually built and verified.
+
+The repository and release are private. Do not describe this lane as a public
+download or package-manager release.
+
+## Planned signed installer
+
+The packaging code has Authenticode and Inno Setup support ready for a future
+signed channel. That channel still requires a real code-signing identity and a
+release decision.
+
+The signing inputs are:
+
+- `WINDOWS_CODESIGN_PFX_BASE64`
+- `WINDOWS_CODESIGN_PFX_PASSWORD`
+- optional `WINDOWS_CODESIGN_TIMESTAMP_URL`
+- optional `WINDOWS_CODESIGN_TRUST_SELF_SIGNED` for internal probes only
+
+An internal signing smoke can use a local PFX:
+
+```powershell
+$env:WINDOWS_CODESIGN_PFX_PATH = "C:\secure\paramux-signing.pfx"
 $env:WINDOWS_CODESIGN_PFX_PASSWORD = "<pfx-password>"
-$env:WINDOWS_CODESIGN_TRUST_SELF_SIGNED = "true" # only for internal/self-signed PFXs
+$env:WINDOWS_CODESIGN_TRUST_SELF_SIGNED = "true"
+
 powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1 `
-  -Version 1.3.100 `
+  -Version 0.1.0 `
+  -Architecture x64 `
   -RequireInstaller `
   -RequireSigning
 ```
 
-To generate the package-manager metadata from staged release assets:
+Self-signed validation is useful for an internal packaging probe, but it does
+not create public publisher trust or SmartScreen reputation.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/package-package-managers.ps1 `
-  -Version 1.3.100 `
-  -Architectures @("x64", "arm64") `
-  -UpstreamBaseVersion 1.3.2 `
-  -FirstForkPatch 100
-```
+## Planned ARM64 and package-manager tracks
 
-This emits:
+The build and packaging scripts contain ARM64 and package-manager scaffolding,
+but no ARM64 asset, WinGet package, or Scoop bucket is part of the current
+Paramux release. Before enabling those tracks:
 
-- `dist/artifacts/winghostty-<version>-windows-x64/package-managers/scoop/`
-- `dist/artifacts/winghostty-<version>-windows-x64/package-managers/metadata.json`
+- build and test on real ARM64 Windows hardware
+- publish matching architecture-specific checksums
+- choose and bootstrap Paramux-owned package identifiers and manifests
+- point all package metadata at `soldforaloss/paramux`
+- verify install, upgrade, and uninstall behavior end to end
 
-## Release Automation
+Old Winghostty package identifiers and repositories are predecessor history;
+they are not Paramux distribution channels.
 
-The release workflow publishes to the official Windows package-manager tracks
-after the GitHub Release is live. The preflight fails closed unless signing is
-configured and both remote package-manager manifests already exist.
+## Versioning and lineage
 
-Release metadata comes from the committed `dist/windows/release-metadata.json`
-file, so the release tag, generated package-manager metadata, and GitHub release
-notes all agree on the current upstream base.
+Current private test tags use `v0.1.0-paramux.<revision>`. The exact inherited
+Ghostty compatibility base remains recorded in
+`dist/windows/release-metadata.json` for maintainers.
 
-Automated releases should use a dedicated GitHub Actions environment named
-`release`. The workflow now resolves signing secrets from that environment
-or the repo default secret scope and runs `scripts/release-preflight.ps1`
-before build/test/package work starts.
-
-### Authenticode Signing
-
-Required for the GitHub `Release` workflow:
-
-- Secret: `WINDOWS_CODESIGN_PFX_BASE64`
-- Secret: `WINDOWS_CODESIGN_PFX_PASSWORD`
-
-Optional:
-
-- Environment or repo variable: `WINDOWS_CODESIGN_TIMESTAMP_URL`
-  Default: `http://timestamp.digicert.com`
-- Environment or repo variable: `WINDOWS_CODESIGN_TRUST_SELF_SIGNED`
-  Default: unset / false
-
-Recommended setup:
-
-1. Export a password-protected `.pfx` that contains the private key and full
-   certificate chain for the Windows code-signing identity.
-2. Base64-encode that file locally.
-3. Store the base64 and password in the `release` environment, not plain repo
-   scope, so release signing stays isolated from unrelated workflows.
-
-Example `gh` commands:
-
-```powershell
-$repo = "amanthanvi/winghostty"
-$pfxPath = "C:\secure\winghostty-signing.pfx"
-$pfxBase64 = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($pfxPath))
-
-$pfxBase64 | gh secret set WINDOWS_CODESIGN_PFX_BASE64 --repo $repo --env release
-gh secret set WINDOWS_CODESIGN_PFX_PASSWORD --repo $repo --env release --body "<pfx-password>"
-gh variable set WINDOWS_CODESIGN_TIMESTAMP_URL --repo $repo --env release --body "http://timestamp.digicert.com"
-gh variable set WINDOWS_CODESIGN_TRUST_SELF_SIGNED --repo $repo --env release --body "true"
-```
-
-If you prefer a different RFC 3161/Authenticode timestamp service, set
-`WINDOWS_CODESIGN_TIMESTAMP_URL` explicitly. The packaging script will default
-to DigiCert when the variable is absent.
-
-When `WINDOWS_CODESIGN_TRUST_SELF_SIGNED=true`, signature validation accepts
-the expected self-signed signer thumbprint plus the narrow untrusted-root
-statuses reported by `Get-AuthenticodeSignature`. This keeps
-internal/self-signed release probes green on the current runner. It does not
-create public publisher trust on other machines.
-
-### Release Runbook
-
-Recommended order:
-
-1. Update `dist/windows/release-metadata.json` if the upstream compatibility
-   line or `firstForkPatch` changed.
-2. Configure or rotate the `release` environment signing secrets.
-3. Run the **Release Readiness** workflow with the target plain semver
-   version, for example `1.3.107`.
-4. After readiness passes, either:
-   - push tag `v<version>`, or
-   - manually dispatch the **Release** workflow with `version=<version>`.
-5. Confirm the workflow published artifacts for both x64 and ARM64:
-   - installer
-   - portable ZIP
-   - `SHA256SUMS-windows-<arch>.txt`
-   - legacy x64 `SHA256SUMS.txt`
-   - GitHub Release notes/assets
-6. Confirm follow-on publishes:
-   - Scoop manifest update
-   - WinGet submission
-
-If a tag already exists and the workflow failed before publish, configure the
-missing signing secrets and then rerun the failed `Release` workflow or
-manually dispatch **Release** with the same version. The workflow is idempotent
-for release creation/upload because it uses `gh release create` on first
-publish and `gh release upload --clobber` on reruns.
-
-### WinGet
-
-- Secret: `WINGETCREATE_TOKEN`
-- Repo variable: `WINGET_PACKAGE_IDENTIFIER`
-- Current automation path: `wingetcreate update ... --submit`
-
-The official WinGet package is bootstrapped as `AmanThanvi.winghostty`.
-Release preflight verifies that
-`microsoft/winget-pkgs/manifests/a/AmanThanvi/winghostty` exists before the
-release workflow can claim package-manager readiness. Keep CI on the truthful
-`update` path; do not switch to `wingetcreate new` for automated releases.
-
-### Scoop
-
-- Secret: `SCOOP_BUCKET_TOKEN`
-- Repo variable: `SCOOP_BUCKET_REPO`
-- Optional repo variables: `SCOOP_BUCKET_BRANCH`, `SCOOP_BUCKET_MANIFEST_PATH`
-
-The workflow updates a manifest in a configured Scoop bucket repository. It
-does not attempt to auto-open PRs against `ScoopInstaller/Extras`; that path is
-review-driven and should stay explicit.
-
-The official Scoop track is the fork-owned bucket:
-
-```powershell
-scoop bucket add winghostty https://github.com/amanthanvi/scoop-winghostty
-scoop install winghostty/winghostty
-```
-
-Release preflight verifies that the configured manifest exists, defaulting to
-`bucket/winghostty.json` when `SCOOP_BUCKET_MANIFEST_PATH` is unset.
-
-## Zig Version
-
-This repo is pinned to Zig `0.15.2` in CI. Packaging should use the same Zig
-version unless the repo is intentionally updated to a newer one.
-
-## Library Consumers
-
-`libghostty-vt` remains intentionally retained and keeps its existing public
-name. The app binary and Windows packaging are rebranded to `winghostty`, but
-the library surface is not being renamed as part of this packaging cleanup.
+Paramux descends from Winghostty and Ghostty, but its app identity, executable,
+release assets, paths, and repository target are Paramux-owned. The retained
+`libghostty-vt` library keeps its upstream public name.

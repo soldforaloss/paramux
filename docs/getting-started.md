@@ -1,233 +1,297 @@
-# Getting started
+# Getting started with Paramux
 
-Step by step: download, install, launch, configure, and uninstall.
+This guide covers the current private Windows prerelease: download, verify,
+extract, add Paramux to `PATH`, launch agent panes, configure the terminal, and
+uninstall it.
 
-## 1. Download
+## 1. Get the private x64 prerelease
 
-Install with WinGet:
+The current build is
+[`v0.1.0-paramux.4`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.4)
+in the private `soldforaloss/paramux` repository. You must be signed in to an
+account with repository access.
 
-```powershell
-winget install AmanThanvi.winghostty
-```
+Download both assets:
 
-Or install from the fork-owned Scoop bucket:
+- `paramux-0.1.0-paramux.4-windows-x64-portable.zip`
+- `SHA256SUMS-windows-x64.txt`
 
-```powershell
-scoop bucket add winghostty https://github.com/amanthanvi/scoop-winghostty
-scoop install winghostty/winghostty
-```
+This is an **unsigned x64 portable prerelease**. There is no current Paramux
+installer, WinGet package, Scoop package, ARM64 release, or public stable
+download.
 
-You can also go to
-[Releases](https://github.com/amanthanvi/winghostty/releases) and grab:
+The live v4 ZIP is a legacy test artifact: its embedded README/completion aliases
+and launcher VERSIONINFO predate the package-level Paramux rebrand. It also
+predates some features in this guide — the packaged tmux-prefix preset
+(section 7) and the `+send`/`+send-key` commands (section 9) ship in builds
+newer than v4. The current source fixes these gaps, but a replacement
+prerelease has not been published.
 
-- **Installer:** `winghostty-<version>-windows-<arch>-setup.exe`
-- **Portable ZIP:** `winghostty-<version>-windows-<arch>-portable.zip`
-- **Checksums:** `SHA256SUMS-windows-<arch>.txt`
+Paramux requires Windows 10 or Windows 11 and a GPU/driver that exposes OpenGL
+4.3 or newer through WGL.
 
-Use `x64` or `arm64` for `<arch>`. The current stable release is `1.3.116`;
-both architectures have installer and portable ZIP assets. The legacy
-`SHA256SUMS.txt` file remains an x64 compatibility alias.
+## 2. Verify the download
 
-Verify a download (optional):
-
-```powershell
-Get-FileHash .\winghostty-<version>-windows-<arch>-setup.exe -Algorithm SHA256
-# Compare the output against SHA256SUMS-windows-<arch>.txt
-```
-
-## 2. Install
-
-### Option A — Package manager
-
-Use the WinGet or Scoop commands above. Both official package-manager tracks
-point at the same GitHub Release assets and checksums.
-
-### Option B — Installer
-
-1. Double-click `winghostty-<version>-windows-<arch>-setup.exe`.
-2. Current release builds are Authenticode-signed. SmartScreen can still warn
-   on a new publisher reputation, but the installer signature should be present
-   and valid.
-3. Accept the MIT license and install.
-4. Launch **winghostty** from the Start menu.
-
-### Option C — Portable
-
-1. Extract the ZIP anywhere (for example, `C:\Tools\winghostty\`).
-2. Run `winghostty.exe`.
-3. The Windows binaries inside the ZIP are Authenticode-signed. The ZIP
-   container itself is checksummed, not Authenticode-signed, and SmartScreen may
-   show the same warning.
-
-## 3. First launch
-
-On first launch, winghostty creates `%LOCALAPPDATA%\winghostty\` and writes a
-config template at `%LOCALAPPDATA%\winghostty\config.ghostty` with inline
-syntax notes. It then picks a conservative default shell. You can override
-with `command = <path>` in your config (see below).
-
-## 4. Set a font and theme
-
-Open the config file:
+From the folder containing both downloaded files:
 
 ```powershell
-notepad "$env:LOCALAPPDATA\winghostty\config.ghostty"
+Get-FileHash `
+  .\paramux-0.1.0-paramux.4-windows-x64-portable.zip `
+  -Algorithm SHA256
+Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 
-Add a few options:
+Confirm the two SHA-256 values match before running the unsigned build.
 
-```ini
-font-family = JetBrains Mono
-font-size   = 12
-# Pick a theme from: winghostty +list-themes
-# Theme files are config files; only use themes from sources you trust.
-theme       = Dracula
-```
+## 3. Extract and add Paramux to `PATH`
 
-Save. Reload config without restarting with **Ctrl + Shift + ,**.
+1. Extract the ZIP into a permanent parent folder, for example `C:\Tools\`.
+   The archive contains a top-level `paramux` folder, so the tree lands at
+   `C:\Tools\paramux\`.
+2. Keep the entire extracted tree together. Paramux needs its packaged `share`
+   resources; do not copy only `paramux.exe` elsewhere.
+3. Double-click `install-paramux.cmd` inside the extracted `paramux` folder.
+4. Open a **new** terminal so the updated user `PATH` is visible.
 
-See every option with inline docs:
+`install-paramux.cmd` runs the adjacent PowerShell helper. It removes the
+download mark from files in that extracted folder and adds the folder to the
+current user's `PATH`; it does not copy files to Program Files and does not
+require administrator access.
+
+You can skip the helper and run `paramux.exe` directly from the extracted
+folder if you do not want to change `PATH`.
+
+## 4. Launch Paramux
+
+From a new PowerShell or Command Prompt window:
 
 ```powershell
-winghostty +show-config --default --docs | more
+paramux
 ```
 
-## 5. Keybindings
-
-Default keybindings follow Windows conventions. Full list:
+Launch directly into a coding agent or another command:
 
 ```powershell
-winghostty +list-keybinds
+paramux -e claude
+paramux -e pwsh
 ```
 
-Verified defaults you'll reach for daily:
+Windows command lookup normally selects `paramux.com` for the CLI command; the
+console launcher starts the adjacent `paramux.exe` application.
+
+## 5. Create tabs and split panes
+
+The tab strip exposes an always-visible split button (`◫`) between the new-tab
+button and the menu. Clicking it creates a split to the right. The menu and
+right-click context menu also expose split directions.
+
+Useful defaults:
 
 | Action | Binding |
 | --- | --- |
-| Copy | `Ctrl+Shift+C` |
-| Paste | `Ctrl+Shift+V` |
 | New tab | `Ctrl+Shift+T` |
-| Close tab | `Ctrl+Shift+W` |
+| Close the focused surface | `Ctrl+Shift+W` |
 | Next / previous tab | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
 | Split right / down | `Ctrl+Shift+O` / `Ctrl+Shift+E` |
+| Focus split by direction | `Ctrl+Alt+Arrow` |
+| Focus previous / next split | `Ctrl+Alt+[` / `Ctrl+Alt+]` |
+| Resize the focused split | `Ctrl+Alt+Shift+Arrow` |
 | Start search | `Ctrl+Shift+F` |
-| Increase / decrease font | `Ctrl+=` / `Ctrl+-` |
 | Reload config | `Ctrl+Shift+,` |
 
-Rebind anything:
+You can also drag a split divider with the mouse.
 
-```ini
-keybind = ctrl+t>new_tab
-keybind = ctrl+shift+r>reload_config
+See the complete effective list with:
+
+```powershell
+paramux +list-keybinds
 ```
 
-Keybind grammar (chords, `catch_all`, modifiers) is documented inline in
-`+show-config --default --docs`.
+## 6. Use the agent sidebar and attention states
 
-## 6. Use WSL as your shell
+Each pane gets a sidebar row. Depending on shell integration and the running
+process, the row can show its title, working directory, Git branch/dirty state,
+listening ports, and latest notification.
 
-winghostty supports WSL as a launched shell but does not pick it implicitly.
-Opt in explicitly:
+Paramux has four agent-attention states: `working`, `waiting`, `done`, and
+`error`. They drive the sidebar, pane and tab color cues, Windows notification,
+and taskbar attention behavior.
+
+Agent integration examples live in
+[`contrib/paramux/hooks/`](../contrib/paramux/hooks/README.md). The Claude Code
+settings example can be merged into your user or project settings. Other agent
+examples use the same command:
+
+```powershell
+paramux +notify --state=waiting "Agent needs input"
+paramux +notify --state=done "Agent finished"
+```
+
+Run `+notify` from inside the pane you want to update. Paramux injects
+`PARAMUX_SURFACE_ID` into each pane so the command can target the correct row.
+
+## 7. Configure the terminal
+
+On first launch, Paramux uses:
+
+```text
+%LOCALAPPDATA%\paramux\config.ghostty
+```
+
+Open it with:
+
+```powershell
+notepad "$env:LOCALAPPDATA\paramux\config.ghostty"
+```
+
+Example options:
+
+```ini
+font-family = JetBrains Mono
+font-size = 12
+# Theme files are config files; only use themes from sources you trust.
+theme = Dracula
+```
+
+The `.ghostty` extension and config grammar are retained from the shared
+Ghostty terminal core. Save the file and press `Ctrl+Shift+,` to reload it.
+
+List themes and inspect all options with inline documentation:
+
+```powershell
+paramux +list-themes
+paramux +show-config --default --docs | more
+```
+
+Rebind an action with the same `trigger=action` grammar:
+
+```ini
+keybind = ctrl+t=new_tab
+keybind = ctrl+shift+r=reload_config
+```
+
+### Optional tmux-style `Ctrl+B` prefix
+
+Portable packages newer than `v0.1.0-paramux.4` (or a source build per
+[HACKING.md](../HACKING.md)) include `config-presets\tmux-prefix.ghostty`. It
+uses the same built-in sequence engine as every other keybinding; no tmux
+process or WSL session is required. Add the extracted preset to your config
+with an absolute path:
+
+```ini
+config-file = "C:\\Tools\\paramux\\config-presets\\tmux-prefix.ghostty"
+```
+
+The preset covers common tmux/wmux tab, split, pane-focus, resize, zoom, close,
+and numeric-selection chords. Direct Paramux shortcuts remain available.
+
+## 8. Choose a shell
+
+The in-app profile picker detects common Windows shells, including PowerShell,
+Command Prompt, Git Bash, and explicitly configured WSL distributions. Override
+the launched command in the config when needed:
+
+```ini
+command = pwsh.exe
+```
+
+To opt in to WSL:
 
 ```ini
 command = wsl.exe
 ```
 
-## 7. In-app profile picker
+Paramux does not choose WSL implicitly because an installed WSL environment is
+not proof that a distribution can launch successfully.
 
-winghostty auto-detects installed Windows shells (PowerShell, `cmd`, Git
-Bash, opt-in WSL) and exposes them through an in-app profile picker.
-Profile selection is an in-app runtime feature; there is no user-facing
-config option to control it today. If you need to override the launched
-shell, set `command = <path>` in your config.
+## 9. Local automation
 
-## 8. Updates
-
-```ini
-auto-update = check
-```
-
-The updater hits GitHub's public releases API at most once every 24 hours,
-opens the release page if a newer stable version is available, and never
-replaces binaries silently. `auto-update = download` downloads only stable
-Windows installer releases that include architecture-specific SHA256 metadata,
-verifies the installer SHA-256 against that manifest, requires a valid Windows
-Authenticode signature, and stages the installer under the local winghostty
-state directory.
-For installer-managed installs, the update notice can launch the verified
-staged installer with an explicit user action. UAC may prompt. Portable ZIP
-auto-apply is not implemented yet. No telemetry or analytics are sent.
-
-## 9. Crash reports
-
-winghostty keeps a local crash directory at:
-
-```
-%LOCALAPPDATA%\winghostty\crash
-```
-
-Nothing in this directory is ever uploaded. On Windows, winghostty writes local
-`.dmp` minidumps for process-level unhandled exceptions when Windows can
-deliver one. Inspect what is there with:
+List the running windows, tabs, and panes:
 
 ```powershell
-winghostty +crash-report
+paramux +list-windows
 ```
 
-## 10. Local automation
+The response schema is `paramux.windows.v2`. The list response includes IDs,
+focus/active state, and structural counts; it does not include terminal text.
 
-winghostty exposes a local Windows automation surface over the same
-single-instance IPC path used by `+new-window`.
-
-List windows, tabs, and panes:
+Invoke an allowlisted action on the focused surface or a specific pane:
 
 ```powershell
-winghostty +list-windows
+paramux +perform-action new_tab
+paramux +perform-action --surface-id=<surface_id> toggle_fullscreen
 ```
 
-The JSON schema is `winghostty.windows.v2`. It exposes local window, tab, and
-pane IDs, focus/active state, and structural counts only; it does not expose
-terminal text, shell input, working directories, or file paths.
-
-Invoke a keybinding action on the focused surface:
+Read a pane's current viewport text:
 
 ```powershell
-winghostty +perform-action new_tab
+paramux +read-pane --surface-id=<surface_id>
 ```
 
-Invoke an action on a specific pane from `+list-windows`:
+Send exact UTF-8 text and a named terminal key to that pane (`+send` and
+`+send-key` are newer than the `v0.1.0-paramux.4` binary):
 
 ```powershell
-winghostty +perform-action --surface-id=<surface_id> toggle_fullscreen
+paramux +send --surface-id=<surface_id> "npm test"
+paramux +send-key --surface-id=<surface_id> enter
 ```
 
-Actions use the same names as `keybind` values. `--surface-id` is only valid
-for surface-scoped actions; app-scoped actions such as `quit` always target the
-app. Terminal-input and arbitrary file helper actions such as `text`, `csi`,
-`esc`, `paste_from_clipboard`, `write_screen_file`, and `crash` are rejected by
-the running instance. New keybinding action variants are not automation-enabled
-until explicitly reviewed and added to the allowlist.
+`+perform-action`, `+notify`, `+read-pane`, `+send`, and `+send-key` use the
+current Paramux instance token. In-pane clients receive it through
+`PARAMUX_TOKEN`; external Paramux CLI clients use the token file under
+`%LOCALAPPDATA%\paramux`. `+list-windows` remains unauthenticated for structural
+discovery.
 
-## 11. Uninstall
+`+send` accepts one non-empty, valid UTF-8 payload up to 16 KiB. `+send-key`
+supports Enter, Tab, Escape, Backspace, Delete, arrows, Home, End, Page Up, and
+Page Down while respecting the pane's active terminal keyboard modes. The
+generic action allowlist continues to reject terminal-write, arbitrary file
+helper, and crash actions. New action variants remain disabled until reviewed.
 
-- **Installer builds:** *Settings → Apps → Installed apps → winghostty →
-  Uninstall*.
-- **Portable builds:** delete the folder you extracted to.
+## 10. Updates
 
-Your config and any crash logs live under `%LOCALAPPDATA%\winghostty\` and
-are not removed by either path. Delete that folder manually for a clean
-slate.
+Do not rely on the built-in stable installer updater for the current release.
+`v0.1.0-paramux.4` is private, marked as a prerelease, portable-only, and
+unsigned. Update manually by downloading the next private portable ZIP,
+verifying its checksum, and replacing the extracted folder.
+
+A signed installer update lane is planned, but it is not a current user path.
+
+## 11. Crash reports
+
+Paramux keeps local crash data under:
+
+```text
+%LOCALAPPDATA%\paramux\crash
+```
+
+Nothing in that directory is uploaded automatically. Inspect the local report
+surface with:
+
+```powershell
+paramux +crash-report
+```
+
+## 12. Uninstall
+
+From the extracted Paramux folder, remove that folder from your user `PATH`:
+
+```powershell
+.\install-paramux.ps1 -Remove
+```
+
+Open a new terminal, then delete the extracted folder. Runtime state is kept
+separately under `%LOCALAPPDATA%\paramux` and is not removed automatically;
+delete that directory manually only if you also want to remove configuration,
+session state, and crash data.
 
 ## Next steps
 
-- [docs/status.md](status.md) — what works, what's experimental, known
-  caveats
-- [docs/windows.md](windows.md) — Windows-specific behavior,
-  troubleshooting, paths, app identity, notifications, and shell notes
-- [docs/windows-capability-matrix.md](windows-capability-matrix.md) —
-  Windows-specific behavior and docs truth
-- [HACKING.md](../HACKING.md) — build, test, runtime notes (for
-  developers)
-- [CONTRIBUTING.md](../CONTRIBUTING.md) — how to submit changes
-- [Discussions](https://github.com/amanthanvi/winghostty/discussions) —
-  questions and feedback
+- [Status](status.md) - supported behavior, current distribution status, and
+  known caveats
+- [Windows notes](windows.md) - paths, app identity, notifications, shells,
+  automation, and troubleshooting
+- [Windows capability matrix](windows-capability-matrix.md) - how inherited
+  Ghostty documentation maps to Paramux
+- [HACKING.md](../HACKING.md) - build, test, and runtime notes
+- [CONTRIBUTING.md](../CONTRIBUTING.md) - repository contribution rules

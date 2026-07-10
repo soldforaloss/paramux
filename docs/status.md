@@ -1,164 +1,188 @@
-# Status
+# Paramux status
 
-What currently works in winghostty, what is experimental, and what is out of
-scope. When this page disagrees with a commit message, trust this page.
+This page describes what currently works in Paramux, what remains partial, and
+what is not part of the current release. When release copy disagrees with this
+page, prefer the checked artifact and repository state.
 
-Last updated: 2026-05-24, against current fork HEAD.
+Last reviewed: 2026-07-09, against the repository worktree pending the next
+prerelease. The shipped private `v0.1.0-paramux.4` ZIP predates several items
+below; they are marked where that matters.
 
-For a row-by-row mapping against official Ghostty docs, see
-[windows-capability-matrix.md](windows-capability-matrix.md).
-For Windows-specific install paths, app identity, shell behavior,
-notifications, quick terminal notes, and troubleshooting, see
-[windows.md](windows.md).
+Paramux is derived from Winghostty, which in turn carries the Ghostty terminal
+core into a native Windows runtime. Ghostty names remain where they identify an
+upstream protocol, config format, resource, or library; the current product,
+commands, state paths, and repository are Paramux-owned.
 
-## Supported platform
+For installation and first use, see [getting-started.md](getting-started.md).
+For Windows paths, app identity, notifications, and troubleshooting, see
+[windows.md](windows.md). The
+[Windows capability matrix](windows-capability-matrix.md) maps inherited
+Ghostty documentation to current Paramux behavior.
 
-- **Windows 10** and **Windows 11** — x64 and ARM64
-- No macOS, Linux, or cross-platform app runtime ships from this repo.
-  `libghostty-vt` remains buildable for non-Windows targets as a library.
-- WSL *as a launched shell* works when you opt in (`command = wsl.exe`).
-  Implicit-default WSL is avoided because `wsl.exe --status` reporting
-  healthy is not a reliable signal that a session launch will succeed
-  (see `src/config/windows_shell.zig`).
+## Current release support
+
+- **Windows 10 and Windows 11 on x64** are the current prerelease target.
+- The renderer requires OpenGL 4.3 or newer through WGL.
+- `v0.1.0-paramux.4` is private, portable, prerelease-only, and unsigned.
+- Its live ZIP is a legacy test artifact with predecessor README/completion copy
+  and blank launcher VERSIONINFO; it also ships no agent-hooks payload, and its
+  binary lacks the `+send`/`+send-key` verbs. The worktree fixes all of this
+  for the next build.
+- The release contains `paramux-0.1.0-paramux.4-windows-x64-portable.zip` and
+  `SHA256SUMS-windows-x64.txt`.
+- `install-paramux.cmd` is a PATH helper inside the ZIP, not a system
+  installer.
+- ARM64, a signed installer, WinGet, Scoop, and a public stable channel are
+  planned rather than currently supported release paths.
+- No macOS, Linux, GTK, Wayland, or X11 app runtime ships from this repository.
+  `libghostty-vt` remains buildable as a retained library deliverable.
 
 ## What works today
 
-### Terminal core (shared with upstream Ghostty)
+### Parallel agent workflow
 
-- VT parsing, screen / scrollback / alt-screen, DEC and xterm behaviors
-- 256-color and true-color
-- Bracketed paste, mouse tracking, OSC 8 hyperlinks, OSC 10 / 11 / 52.
-  Windows has one native clipboard, so OSC 52 writes using selectors `c`, `s`,
-  and `p` all target the standard Windows clipboard; OSC 52 read replies
-  preserve the requested selector in the response.
-- Bidi, combining marks, grapheme cluster rendering
-- Kitty graphics protocol and inline image display
-- Shell integration for bash, zsh, fish, PowerShell; `cmd.exe` is a plain
-  fallback shell without prompt/cwd/command-finish integration
-- Live config reload via keybind (`Ctrl+Shift+,`)
-- `libghostty-vt` retained for Zig and C consumers
+- Native tabs and horizontal/vertical split panes.
+- An always-visible split button in the tab strip, split actions in the menu
+  and context menu, Windows-safe keybindings, and mouse-drag divider resize.
+- A per-pane sidebar that can show title, working directory, Git branch and
+  dirty state, listening ports, and the latest agent notification.
+- Four attention states: `working`, `waiting`, `done`, and `error`.
+- Attention cues across sidebar rows, pane rings, and tabs, plus Windows toast
+  and taskbar attention behavior.
+- Hook examples under `contrib/paramux/hooks/`, including a ready-to-merge
+  Claude Code settings example.
+- A console-independent `paramux +notify` path that targets the pane identified
+  by its injected `PARAMUX_SURFACE_ID`.
 
-### Windows application runtime (new in this fork)
+### Local control surface
 
-- Native Win32 message loop and window management
-- Tab bar with overflow and drag-reorder
-- Horizontal and vertical splits
-- Native right-click context menus
-- In-app profile picker that auto-detects installed Windows shells:
-  PowerShell, `cmd`, Git Bash, and opt-in WSL
-- Per-monitor DPI scaling (`WM_DPICHANGED`)
-- DWM dark title bar that follows the app theme
-- High-contrast (HC) mode detection and palette switching
-  (see `isHighContrastActive` in `src/apprt/win32.zig`)
-- IME for CJK and other composed input (`ImmGetContext`)
-- Sensitive-input indicator for password-style no-echo ConPTY input and the
-  `toggle_secure_input` action. This is a local cursor/status/title affordance
-  only; Windows does not provide the same Secure Keyboard Entry behavior that
-  Ghostty uses on macOS, and winghostty does not block system-wide keyboard
-  hooks.
-- Drag-and-drop of files into the terminal (`WM_DROPFILES` +
-  `DragAcceptFiles`)
-- Window/session shape restore via `window-save-state`: host windows, tabs,
-  splits, selected profiles, working directories, and explicit titles are
-  persisted under `%LOCALAPPDATA%\winghostty\session-state.json`. Terminal
-  contents and child process state are not restored.
-- Windows-convention default keybindings (see
-  `src/config/Config.zig` for the full set)
+- `paramux +list-windows` reports the `paramux.windows.v2` schema with window,
+  tab, and pane IDs plus structural/focus state.
+- `paramux +perform-action` forwards reviewed keybinding actions to the running
+  instance.
+- `paramux +read-pane` returns the current viewport text for a target pane.
+- `paramux +send` writes one bounded UTF-8 payload to a focused or explicitly
+  selected pane, and `paramux +send-key` sends one key from a closed key set.
+  Both verbs are in the next build; the `v0.1.0-paramux.4` binary predates
+  them.
+- Sensitive methods use a per-instance token supplied through `PARAMUX_TOKEN`
+  inside panes or the token file under `%LOCALAPPDATA%\paramux` for external
+  Paramux CLI clients.
+- `+list-windows` remains unauthenticated for structural discovery.
+- The generic `+perform-action` allowlist rejects terminal-input,
+  arbitrary-file helper, and crash actions. Dedicated `+send` and
+  `+send-key` methods provide the token-gated terminal-input path.
 
-### Renderer
+### Terminal core inherited from Ghostty
 
-- OpenGL 4.3+ via WGL on Windows
-- `src/renderer/Metal.zig` is inherited source but is unreachable from any
-  shipping app runtime in this fork
+- VT parsing, screen/scrollback/alternate-screen behavior, and common DEC and
+  xterm sequences.
+- 256-color and true-color rendering.
+- Bracketed paste, mouse tracking, OSC 8 hyperlinks, and OSC 10/11/52.
+- Bidi text, combining marks, and grapheme-cluster rendering.
+- Kitty graphics protocol and inline image display.
+- Built-in themes, custom themes, and live config reload.
+- The Ghostty `key=value` config grammar and `.ghostty` file extension.
+- `libghostty-vt` for Zig and C consumers.
 
-### Updater
+### Native Windows runtime
 
-- Checks `api.github.com/repos/amanthanvi/winghostty/releases/latest`
-- Never replaces the binary silently
-- Gated to at most one check every 24 hours
-- `auto-update = download` stages only Windows installer releases that include
-  checksum metadata and pass SHA-256 plus Authenticode verification. Applying
-  an installer-managed staged update requires a user click, re-verifies the
-  staged installer, records apply intent, launches the installer elevated, and
-  exits the app. Portable ZIP auto-apply is not implemented.
+- Native Win32 message loop, host windows, tabs, and splits.
+- Tab overflow, drag reorder, native context menus, and a shell profile picker.
+- Per-monitor DPI handling and DWM dark-title-bar integration.
+- High-contrast palette switching.
+- IME support for composed input.
+- Drag-and-drop of files into the terminal.
+- OpenGL 4.3+ rendering through WGL.
+- PowerShell, PowerShell 7, Command Prompt, Git Bash, and explicit WSL launch
+  paths.
+- PowerShell and supported Unix-like shell integration for cwd/prompt metadata;
+  `cmd.exe` remains a plain fallback without automatic prompt metadata.
+- Session-shape persistence for windows, tabs, split layout, selected profiles,
+  working directories, and explicit titles. Terminal contents and child
+  process state are not restored.
+- Local crash dumps under `%LOCALAPPDATA%\paramux\crash`; nothing is uploaded
+  automatically.
 
-### Windows package managers
+## Partial or experimental
 
-- WinGet package id: `AmanThanvi.winghostty`
-- Scoop bucket: `https://github.com/amanthanvi/scoop-winghostty`
-- Release readiness checks verify that both remote manifests exist before the
-  release workflow is allowed to publish package-manager updates.
+### Windows UI Automation
 
-### Crash reports
+Accessibility is partial. The Win32 host exposes a root UI Automation provider,
+caption controls retain system-provider behavior, and the command palette has a
+list provider. Terminal scrollback is not yet exposed through `ITextProvider`,
+and broader per-widget coverage remains planned.
 
-- Local directory: `%LOCALAPPDATA%\winghostty\crash`
-- **No automatic upload.** No code path to upload exists in this repo.
-- On Windows the Sentry initialization path is a no-op
-  (`src/crash/sentry.zig`), but winghostty installs a local
-  unhandled-exception filter that writes `.dmp` minidumps through `DbgHelp`
-  when Windows delivers a process-level crash exception.
-- The `+crash-report` CLI reads anything that is there.
+### Sidebar metadata
 
-## Experimental / partial
+Working-directory, Git, and command-finish metadata depend on shell integration
+emitting the relevant control sequences. PowerShell and supported Unix-like
+shells provide richer metadata than plain `cmd.exe`. Listening-port discovery
+is periodic and scoped to the pane's child process tree.
 
-### Windows UI Automation (accessibility)
+### Agent integrations
 
-UI Automation is **partial, not complete**. The Win32 host answers
-`WM_GETOBJECT` with a root provider, caption buttons still chain through the
-system host provider, and the command palette exposes a list provider so
-Narrator/NVDA can announce selection changes. Terminal scrollback is not yet
-exposed through `ITextProvider`, and broader per-widget coverage remains
-planned.
+The Paramux attention protocol and `+notify` command are complete. The next
+build's portable package includes concrete Claude Code settings, Codex hooks, a
+Gemini CLI extension, and an OpenCode plugin; the `v0.1.0-paramux.4` ZIP ships
+none of these. Their lifecycle events differ, so each adapter maps only events
+its agent exposes. Run `install-paramux.cmd` first, then install the relevant
+adapter and restart that agent.
+
+### Stable updater path
+
+The codebase contains a checksum- and Authenticode-gated installer updater for
+a future stable signed release. It is not a current update path: the private
+`v0.1.0-paramux.4` release is a prerelease with only an unsigned portable ZIP.
+Current users update manually.
 
 ### Win32 runtime extraction
 
-The Win32 application runtime is still centered on a single large file at
-`src/apprt/win32.zig`. Extraction into focused modules is in progress:
-commit `a759eb6 refactor(win32): extract theme module from monolithic
-win32.zig` moved theme helpers to `src/apprt/win32_theme.zig`. Further
-extractions will land as they stabilize.
+The Win32 application runtime remains centered on the large
+`src/apprt/win32.zig` host module, with focused helpers gradually extracted into
+`src/apprt/win32_*` modules. Further extraction should preserve message order,
+child-HWND lifetime, focus, and repaint semantics.
 
 ## Known caveats
 
-- **SmartScreen reputation.** Release artifacts are expected to be
-  Authenticode-signed for the installer and Windows binaries inside the
-  portable ZIP. The ZIP container itself is checksummed, not
-  Authenticode-signed, and Windows SmartScreen can still warn for a new or
-  low-reputation publisher certificate.
-- **Issues disabled for usage questions.** GitHub Issues on this repo
-  are reserved for reproducible bugs. For questions, feature discussion,
-  and feedback, use
-  [Discussions](https://github.com/amanthanvi/winghostty/discussions).
-- **No Nix / Flatpak / Snap packaging.** Upstream's Linux packaging
-  surfaces have been stubbed out or removed.
-- **`build.zig.zon` identity.** The Zig package is still declared
-  `.name = .ghostty`. Library consumers using Zig's package manager will
-  see the upstream package name. Rename is planned.
-- **Generated help links.** A few generated help strings still link to
-  `github.com/ghostty-org/ghostty` rather than this fork. Tracked as a
-  doc-generation fix.
-- **Crash capture on Windows is local-only.** The Sentry path is gated off on
-  Windows in `src/crash/sentry.zig`; local minidumps are written by
-  `src/crash/minidump_windows.zig` for process-level unhandled exceptions. Some
-  hard-abort paths may still terminate before Windows can produce a dump.
+- **Unsigned test build.** Verify the SHA-256 checksum before running the
+  current portable ZIP. The included PATH helper unblocks the extracted files,
+  but does not provide Authenticode publisher trust.
+- **Private access.** Release links require access to
+  `soldforaloss/paramux`; there is no public download today.
+- **Hardware requirement.** Paramux has no DirectX or ANGLE fallback. A driver
+  that cannot expose OpenGL 4.3 through WGL cannot run this build.
+- **Portable resource tree.** Keep `paramux.exe`, `paramux.com`,
+  `ghostty-vt.dll`, and the packaged `share` tree together.
+- **Limited release matrix.** The current artifact is x64 only. ARM64 release
+  verification remains outstanding.
+- **No package-manager channel.** Any old Winghostty WinGet or Scoop identifiers
+  belong to the predecessor project and do not install Paramux.
+- **No portable auto-apply.** Replace the extracted folder manually after
+  verifying a newer private prerelease.
+- **Local-only crash capture.** Windows can write `.dmp` files for
+  process-level unhandled exceptions, but some hard-abort paths may terminate
+  before a dump is available.
 
 ## Out of scope
 
 - macOS application packaging and Xcode workflows
-- GTK / Linux / Wayland / X11 app-runtime work
+- GTK/Linux/Wayland/X11 app-runtime work
 - Flatpak, Snap, or other Linux desktop packaging
-- Replicating upstream's community process or governance
+- Cloud-hosted terminals or remote VM orchestration
+- Built-in browser, mobile client, or extension marketplace
+- Reproducing Ghostty's upstream community process or governance
 
-## Informal roadmap signal
+## Next release work
 
-No formal roadmap. Indicative next areas:
+The next distribution milestones are intentionally explicit:
 
-- Broader UI Automation / screen reader coverage, including terminal text
-  exposure and more per-widget support
-- Continuing the `src/apprt/win32.zig` extraction begun in commit
-  `a759eb6`
-- Portable ZIP updater apply/rollback
-- Broader local crash metadata and report packaging on Windows
-- ARB-context OpenGL migration paired with atlas rebuild
-
-Contributions that advance any of the above are welcome.
+1. Complete hands-on validation of the portable x64 build on representative
+   Windows hardware.
+2. Acquire and configure a trusted code-signing identity.
+3. Validate and publish a signed installer and signed portable binaries.
+4. Build and verify an ARM64 release on real ARM64 Windows hardware.
+5. Bootstrap Paramux-owned WinGet and Scoop manifests only after the signed
+   release lane is stable.
+6. Continue accessibility and focused Win32 module work without regressing the
+   current agent workflow.

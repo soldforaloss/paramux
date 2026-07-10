@@ -1,68 +1,67 @@
-# Windows Capability Matrix
+# Windows capability matrix
 
-Maps current official Ghostty docs surfaces to winghostty behavior on
-Windows. Keep this short. Update rows when Windows behavior changes or when
-upstream docs add or remove a surface that this fork cares about.
+This matrix maps official Ghostty documentation surfaces to current Paramux
+behavior on Windows. Paramux descends from Winghostty and retains Ghostty's
+terminal core, config grammar, resource formats, and `libghostty-vt`; its native
+Windows host and agent workflow are Paramux-specific.
 
-Last reviewed: 2026-05-24.
+Last reviewed: 2026-07-09, against the current worktree (baseline: the private
+x64 portable prerelease `v0.1.0-paramux.4`).
 
 ## Status legend
 
-- `supported` — works on current Windows builds and matches upstream docs
-  closely enough to rely on them.
-- `partial` — some of the surface works, but Windows behavior is narrower,
-  differently scoped, or still filling in.
-- `no-op compatibility` — the option or surface exists for compatibility,
-  but currently reduces to placeholder or weaker behavior.
-- `windows-specific` — added or materially changed by this fork; upstream
-  Ghostty docs do not describe it accurately yet.
+- `supported` - the current Windows build matches the upstream behavior closely
+  enough to use the Ghostty documentation.
+- `partial` - the shared surface exists, but Windows behavior or current
+  distribution is narrower.
+- `windows-specific` - Paramux adds or materially changes the behavior, so the
+  upstream Ghostty documentation is not the complete source.
 
 ## Supported
 
-| Ghostty docs surface | winghostty note |
+| Ghostty documentation surface | Paramux note |
 | --- | --- |
-| [Configuration](https://ghostty.org/docs/config) and [option reference](https://ghostty.org/docs/config/reference) | Same config grammar and generated docs surface. On Windows the config file lives at `%LOCALAPPDATA%\winghostty\config.ghostty`, and live reload is available via `Ctrl+Shift+,`. |
-| [Custom keybindings](https://ghostty.org/docs/config/keybind) | Same `keybind = trigger=action` grammar and `+list-keybinds` flow. Default bindings are Windows-native rather than macOS/Linux defaults. |
-| [Color Theme](https://ghostty.org/docs/features/theme) | Built-in themes, separate light/dark themes, custom themes, and `+list-themes` ship on Windows. |
-| [Configuration: `background-opacity`](https://ghostty.org/docs/config/reference) | Transparent terminal backgrounds work on Windows and can be toggled live. |
-| [Terminal API (VT)](https://ghostty.org/docs/vt) and [VT reference](https://ghostty.org/docs/vt/reference) | The shared Ghostty terminal core carries the documented VT/OSC/Kitty surface used by terminal apps. |
-| [Features overview: windows, tabs, and splits](https://ghostty.org/docs/features) | Native Win32 windows, tabs, and splits ship today in winghostty. |
+| [Configuration](https://ghostty.org/docs/config) and [option reference](https://ghostty.org/docs/config/reference) | Paramux retains the Ghostty `key=value` grammar and generated option docs. The normal Windows config path is `%LOCALAPPDATA%\paramux\config.ghostty`; reload with `Ctrl+Shift+,`. |
+| [Custom keybindings](https://ghostty.org/docs/config/keybind) | The `keybind = trigger=action` grammar and `+list-keybinds` command are shared. Paramux supplies Windows-safe defaults for tabs and splits. |
+| [Color themes](https://ghostty.org/docs/features/theme) | Built-in themes, separate light/dark themes, custom themes, and `paramux +list-themes` are available. Paramux also provides `+import-theme` for Windows Terminal color schemes. |
+| [Configuration: `background-opacity`](https://ghostty.org/docs/config/reference) | Transparent terminal backgrounds work on Windows and can be changed through config reload. |
+| [Terminal API (VT)](https://ghostty.org/docs/vt) and [VT reference](https://ghostty.org/docs/vt/reference) | The shared Ghostty terminal core carries the documented VT, OSC, and Kitty protocol surfaces used by terminal applications. |
 
 ## Partial
 
-| Ghostty docs surface | winghostty note |
+| Ghostty documentation surface | Paramux note |
 | --- | --- |
-| [Shell integration](https://ghostty.org/docs/features/shell-integration) | Upstream docs for automatic `bash` / `elvish` / `fish` / `nushell` / `zsh` injection still apply when those shells are launched on Windows. winghostty additionally supports automatic PowerShell injection (`powershell.exe`, `pwsh.exe`) plus a manual fallback under `%LOCALAPPDATA%\winghostty\shell-integration\powershell\integration.ps1`. PowerShell emits OSC 7 cwd URIs, OSC 133 prompt marks, command-finish status, and PSReadLine command metadata when available. PowerShell now wraps `ssh` for `ssh-env` and cache-aware `ssh-terminfo`, but it does not auto-install remote terminfo; uncached hosts use `xterm-256color`. `cmd.exe` remains a plain fallback shell without automatic shell integration. |
-| [Action reference](https://ghostty.org/docs/config/keybind/reference) | Shared action grammar is intact, but upstream docs still mix shared actions with macOS/Linux-specific behavior. For Windows-specific truth on a disputed action, prefer `winghostty +show-config --default --docs` plus the current defaults from `+list-keybinds`. |
-| [Action reference: `toggle_secure_input`](https://ghostty.org/docs/config/keybind/reference) | Windows implements the action as a local sensitive-input indicator and cursor/status/title state. It does not use a Windows OS API equivalent to macOS Secure Keyboard Entry and does not block system-wide keyboard hooks. |
-| [Configuration: `auto-update`](https://ghostty.org/docs/config/reference) | Windows supports stable-release checking and update prompts backed by GitHub Releases. `download` can stage signed, checksum-matching installer releases and, for installer-managed installs, launch the verified staged installer after a user click. |
-| [Configuration: `window-save-state`](https://ghostty.org/docs/config/reference) | Windows persists practical session shape under `%LOCALAPPDATA%\winghostty\session-state.json`: host windows, tabs, splits, selected profiles, working directories, and explicit titles. Terminal contents and child process state are not restored. |
-| [Configuration: `background-blur`](https://ghostty.org/docs/config/reference) | On Windows 11 22H2 or newer, `background-opacity < 1` plus enabled `background-blur` requests the DWM tabbed system backdrop. On Windows 10 and Windows 11 21H2, the option remains accepted but no DWM backdrop is requested. Numeric blur radii are treated as enabled/disabled, not as tunable blur strength. |
-| [Features overview](https://ghostty.org/docs/features) | Accessibility is partial: the Win32 host exposes a UI Automation root provider and the command palette exposes a list provider, but terminal scrollback is not yet exposed through `ITextProvider`. |
-| OSC 52 primary/selection clipboard selectors | Windows exposes one native clipboard. OSC 52 writes using selectors `c`, `s`, and `p` all target the standard Windows clipboard. OSC 52 read replies still echo the requested selector (`c`, `s`, or `p`) so terminal clients can correlate the response. |
+| [Shell integration](https://ghostty.org/docs/features/shell-integration) | Automatic integration applies to supported Unix-like shells launched on Windows. Paramux also integrates Windows PowerShell and PowerShell 7, with a manual fallback under `%LOCALAPPDATA%\paramux\shell-integration\powershell\integration.ps1`. PowerShell emits cwd and prompt metadata used by the sidebar. `cmd.exe` remains a plain fallback. |
+| [Action reference](https://ghostty.org/docs/config/keybind/reference) | The shared action grammar remains, but some upstream actions are platform-specific. For effective Windows truth, use `paramux +show-config --default --docs` and `paramux +list-keybinds`. |
+| [Action reference: `toggle_secure_input`](https://ghostty.org/docs/config/keybind/reference) | Windows provides a local sensitive-input indicator and cursor/status/title state. It does not implement macOS Secure Keyboard Entry or block system-wide keyboard hooks. |
+| [Configuration: `window-save-state`](https://ghostty.org/docs/config/reference) | Paramux persists practical session shape under `%LOCALAPPDATA%\paramux\session-state.json`: windows, tabs, splits, selected profiles, working directories, and explicit titles. Terminal contents and child process state are not restored. |
+| [Configuration: `background-blur`](https://ghostty.org/docs/config/reference) | On supported Windows 11 builds, a transparent background plus enabled blur requests a DWM system backdrop. Older Windows versions accept the option without the same backdrop. Numeric radii act as enabled/disabled rather than tunable blur strength. |
+| [Features overview](https://ghostty.org/docs/features) | Accessibility is partial: the Win32 host exposes a UI Automation root provider and the command palette exposes a list provider, but terminal scrollback is not yet available through `ITextProvider`. |
+| OSC 52 clipboard selectors | Windows has one native clipboard. Writes using `c`, `s`, or `p` target that clipboard; read replies preserve the requested selector for client correlation. |
+| [Configuration: `auto-update`](https://ghostty.org/docs/config/reference) | The codebase has a future signed-installer check/download path. The current private prerelease is unsigned and portable-only, so it must be updated manually; `auto-update = download` is not a current distribution path. |
 
-## No-op Compatibility
+## Windows-specific
 
-| Ghostty docs surface | winghostty note |
+| Surface | Paramux note |
 | --- | --- |
-| [Configuration: `auto-update = download`](https://ghostty.org/docs/config/reference) | Stages only stable Windows installer releases with architecture-specific SHA256 metadata, a matching installer SHA-256, and a valid Authenticode signature. Installer apply is user-initiated and may prompt for UAC. Portable ZIP apply is not implemented. |
+| Native Windows app | Paramux ships a native Win32 app for Windows 10/11. The current release artifact is x64 only; ARM64 release support is planned and not yet published. |
+| GPU rendering | Paramux renders through WGL with OpenGL 4.3+. It has no DirectX or ANGLE fallback. |
+| Windows paths and identity | App state lives under `%LOCALAPPDATA%\paramux\...`; the app identity is `io.github.soldforaloss.paramux`. |
+| Tabs and splits | Native tabs, horizontal/vertical splits, tab drag reorder, a visible split button, menu/context split actions, mouse divider resize, and Windows-safe focus/resize keybindings ship today. |
+| Agent workspace | A per-pane sidebar shows available cwd/Git/port/notification metadata. `working`, `waiting`, `done`, and `error` states drive sidebar, pane, tab, toast, and taskbar attention. |
+| Local automation | `paramux +list-windows` reports `paramux.windows.v2` structural JSON. `+perform-action`, `+notify`, `+read-pane`, `+send`, and `+send-key` are token-gated; `PARAMUX_SURFACE_ID` targets panes and `PARAMUX_TOKEN` authenticates in-pane clients. The generic `+perform-action` allowlist rejects terminal-input, arbitrary-file helper, and crash actions; the dedicated `+send`/`+send-key` methods are the bounded terminal-input path. |
+| Windows UX | DWM dark-title-bar integration, high-contrast palette switching, IME, file drag-and-drop, native context menus, profile selection, taskbar progress, and WinRT toast attempts are implemented in the Win32 host. |
+| Current distribution | The private `v0.1.0-paramux.4` release contains one unsigned x64 portable ZIP, `SHA256SUMS-windows-x64.txt`, and the `install-paramux.cmd` PATH helper. Signed installer, WinGet, Scoop, ARM64, and public stable channels are planned. |
 
-## Windows-Specific
+## Maintenance anchors
 
-| Ghostty docs surface | winghostty note |
-| --- | --- |
-| [Features overview](https://ghostty.org/docs/features) | Upstream Ghostty docs still say Windows support is planned. winghostty ships a native Win32 app on Windows 10/11 x64 and ARM64. |
-| [Features overview: GPU-accelerated rendering](https://ghostty.org/docs/features) | Upstream highlights Metal on macOS and OpenGL on Linux. winghostty renders on Windows with OpenGL 4.3+ via WGL; no D3D/DirectX backend ships. |
-| [Configuration](https://ghostty.org/docs/config) | Windows state/config paths live under `%LOCALAPPDATA%\winghostty\...`, not the macOS/Linux paths documented upstream. |
-| Local automation | `winghostty +list-windows` reports `winghostty.windows.v2` JSON with local window/tab/pane IDs, focus/active state, and structural counts. `winghostty +perform-action <action>` forwards allowlisted keybinding actions over Win32 single-instance IPC. `--surface-id` targets only surface-scoped actions; app-scoped actions target the app. Terminal-input, arbitrary file helper, and crash actions are rejected by the running instance, and new action variants remain disabled until reviewed. |
-| [Features overview](https://ghostty.org/docs/features) | Win32-specific UX includes DWM dark title bar integration, high-contrast palette switching, IME, drag-and-drop, and native context menus. |
-
-## Maintenance Anchors
-
-- `src/config/Config.zig` — config docs, keybinds, `auto-update` docstrings.
-- `src/termio/shell_integration.zig` and `src/config/windows_shell.zig` —
-  shell integration and Windows shell detection.
-- `src/apprt/win32.zig`, `src/apprt/win32_theme.zig`, and
-  `src/apprt/win32_uia/` — Win32 runtime, chrome/input, accessibility.
-- `docs/status.md` and `docs/getting-started.md` — user-facing summaries that
-  should stay aligned with this matrix.
+- `src/config/Config.zig` - config docs, keybindings, and updater option text.
+- `src/termio/shell_integration.zig` and `src/config/windows_shell.zig` - shell
+  integration and Windows shell detection.
+- `src/apprt/win32.zig`, `src/apprt/ipc.zig`, and `src/apprt/win32_*` - native
+  host, automation, agent sidebar, attention, chrome, and accessibility.
+- `src/cli/notify.zig`, `src/cli/read_pane.zig`, and
+  `src/cli/list_windows.zig` - Paramux control-surface commands.
+- [status.md](status.md), [getting-started.md](getting-started.md), and
+  [windows.md](windows.md) - user-facing summaries that should stay aligned
+  with this matrix.

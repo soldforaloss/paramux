@@ -81,8 +81,8 @@ Each requirement has an acceptance criterion. **P0 = MVP**; **P1 = fast-follow**
 **FR-5 (P0) — Agent detection & state.** Detect Claude Code, Codex CLI, Gemini CLI, and OpenCode in a pane and drive FR-4. Use agent hooks where available (e.g., Claude Code Notification/Stop hooks) plus output-idle/throughput heuristics; support OSC 9/99/777 and a `paramux notify` CLI as fallbacks.
 - *Accept:* Claude Code "waiting for input" and "finished" transitions are reflected within ~2s; a manual `paramux notify "msg"` produces a visible toast.
 
-**FR-6 (P0) — Config.** TOML config for theme + keybindings; import Ghostty and Windows Terminal themes.
-- *Accept:* a Ghostty theme file renders; core keybindings are rebindable.
+**FR-6 (P0) — Config.** Ghostty-compatible `key = value` config for themes and keybindings; import Ghostty and Windows Terminal themes.
+- *Accept:* a Ghostty theme file renders; core keybindings are rebindable; the packaged optional tmux-prefix preset validates and loads.
 
 **FR-7 (P0) — Control surface (CLI + named pipe).** `\\.\pipe\paramux` JSON-RPC: create workspace, split pane, send keys, read pane content, set notification. Plus a `paramux` CLI.
 - *Accept:* a script can open a workspace, split it, launch an agent, and read output; mutating methods are auth-gated with a per-instance token.

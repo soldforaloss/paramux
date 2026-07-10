@@ -1,331 +1,288 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="images/winghostty-flag.svg" />
-    <img src="images/winghostty-flag-light.svg" alt="Winghostty" width="320" />
-  </picture>
+  <img src="images/paramux-flag-light.svg" alt="Paramux" width="320" />
 </p>
 
 <p align="center">
-  <em>A Windows terminal emulator that reuses Ghostty's terminal core under a native Win32 front end.</em>
+  <strong>A native Windows command center for parallel coding agents.</strong>
   <br />
-  Native Win32 runtime · OpenGL renderer · Shared terminal core with Ghostty
+  GPU terminal core · split workspaces · live agent state · local automation
 </p>
 
 <p align="center">
-  <a href="https://github.com/amanthanvi/winghostty/releases">Releases</a>
+  <a href="https://github.com/soldforaloss/paramux/releases">Releases</a>
   ·
-  <a href="docs/getting-started.md">Getting started</a>
+  <a href="docs/paramux/paramux-prd.md">Product requirements</a>
   ·
-  <a href="docs/windows.md">Windows</a>
+  <a href="docs/paramux/capability-parity.md">Capability parity</a>
   ·
-  <a href="docs/status.md">Status</a>
+  <a href="contrib/paramux/hooks/README.md">Agent hooks</a>
   ·
-  <a href="docs/windows-capability-matrix.md">Windows capability matrix</a>
-  ·
-  <a href="HACKING.md">Hacking</a>
-  ·
-  <a href="CONTRIBUTING.md">Contributing</a>
+  <a href="HACKING.md">Development</a>
   ·
   <a href="SECURITY.md">Security</a>
 </p>
 
 ---
 
-## What is winghostty?
+## What is Paramux?
 
-winghostty is a terminal emulator for Windows. It pairs:
+Paramux is a native Windows terminal built for running Claude Code, Codex CLI,
+Gemini CLI, OpenCode, and ordinary shells side by side. It combines the session
+model of tmux, the agent-oriented workspace ideas popularized by cmux and wmux,
+and a real GPU-rendered terminal instead of an xterm.js WebView.
 
-- The **Ghostty terminal core** — VT parser, screen and scrollback, font
-  pipeline, and renderer — forked from
-  [ghostty-org/ghostty](https://github.com/ghostty-org/ghostty).
-- A **native Win32 application runtime** written for this fork: real Windows
-  tab bar, per-monitor DPI scaling, DWM dark title bar, IME, drag-and-drop,
-  native right-click menus, and a WSL-aware shell picker.
+Each pane is an independent ConPTY session. Tabs group related workspaces, while
+the left sidebar answers the questions that matter when several agents are
+running at once:
 
-It also ships `libghostty-vt`, the Ghostty VT library, as a retained
-deliverable for Zig and C consumers.
+- Which pane needs me?
+- Which agent finished or failed?
+- What repository, branch, directory, and ports belong to this pane?
+- How do I jump to it without cycling through every terminal?
 
-It is intended for developers who are comfortable editing a plain-text
-configuration file and clicking through a SmartScreen warning on first
-install.
-
-## Project status
-
-winghostty is a young, single-maintainer fork. First fork commit: 2026-04-06.
-First public releases: 2026-04-16.
-
-- **Supported platform:** Windows 10 and Windows 11 on x64 and ARM64.
-- **Releases:** Authenticode-signed installer and signed Windows binaries
-  inside the portable ZIP. The ZIP container itself is checksummed, not
-  Authenticode-signed. Windows SmartScreen may still warn on first run for a
-  new or low-reputation publisher certificate.
-- **Feedback:** use
-  [Discussions](https://github.com/amanthanvi/winghostty/discussions) for
-  questions. GitHub Issues are reserved for reproducible bugs.
-- **No cross-platform app:** macOS and Linux app runtimes are not shipped
-  from this repo and are not planned. `libghostty-vt` remains portable for
-  library consumers.
-- **Coexistence:** winghostty runs as its own top-level app window. It does
-  not register as a Windows Terminal profile provider; installing it
-  alongside Windows Terminal, WezTerm, or Alacritty is fine.
-- **Accessibility:** partial UI Automation support ships today, but
-  terminal scrollback and broader screen reader coverage are still
-  incomplete.
+Paramux is a fork of the native Windows work from
+[winghostty](https://github.com/amanthanvi/winghostty) and retains Ghostty's
+terminal, font, and OpenGL rendering core. Winghostty and Ghostty are technical
+lineage and compatibility names; **Paramux is the product and executable.**
 
 ## What works today
 
-- Native Win32 runtime: tab bar with overflow, horizontal / vertical splits,
-  per-monitor DPI scaling, DWM dark title bar, right-click context menus,
-  IME, drag-and-drop of files.
-- OpenGL 4.3 renderer via WGL.
-- Shared Ghostty terminal core: VT parsing, scrollback, bracketed paste,
-  mouse tracking, OSC 8 hyperlinks, Kitty graphics protocol, shell
-  integration for bash / zsh / fish / PowerShell. Command Prompt is
-  available as a plain fallback shell without automatic shell integration.
-- Windows-aware shell selection: PowerShell, `cmd`, Git Bash, opt-in WSL.
-- In-app profile picker that auto-detects installed shells.
-- Session restore for practical window shape: windows, tabs, splits, profiles,
-  working directories, and explicit titles.
-- GitHub Releases updater with check and verified-download modes, gated to one
-  check per 24 hours. Update installation remains manual.
-- High-contrast (HC) mode detection and palette switching.
-- `libghostty-vt` as a retained Zig / C library deliverable.
+- Native Win32 shell on Windows 10/11 with ConPTY and OpenGL 4.3 rendering.
+- Independent panes, horizontal/vertical splits, tabs, drag-to-resize dividers,
+  pane zoom, session restore, and native context menus.
+- Always-visible split button plus clearly labeled split actions in the main
+  menu and terminal context menu.
+- Clickable pane sidebar with title, working directory, git branch/dirty state,
+  listening ports, and a consistent attention color.
+- Four agent states: working, waiting, done, and error. The same color appears
+  in the sidebar, tab strip, and pane ring.
+- Windows toast notifications and taskbar attention for agent events.
+- Hooks and fallbacks for Claude Code, Codex CLI, Gemini CLI, and OpenCode.
+- Local control surface for listing windows, splitting panes, reading pane
+  output, and setting notifications. Sensitive calls use a per-instance token.
+- Rebindable Ghostty-style configuration plus Ghostty and Windows Terminal theme
+  import.
+- Portable packaging with `paramux.exe`, the console-friendly `paramux.com`
+  launcher, and an idempotent user-PATH installer.
 
-A precise list, including what is experimental and what is out of scope,
-is in **[docs/status.md](docs/status.md)**. For a row-by-row mapping against
-official Ghostty docs, see
-**[docs/windows-capability-matrix.md](docs/windows-capability-matrix.md)**.
+The current build is a private prerelease. Signed installers, WinGet, and Scoop
+distribution are not published yet; the portable build is the truthful install
+path today.
 
-## Install
+## Try the current prerelease
 
-Latest stable release:
-**[winghostty 1.3.116](https://github.com/amanthanvi/winghostty/releases/tag/v1.3.116)**,
-published 2026-06-27.
+The current test build is
+[`v0.1.0-paramux.4`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.4),
+published 2026-07-09 for Windows x64:
 
-Download directly from **[Releases](https://github.com/amanthanvi/winghostty/releases)**:
+- [`paramux-0.1.0-paramux.4-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.4/paramux-0.1.0-paramux.4-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.4/SHA256SUMS-windows-x64.txt)
 
-| File | Use when |
-| --- | --- |
-| [`winghostty-1.3.116-windows-x64-setup.exe`](https://github.com/amanthanvi/winghostty/releases/download/v1.3.116/winghostty-1.3.116-windows-x64-setup.exe) | You want a normal x64 install with a Start menu entry. |
-| [`winghostty-1.3.116-windows-arm64-setup.exe`](https://github.com/amanthanvi/winghostty/releases/download/v1.3.116/winghostty-1.3.116-windows-arm64-setup.exe) | You want a normal ARM64 install with a Start menu entry. |
-| [`winghostty-1.3.116-windows-x64-portable.zip`](https://github.com/amanthanvi/winghostty/releases/download/v1.3.116/winghostty-1.3.116-windows-x64-portable.zip) | You want to run x64 without installing. |
-| [`winghostty-1.3.116-windows-arm64-portable.zip`](https://github.com/amanthanvi/winghostty/releases/download/v1.3.116/winghostty-1.3.116-windows-arm64-portable.zip) | You want to run ARM64 without installing. |
-| [`SHA256SUMS-windows-x64.txt`](https://github.com/amanthanvi/winghostty/releases/download/v1.3.116/SHA256SUMS-windows-x64.txt) | Verifying x64 downloads. |
-| [`SHA256SUMS-windows-arm64.txt`](https://github.com/amanthanvi/winghostty/releases/download/v1.3.116/SHA256SUMS-windows-arm64.txt) | Verifying ARM64 downloads. |
+> **Known v4 legacy test artifact:** the checksum-valid ZIP predates both the
+> package-level Paramux rebrand and the newest worktree features. It lacks the
+> `+send`/`+send-key` commands documented under Local automation and ships only
+> the Claude Code hook adapter (the Codex CLI, Gemini CLI, and OpenCode
+> adapters are newer than the tag). Its embedded README and command-completion
+> aliases still say Winghostty, and both launchers have blank VERSIONINFO.
+> The current worktree fixes all of these; publish a new prerelease before
+> treating an artifact as feature- or branding-complete.
 
-The legacy [`SHA256SUMS.txt`](https://github.com/amanthanvi/winghostty/releases/download/v1.3.116/SHA256SUMS.txt)
-file remains an x64 auto-update compatibility alias.
-
-WinGet users can install the official manifest:
-
-```powershell
-winget install AmanThanvi.winghostty
-```
-
-Scoop users can install from the fork-owned bucket:
+1. Download both the portable ZIP and `SHA256SUMS-windows-x64.txt`.
+2. Before extracting or running anything, compare the ZIP's digest with the
+   release checksum:
 
 ```powershell
-scoop bucket add winghostty https://github.com/amanthanvi/scoop-winghostty
-scoop install winghostty/winghostty
+Get-FileHash .\paramux-0.1.0-paramux.4-windows-x64-portable.zip -Algorithm SHA256
+Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 
-On first run, Windows SmartScreen may say *"Windows protected your PC"*.
-Click **More info** → **Run anyway**. Release installers and Windows binaries
-inside the portable ZIP are Authenticode-signed, but SmartScreen reputation can
-still lag behind signing.
-
-Full walk-through — installer, portable, uninstall —
-**[docs/getting-started.md](docs/getting-started.md)**.
-
-Windows-specific paths, shell behavior, app identity, notifications, quick
-terminal, windows/tabs/splits, automation, and troubleshooting live in
-**[docs/windows.md](docs/windows.md)**.
-
-## First run
-
-On first launch, winghostty creates its config folder and writes a template:
-
-```
-%LOCALAPPDATA%\winghostty\config.ghostty
-```
-
-The template sets no options — defaults live in the binary. To see every
-option with inline docs:
+   Stop if the hashes do not match.
+3. Extract the verified ZIP. Because this prerelease is unsigned, optionally
+   confirm that status before running it:
 
 ```powershell
-winghostty +show-config --default --docs | more
+Get-AuthenticodeSignature .\paramux\paramux.exe |
+  Select-Object Status, StatusMessage, SignerCertificate
 ```
 
-A minimal config:
+4. Double-click `install-paramux.cmd` inside the extracted `paramux` folder.
+   It adds that folder to your user `PATH` and clears the downloaded-file mark.
+5. Open a new PowerShell or Command Prompt window and run:
 
-```ini
-font-family = JetBrains Mono
-font-size   = 12
-# Pick a theme from: winghostty +list-themes
-# Theme files are config files; only use themes from sources you trust.
-theme       = Dracula
+```powershell
+paramux
 ```
 
-Reload config without restarting: **Ctrl + Shift + ,**
+To undo the PATH change later:
 
-## Keybindings
+```powershell
+.\install-paramux.ps1 -Remove
+```
 
-Default keybindings follow Windows conventions. Common ones:
+The prerelease is unsigned, so Explorer may show a SmartScreen warning. A GPU
+and driver exposing OpenGL 4.3 or newer are required; the portable ZIP does not
+bundle a software renderer.
+
+## First five minutes
+
+The visible title-bar controls are intentionally enough to get started:
+
+- `+` opens a tab.
+- The split-pane button next to `+` creates a pane on the right.
+- `▾` opens profiles, split directions, search, the command palette, and other
+  workspace actions.
+- Click any row in the left sidebar to focus that pane.
+- Drag the gutter between panes to resize them.
+- Right-click a terminal for copy/paste, search, pane splits, and new-window
+  actions.
+
+Useful defaults:
 
 | Action | Binding |
 | --- | --- |
-| Copy | `Ctrl+Shift+C` |
-| Paste | `Ctrl+Shift+V` |
 | New tab | `Ctrl+Shift+T` |
-| Close tab | `Ctrl+Shift+W` |
-| Next / previous tab | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
 | Split right / down | `Ctrl+Shift+O` / `Ctrl+Shift+E` |
-| Start search | `Ctrl+Shift+F` |
-| Increase / decrease font | `Ctrl+=` / `Ctrl+-` |
+| Focus previous / next pane | `Ctrl+Alt+[` / `Ctrl+Alt+]` |
+| Resize focused pane | `Ctrl+Alt+Shift+Arrow` |
+| Next / previous tab | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
+| Command palette | `Ctrl+Shift+P` |
+| Find in scrollback | `Ctrl+Shift+F` |
+| Copy / paste | `Ctrl+Shift+C` / `Ctrl+Shift+V` |
 | Reload config | `Ctrl+Shift+,` |
 
-Full list, plus the keybind grammar for chords and rebinding:
+See the effective keymap at any time:
 
 ```powershell
-winghostty +list-keybinds
-winghostty +show-config --default --docs
+paramux +list-keybinds
 ```
 
-## Profiles
+## Agent attention
 
-winghostty auto-detects installed Windows shells (PowerShell, `cmd`, Git
-Bash, opt-in WSL) and exposes them through an in-app profile picker. To
-pin a specific shell, set `command = <path>` in your config.
+Paramux injects `PARAMUX_SURFACE_ID` and `PARAMUX_TOKEN` into every pane so an
+agent hook can address its own pane without guessing which window is active.
+The included examples live in [`contrib/paramux/hooks/`](contrib/paramux/hooks/).
 
-## Privacy
+Manual smoke test from inside a pane:
 
-winghostty does not send telemetry or analytics. The only outbound network
-call from the app is the GitHub Releases updater (when enabled), which
-hits GitHub's public API. Crash reports, when produced, are stored locally
-and never uploaded (see below).
+```powershell
+paramux +notify --state=waiting "Waiting for approval"
+paramux +notify --state=done "Task complete"
+paramux +notify --state=error "Tests failed"
+```
 
-## Updates
+Supported states are `working`, `waiting`, `done`, and `error`. Plain
+`paramux +notify "message"` notifications default to `waiting`.
+
+## Local automation
+
+The control surface is local-only and uses Paramux's existing named-pipe
+transport. Discovery is read-only; pane output and mutating actions require the
+per-instance token written under `%LOCALAPPDATA%\paramux`.
+
+```powershell
+# Discover window, tab, and pane IDs.
+paramux +list-windows
+
+# Split the focused pane.
+paramux +perform-action new_split:right
+
+# Read the focused pane, or target an ID returned above.
+paramux +read-pane
+paramux +read-pane --surface-id=42
+
+# Send exact text and a terminal key to a pane.
+paramux +send --surface-id=42 "npm test"
+paramux +send-key --surface-id=42 enter
+
+# Target an agent-attention event explicitly.
+paramux +notify --surface-id=42 --state=waiting "Review needed"
+```
+
+The JSON discovery schema is `paramux.windows.v2`. Dedicated `+send` and
+`+send-key` calls are bounded, UTF-8 validated, pane-targeted, and token-gated.
+The generic `+perform-action` allowlist still rejects terminal-write, file
+helper, and crash actions.
+
+## Configuration and themes
+
+Paramux creates its user configuration at:
+
+```text
+%LOCALAPPDATA%\paramux\config.ghostty
+```
+
+The `.ghostty` extension and `share/ghostty` resources are retained for
+compatibility with Ghostty's mature configuration and theme ecosystem.
 
 ```ini
-auto-update = check
+font-family = JetBrains Mono
+font-size = 12
+theme = Dracula
 ```
-
-The updater checks `api.github.com/repos/amanthanvi/winghostty/releases/latest`
-at most once every 24 hours. `auto-update = check` opens the release page if a
-newer stable version exists and never replaces binaries silently.
-`auto-update = download` downloads only eligible stable Windows installer
-releases, verifies the architecture-specific SHA256SUMS file plus
-Authenticode, and stages the installer locally. Unsigned installers fail that
-verification and are not staged. Applying the staged installer is
-user-initiated and may prompt for UAC.
-
-## Crash reports
-
-winghostty does not upload crash reports. The app keeps a local directory:
-
-```
-%LOCALAPPDATA%\winghostty\crash
-```
-
-On Windows the Sentry initialization path is a no-op, but winghostty installs a
-local unhandled-exception filter that writes `.dmp` minidumps for process-level
-crash exceptions. Some hard-abort paths may still terminate before Windows can
-produce a dump. The `+crash-report` CLI reads anything that is there:
 
 ```powershell
-winghostty +crash-report
+paramux +show-config --default --docs | more
+paramux +list-themes
+paramux +import-theme "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
 ```
-
-Contents, if any, may include sensitive memory from the crashed process;
-review before sharing.
 
 ## Build from source
 
-Most users should install from Releases. If you want to build:
+Requirements:
 
-**Requirements**
-
-- Windows 10 or 11 on x64 or ARM64
-- **Zig 0.15.x (patch ≥ 2)** — enforced at compile time via
-  `src/build/zig.zig::requireZig`. Newer 0.15 patch releases (`0.15.3`,
-  etc.) are accepted; 0.15.0 / 0.15.1, 0.14.x, and 0.16.x will fail to
-  compile.
-- Visual Studio 2022 (Community is fine) — MSVC toolchain on PATH
+- Windows 10 or 11
+- Zig 0.15.2 or another supported Zig 0.15 patch release
+- Visual Studio 2022 with the C++ workload and Windows SDK
 - Git for Windows
-
-The build script additionally rejects building the `win32` app runtime for
-non-Windows targets, returning
-`error.WindowsOnlyAppRuntimeRequiresWindowsTarget`.
-
-**Build**
-
-```powershell
-zig build -Demit-exe=true
-```
-
-Output: `zig-out\bin\winghostty.exe`.
-
-If Zig cannot reach `deps.files.ghostty.org` directly in your environment,
-seed the Windows build dependency cache first:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/fetch-zig-deps.ps1
 zig build -Demit-exe=true
+zig build test -Dtest-filter=<targeted-test-name>
 ```
 
-For a pre-configured developer shell (Visual Studio + Git + Zig cache
-environment variables):
+Build outputs:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/dev-windows.ps1
+```text
+zig-out\bin\paramux.exe
+zig-out\bin\paramux.com
 ```
 
-Build, test, and runtime notes for contributors are in **[HACKING.md](HACKING.md)**.
-Packaging the installer and portable ZIP yourself is covered in
-**[PACKAGING.md](PACKAGING.md)**.
+The shared Zig core lives under `src/`; the native application runtime is
+`src/apprt/win32.zig`; packaging lives under `dist/windows/` and
+`scripts/package-windows.ps1`.
 
-## Relationship to Ghostty
+## Product direction
 
-winghostty is a fork, not a re-implementation. Upstream is tracked as the
-`upstream` Git remote; the fork relationship is visible in full Git
-history.
+The source-of-truth scope and acceptance criteria are in
+[`docs/paramux/paramux-prd.md`](docs/paramux/paramux-prd.md). Paramux is moving
+toward practical capability parity with cmux, tmux, and wmux while preserving a
+native Windows feel. Compatibility means equivalent workflows where they make
+sense on Windows—not blindly copying another product's UI or Unix-only internals.
+The current source-backed matrix and gap order live in
+[`docs/paramux/capability-parity.md`](docs/paramux/capability-parity.md).
 
-**Shared with upstream Ghostty**
-- `src/terminal/` — VT parsing, screen state, scrollback, search, Kitty
-  graphics protocol, OSC handling
-- `src/font/` — font discovery and rasterization (HarfBuzz, FreeType)
-- `src/renderer/` — OpenGL cell/image/shader pipeline
-- `src/input/`, `src/config/`, `src/termio/`, `src/crash/`,
-  `src/shell-integration/`, `src/inspector/`, `libghostty-vt`
+Current priorities are:
 
-**New in this fork**
-- `src/apprt/win32.zig` — Win32 application runtime
-- `src/apprt/win32_theme.zig` — theme tokens, DWM integration, accent
-  helpers, HC handling (extracted from `win32.zig` in commit `a759eb6`)
-- `src/update/github_releases.zig` — updater
-- `dist/windows/` and `scripts/package-windows.ps1` — Windows packaging
+1. Finish every user-facing Paramux identity surface and package verifier.
+2. Make pane, tab, workspace, and attention workflows self-explanatory.
+3. Close the remaining source-backed cmux/tmux/wmux workflow gaps.
+4. Validate performance and interaction quality on real Windows GPUs.
+5. Ship signed installer, WinGet, Scoop, x64, and ARM64 release paths.
 
-**Removed from this fork**
-- Upstream `macos/` Xcode project
-- Upstream `src/apprt/gtk/` runtime
-- Flatpak / Snap / Linux desktop packaging
+## Privacy and security
 
-Because the terminal core is shared, most Ghostty configuration options,
-themes, and shell-integration behavior apply here directly. When
-Windows-native behavior conflicts with upstream cross-platform behavior,
-this fork prefers the Windows-native result.
+Paramux does not send analytics. Crash dumps stay local under
+`%LOCALAPPDATA%\paramux\crash` and may contain terminal or process memory, so
+review them before sharing. The built-in updater is the only normal outbound
+network path and talks to the Paramux GitHub releases API when enabled.
 
-## Contributing
+Please report security issues according to [SECURITY.md](SECURITY.md). Do not
+include tokens, private terminal output, or crash-memory contents in public
+reports.
 
-Bug reports, reproducible issues, and focused PRs are welcome. Read
-**[CONTRIBUTING.md](CONTRIBUTING.md)** and **[AI_POLICY.md](AI_POLICY.md)**
-first. For usage questions and design discussion, use
-**[Discussions](https://github.com/amanthanvi/winghostty/discussions)**.
+## License and lineage
 
-## License
-
-MIT. Copyright © 2024 Mitchell Hashimoto, Ghostty contributors. See
-**[LICENSE](LICENSE)**.
-
-Fork-specific changes are contributed under the same license by the fork's
-maintainer and contributors.
+Paramux is MIT licensed. Ghostty's shared terminal core and the native Windows
+work inherited from Winghostty remain under the same license; see
+[LICENSE](LICENSE) and the Git history for attribution.
