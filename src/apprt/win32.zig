@@ -35825,13 +35825,13 @@ test "win32 sidebar row hit testing maps clicks to visible panes" {
 test "win32 close surface menu names the visible scope" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
-    const expected_tab = std.unicode.utf8ToUtf16LeStringLiteral("Close tab\tCtrl+Shift+W");
+    const expected_tab = std.unicode.utf8ToUtf16LeStringLiteral("Close Tab\tCtrl+Shift+W");
     try std.testing.expectEqualSlices(
         u16,
         expected_tab[0..expected_tab.len],
         std.mem.span(closeSurfaceMenuLabel(1)),
     );
-    const expected_pane = std.unicode.utf8ToUtf16LeStringLiteral("Close pane\tCtrl+Shift+W");
+    const expected_pane = std.unicode.utf8ToUtf16LeStringLiteral("Close Pane\tCtrl+Shift+W");
     try std.testing.expectEqualSlices(
         u16,
         expected_pane[0..expected_pane.len],
