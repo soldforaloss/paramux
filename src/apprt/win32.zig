@@ -698,6 +698,10 @@ const CTX_TAB_CLOSE: usize = 4021;
 const CTX_TAB_CLOSE_OTHERS: usize = 4022;
 const CTX_TAB_MOVE_LEFT: usize = 4023;
 const CTX_TAB_MOVE_RIGHT: usize = 4024;
+const CTX_HELP_GETTING_STARTED: usize = 4025;
+const CTX_HELP_SHORTCUTS: usize = 4026;
+const CTX_HELP_DOCS: usize = 4027;
+const CTX_HELP_ABOUT: usize = 4028;
 const CTX_PROFILE_BASE: usize = 4100; // profile dropdown items: CTX_PROFILE_BASE + index
 const SEARCH_BG_ID: usize = 2100;
 const SEARCH_EDIT_ID: usize = 2101;
@@ -1334,6 +1338,47 @@ const tooltip_new_tab = std.unicode.utf8ToUtf16LeStringLiteral("New tab (Ctrl+Sh
 const tooltip_split_right = std.unicode.utf8ToUtf16LeStringLiteral("Split right (Ctrl+Shift+O)");
 const tooltip_split_down = std.unicode.utf8ToUtf16LeStringLiteral("Split down (Ctrl+Shift+E)");
 const tooltip_settings = std.unicode.utf8ToUtf16LeStringLiteral("Settings (Ctrl+,)");
+const tooltip_help = std.unicode.utf8ToUtf16LeStringLiteral("Help");
+
+// Long help-dialog bodies need a raised quota for the comptime
+// UTF-8 → UTF-16 conversion.
+const help_getting_started_text: LPCWSTR = blk: {
+    @setEvalBranchQuota(20_000);
+    break :blk std.unicode.utf8ToUtf16LeStringLiteral(
+        "Welcome to Paramux!\n\n" ++
+            "1. Each pane is its own terminal. Type any command —\n" ++
+            "    for example an AI agent like \"claude\".\n\n" ++
+            "2. Add panes with the toolbar buttons:\n" ++
+            "    +  new tab       \u{25EB}  split right       \u{229F}  split down\n\n" ++
+            "3. The left sidebar lists your panes. Click a row to\n" ++
+            "    focus it, drag it onto another pane to rearrange,\n" ++
+            "    hover it and click \u{2715} to close.\n\n" ++
+            "4. A colored dot on a row is the pane asking for\n" ++
+            "    attention: blue working, amber waiting for you,\n" ++
+            "    green done, red error.\n\n" ++
+            "5. Right-click anywhere for more actions, or press\n" ++
+            "    Ctrl+Shift+P for the command palette.",
+    );
+};
+
+const help_shortcuts_text: LPCWSTR = blk: {
+    @setEvalBranchQuota(20_000);
+    break :blk std.unicode.utf8ToUtf16LeStringLiteral(
+        "New tab\tCtrl+Shift+T\n" ++
+            "Split right\tCtrl+Shift+O\n" ++
+            "Split down\tCtrl+Shift+E\n" ++
+            "Close pane\tCtrl+Shift+W\n\n" ++
+            "Focus next / previous pane\tCtrl+Alt+] / [\n" ++
+            "Focus pane by direction\tCtrl+Alt+Arrows\n" ++
+            "Resize pane\tCtrl+Alt+Shift+Arrows\n" ++
+            "Zoom pane (fill the tab)\tCtrl+Shift+Enter\n\n" ++
+            "Copy / Paste\tCtrl+Shift+C / V\n" ++
+            "Find\tCtrl+Shift+F\n" ++
+            "Command palette\tCtrl+Shift+P\n" ++
+            "Settings\tCtrl+,\n\n" ++
+            "Full list: run \"paramux +list-keybinds\" in any pane.",
+    );
+};
 const tooltip_more_actions = std.unicode.utf8ToUtf16LeStringLiteral("More actions");
 const tooltip_search_prev = std.unicode.utf8ToUtf16LeStringLiteral("Previous match (Shift+Enter)");
 const tooltip_search_next = std.unicode.utf8ToUtf16LeStringLiteral("Next match (Enter)");
@@ -1344,6 +1389,7 @@ const tooltip_search_close = std.unicode.utf8ToUtf16LeStringLiteral("Close searc
 const host_tab_split_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{25EB}"); // ◫ square bisected = split
 const host_tab_split_down_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{229F}"); // ⊟ squared minus = split down
 const host_tab_settings_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{2699}"); // ⚙ gear = settings
+const host_tab_help_button_label = std.unicode.utf8ToUtf16LeStringLiteral("?"); // help menu
 const host_tab_dropdown_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{25BE}"); // dropdown chevron
 const titlebar_icon_font_fluent = std.unicode.utf8ToUtf16LeStringLiteral("Segoe Fluent Icons");
 const titlebar_icon_font_mdl2 = std.unicode.utf8ToUtf16LeStringLiteral("Segoe MDL2 Assets");
@@ -1355,6 +1401,7 @@ const titlebar_glyph_new_tab = std.unicode.utf8ToUtf16LeStringLiteral("\u{E710}"
 const titlebar_glyph_split = std.unicode.utf8ToUtf16LeStringLiteral("\u{E90D}");
 const titlebar_glyph_split_down = std.unicode.utf8ToUtf16LeStringLiteral("\u{E90E}");
 const titlebar_glyph_settings = std.unicode.utf8ToUtf16LeStringLiteral("\u{E713}");
+const titlebar_glyph_help = std.unicode.utf8ToUtf16LeStringLiteral("\u{E897}");
 const titlebar_glyph_dropdown = std.unicode.utf8ToUtf16LeStringLiteral("\u{E70D}");
 const host_banner_inspector_inactive = "Inspector hidden. Terminal view is active.";
 const search_results_idle = "Type to search";
@@ -8588,6 +8635,7 @@ const TitlebarButtonRole = enum {
     split,
     split_down,
     settings,
+    help,
     dropdown,
 };
 
@@ -8600,6 +8648,7 @@ const TitlebarGlyphKind = enum {
     split,
     split_down,
     settings,
+    help,
     dropdown,
 };
 
@@ -8649,6 +8698,7 @@ fn titlebarGlyphCodepoint(kind: TitlebarGlyphKind) u16 {
         .split => 0xE90D, // Segoe "DockRight" — reads as split-into-a-right-pane
         .split_down => 0xE90E, // Segoe "DockBottom" — split-into-a-bottom-pane
         .settings => 0xE713, // Segoe "Settings" gear
+        .help => 0xE897, // Segoe "Help" question mark
         .dropdown => 0xE70D,
     };
 }
@@ -8663,6 +8713,7 @@ fn titlebarGlyphText(kind: TitlebarGlyphKind) [*:0]const u16 {
         .split => titlebar_glyph_split,
         .split_down => titlebar_glyph_split_down,
         .settings => titlebar_glyph_settings,
+        .help => titlebar_glyph_help,
         .dropdown => titlebar_glyph_dropdown,
     };
 }
@@ -8677,6 +8728,7 @@ fn titlebarFallbackIcon(kind: TitlebarGlyphKind) win32_icons.Kind {
         .split => .plus, // fallback bitmap only; the Segoe glyph is the real icon
         .split_down => .plus, // fallback bitmap only; the Segoe glyph is the real icon
         .settings => .settings,
+        .help => .info, // fallback bitmap only; the Segoe glyph is the real icon
         .dropdown => .arrow_down,
     };
 }
@@ -8730,20 +8782,20 @@ fn titlebarButtonVisual(
     }
 
     const idle_glyph = switch (role) {
-        .new_tab, .split, .split_down, .settings, .dropdown => theme.button_chrome_fg,
+        .new_tab, .split, .split_down, .settings, .help, .dropdown => theme.button_chrome_fg,
         else => theme.text_primary,
     };
     if (!active) return .{ .bg = null, .glyph = idle_glyph };
 
     const target_bg = switch (role) {
         .close => rgb(0xC4, 0x2B, 0x1C),
-        .minimize, .maximize, .new_tab, .split, .split_down, .settings, .dropdown => titlebarSubtleFill(parent_bg, theme.is_dark, pressed),
+        .minimize, .maximize, .new_tab, .split, .split_down, .settings, .help, .dropdown => titlebarSubtleFill(parent_bg, theme.is_dark, pressed),
         .none => parent_bg,
     };
     const target_glyph = switch (role) {
         .close => if (pressed) blendColorRGB(target_bg, rgb(0xFF, 0xFF, 0xFF), 0.70) else rgb(0xFF, 0xFF, 0xFF),
         .minimize, .maximize => theme.text_primary,
-        .new_tab, .split, .split_down, .settings, .dropdown => theme.text_primary,
+        .new_tab, .split, .split_down, .settings, .help, .dropdown => theme.text_primary,
         .none => idle_glyph,
     };
 
@@ -9082,6 +9134,8 @@ const Host = struct {
     split_down_placement: ChildPlacement = .{},
     settings_hwnd: ?HWND = null, // settings gear button (⚙)
     settings_placement: ChildPlacement = .{},
+    help_hwnd: ?HWND = null, // help button (?)
+    help_placement: ChildPlacement = .{},
     // Pane drag-and-drop rearrangement (source = a sidebar row; drop =
     // another row to swap, or a pane's edge/center to dock/swap).
     pane_drag: win32_pane_drag.DragState = .{},
@@ -9131,6 +9185,9 @@ const Host = struct {
     tab_close_prev_hwnd: ?HWND = null,
     hovered_quick_slot: ?usize = null,
     focused_quick_slot: ?usize = null,
+    /// Sidebar row under the mouse; drives the hover fill and the
+    /// per-row close button in `paintSidebar`.
+    sidebar_hover_row: ?usize = null,
     banner_kind: HostBannerKind = .none,
     banner_text: ?[:0]const u8 = null,
     update_open_rect: RECT = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 },
@@ -10355,6 +10412,7 @@ const Host = struct {
         destroySubclassedWindowWithPrev(&self.split_hwnd, chrome_prev);
         destroySubclassedWindowWithPrev(&self.split_down_hwnd, chrome_prev);
         destroySubclassedWindowWithPrev(&self.settings_hwnd, chrome_prev);
+        destroySubclassedWindowWithPrev(&self.help_hwnd, chrome_prev);
         destroySubclassedWindowWithPrev(&self.overflow_hwnd, chrome_prev);
         destroyChildWindow(&self.tooltip_hwnd);
         destroyChildWindow(&self.pane_drop_preview_hwnd);
@@ -10938,6 +10996,7 @@ const Host = struct {
         if (self.split_hwnd != null and child == self.split_hwnd.?) return .split;
         if (self.split_down_hwnd != null and child == self.split_down_hwnd.?) return .split_down;
         if (self.settings_hwnd != null and child == self.settings_hwnd.?) return .settings;
+        if (self.help_hwnd != null and child == self.help_hwnd.?) return .help;
         if (self.overflow_hwnd != null and child == self.overflow_hwnd.?) return .dropdown;
         return .none;
     }
@@ -10962,6 +11021,9 @@ const Host = struct {
             },
             .settings => {
                 if (self.settings_hwnd) |hwnd| _ = InvalidateRect(hwnd, null, 0);
+            },
+            .help => {
+                if (self.help_hwnd) |hwnd| _ = InvalidateRect(hwnd, null, 0);
             },
             .dropdown => {
                 if (self.overflow_hwnd) |hwnd| _ = InvalidateRect(hwnd, null, 0);
@@ -11063,6 +11125,40 @@ const Host = struct {
         if (self.hovered_quick_slot == slot) return;
         self.hovered_quick_slot = slot;
         self.repaintStatusBar();
+    }
+
+    fn setSidebarHoverRow(self: *Host, row: ?usize) void {
+        if (self.sidebar_hover_row == row) return;
+        self.sidebar_hover_row = row;
+        self.invalidateSidebar();
+    }
+
+    /// Close-button square on a sidebar row, in host-client coordinates.
+    /// Shared by `paintSidebar` and the mouse hit-test so the visual and
+    /// the click target can't drift apart.
+    fn sidebarRowCloseRect(self: *Host, row: usize) ?RECT {
+        const content = self.contentRect() catch return null;
+        const row_h = self.scaled(host_sidebar_row_height);
+        const top = content.top + @as(i32, @intCast(row)) * row_h;
+        const size = self.scaled(20);
+        const right = content.left - self.scaled(7);
+        return .{
+            .left = right - size,
+            .top = top + @divTrunc(row_h - size, 2),
+            .right = right,
+            .bottom = top + @divTrunc(row_h - size, 2) + size,
+        };
+    }
+
+    /// Close the pane behind sidebar row `row` through the normal
+    /// close_surface action (running-process confirm included).
+    fn closeSidebarRow(self: *Host, row: usize) bool {
+        const surface = self.surfaceAtSidebarRow(row) orelse return false;
+        runUiActionOrLog(
+            "sidebar close pane failed",
+            surface.core_surface.performBindingAction(.{ .close_surface = {} }),
+        );
+        return true;
     }
 
     fn setFocusedQuickSlot(self: *Host, slot: ?usize) void {
@@ -11366,7 +11462,17 @@ const Host = struct {
             @as(LONG_PTR, @intCast(@intFromPtr(self))),
         );
 
-        self.hideOverlay();
+        // Sync placement caches to the created-hidden state. Deliberately
+        // NOT `hideOverlay()`: showConfirm stages `confirm_payload` before
+        // the overlay opens, and on the first-ever overlay hideOverlay
+        // would free that payload mid-open (leaving a zombie confirm with
+        // fallback texts and a dead accept path).
+        if (self.overlay_label_hwnd) |h| _ = applyChildVisibility(h, &self.overlay_label_placement, false);
+        if (self.overlay_edit_hwnd) |h| _ = applyChildVisibility(h, &self.overlay_edit_placement, false);
+        if (self.overlay_hint_hwnd) |h| _ = applyChildVisibility(h, &self.overlay_hint_placement, false);
+        if (self.overlay_accept_hwnd) |h| _ = applyChildVisibility(h, &self.overlay_accept_placement, false);
+        if (self.overlay_cancel_hwnd) |h| _ = applyChildVisibility(h, &self.overlay_cancel_placement, false);
+        if (self.palette_list_hwnd) |h| _ = applyChildVisibility(h, &self.palette_list_placement, false);
     }
 
     /// Lazily create the per-Host tooltip control. Advisory: a null return
@@ -11494,6 +11600,25 @@ const Host = struct {
             ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
             self.subclassButton(self.settings_hwnd.?, &hostButtonProc, &self.chrome_button_prev_proc);
             self.addTooltip(self.settings_hwnd.?, tooltip_settings);
+        }
+
+        if (self.help_hwnd == null) {
+            self.help_hwnd = CreateWindowExW(
+                0,
+                prompt_button_class,
+                host_tab_help_button_label,
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+                0,
+                0,
+                host_tab_small_button_width,
+                host_tab_height - 8,
+                hwnd,
+                @ptrFromInt(1912),
+                self.app.hinstance,
+                null,
+            ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
+            self.subclassButton(self.help_hwnd.?, &hostButtonProc, &self.chrome_button_prev_proc);
+            self.addTooltip(self.help_hwnd.?, tooltip_help);
         }
 
         if (self.overflow_hwnd == null) {
@@ -11933,19 +12058,12 @@ const Host = struct {
     fn syncOverlayHint(self: *Host) !bool {
         const hint_hwnd = self.overlay_hint_hwnd orelse return false;
         const alloc = self.app.core_app.alloc;
-        // Confirm overlays use the hint HWND to render the payload
-        // body — the explanatory text ("A process is still running…").
-        // Make it visible and write the body; bypass the generic
-        // EDIT-driven hint composition.
+        // Confirm overlays paint the payload body through the chrome
+        // feedback strip (see the paint path's confirm branch) — keep
+        // the hint control out of the way so the two don't overlap.
         if (self.overlay_mode == .confirm) {
-            const body = if (self.confirm_payload) |p| p.body else "";
-            _ = applyChildVisibility(hint_hwnd, &self.overlay_hint_placement, true);
-            return try syncWindowTextUtf8Cached(
-                alloc,
-                hint_hwnd,
-                &self.cached_overlay_hint,
-                body,
-            );
+            _ = applyChildVisibility(hint_hwnd, &self.overlay_hint_placement, false);
+            return false;
         }
         const text = std.mem.trim(u8, try overlayEditText(self), " \t\r\n");
         if (self.overlay_mode == .profile) {
@@ -12463,6 +12581,74 @@ const Host = struct {
             },
             CTX_INSPECTOR => {
                 runUiActionOrLog("overflow inspector toggle failed", self.app.toggleInspectorForSurface(surface));
+            },
+            else => {},
+        }
+    }
+
+    /// The (?) help button's menu: first-steps text, the keyboard cheat
+    /// sheet, the online docs, and version info — the "I'm lost" button.
+    fn showHelpMenu(self: *Host) void {
+        const hwnd = self.hwnd orelse return;
+        const button = self.help_hwnd orelse return;
+        var rect: RECT = undefined;
+        if (GetWindowRect(button, &rect) == 0) return;
+
+        const menu = CreatePopupMenu() orelse return;
+        defer _ = DestroyMenu(menu);
+
+        _ = AppendMenuW(menu, MF_STRING, CTX_HELP_GETTING_STARTED, std.unicode.utf8ToUtf16LeStringLiteral("Getting Started"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_HELP_SHORTCUTS, std.unicode.utf8ToUtf16LeStringLiteral("Keyboard Shortcuts"));
+        _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
+        _ = AppendMenuW(menu, MF_STRING, CTX_HELP_DOCS, std.unicode.utf8ToUtf16LeStringLiteral("Documentation (GitHub)"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_HELP_ABOUT, std.unicode.utf8ToUtf16LeStringLiteral("About Paramux"));
+
+        _ = SetForegroundWindow(hwnd);
+        const cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTALIGN | TPM_TOPALIGN, rect.left, rect.bottom, 0, hwnd, null);
+        _ = PostMessageW(hwnd, WM_NULL, 0, 0);
+
+        // Guard: host may have been destroyed during the modal menu loop.
+        if (self.hwnd == null) return;
+        if (cmd <= 0) return;
+        switch (@as(usize, @intCast(cmd))) {
+            CTX_HELP_GETTING_STARTED => {
+                _ = MessageBoxW(
+                    self.hwnd,
+                    help_getting_started_text,
+                    std.unicode.utf8ToUtf16LeStringLiteral("Getting Started"),
+                    MB_OK | MB_ICONINFORMATION,
+                );
+            },
+            CTX_HELP_SHORTCUTS => {
+                _ = MessageBoxW(
+                    self.hwnd,
+                    help_shortcuts_text,
+                    std.unicode.utf8ToUtf16LeStringLiteral("Keyboard Shortcuts"),
+                    MB_OK | MB_ICONINFORMATION,
+                );
+            },
+            CTX_HELP_DOCS => {
+                const url = std.unicode.utf8ToUtf16LeStringLiteral("https://github.com/soldforaloss/paramux#readme");
+                const result = ShellExecuteW(null, shell_open, url, null, null, SW_SHOW);
+                if (@intFromPtr(result) <= 32) log.warn("help docs open failed code={d}", .{@intFromPtr(result)});
+            },
+            CTX_HELP_ABOUT => {
+                var text_buf: [256]u8 = undefined;
+                const text = std.fmt.bufPrint(
+                    &text_buf,
+                    "Paramux {s}\n\nA native Windows terminal for running AI coding agents in parallel.\n\nhttps://github.com/soldforaloss/paramux",
+                    .{build_config.version_string},
+                ) catch "Paramux";
+                var text_w: [256]u16 = undefined;
+                const n = std.unicode.utf8ToUtf16Le(&text_w, text) catch 0;
+                if (n == 0 or n >= text_w.len) return;
+                text_w[n] = 0;
+                _ = MessageBoxW(
+                    self.hwnd,
+                    @ptrCast(&text_w),
+                    std.unicode.utf8ToUtf16LeStringLiteral("About Paramux"),
+                    MB_OK | MB_ICONINFORMATION,
+                );
             },
             else => {},
         }
@@ -13156,6 +13342,7 @@ const Host = struct {
             .split => .split,
             .split_down => .split_down,
             .settings => .settings,
+            .help => .help,
             .dropdown => .dropdown,
             else => return,
         };
@@ -13716,14 +13903,15 @@ const Host = struct {
 
     fn rightButtonsWidth(self: *const Host) i32 {
         if (self.usingIntegratedTitlebar()) {
-            return self.scaled(host_titlebar_action_button_size) * 5 + self.scaled(20);
+            return self.scaled(host_titlebar_action_button_size) * 6 + self.scaled(24);
         }
         return self.scaled(host_tab_small_button_width) + // new tab (+)
             self.scaled(host_tab_small_button_width) + // split (◫)
             self.scaled(host_tab_small_button_width) + // split down (⊟)
             self.scaled(host_tab_small_button_width) + // settings (⚙)
+            self.scaled(host_tab_small_button_width) + // help (?)
             self.scaled(host_tab_overflow_button_width) + // dropdown chevron (▾)
-            self.scaled(20); // gaps + margins
+            self.scaled(24); // gaps + margins
     }
 
     /// Pixels reserved for the 3 caption buttons (min / max / close)
@@ -14553,6 +14741,22 @@ const Host = struct {
             changed.* = applyChildVisibility(button_hwnd, &self.overflow_placement, true) or changed.*;
         }
         button_x -= self.scaled(4);
+        if (self.help_hwnd) |button_hwnd| {
+            const help_width = if (titlebar_actions) action_size else self.scaled(host_tab_small_button_width);
+            button_x -= help_width;
+            changed.* = applyChildRect(
+                button_hwnd,
+                &self.help_placement,
+                childRect(
+                    button_x,
+                    if (titlebar_actions) action_y else button_y,
+                    help_width,
+                    if (titlebar_actions) action_size else button_height,
+                ),
+            ) or changed.*;
+            changed.* = applyChildVisibility(button_hwnd, &self.help_placement, true) or changed.*;
+        }
+        button_x -= self.scaled(4);
         if (self.settings_hwnd) |button_hwnd| {
             const settings_width = if (titlebar_actions) action_size else self.scaled(host_tab_small_button_width);
             button_x -= settings_width;
@@ -15061,16 +15265,24 @@ const Host = struct {
         }.f;
 
         const show_drag_grip = tab.leafCount() > 1;
+        const zoomed_handle = tab.tree.zoomed;
         var y: i32 = rect.top;
+        var row_index: usize = 0;
         var it = tab.tree.iterator();
-        while (it.next()) |entry| {
+        while (it.next()) |entry| : (row_index += 1) {
             if (y >= rect.bottom) break;
             const surface = entry.view;
             const is_active = entry.handle == tab.focused;
+            const hovered = self.sidebar_hover_row == row_index;
+            // When a pane is zoomed the other panes are hidden — dim
+            // their rows so bright = visible, dim = behind the zoom.
+            const hidden_by_zoom = if (zoomed_handle) |z| entry.handle != z else false;
             const row_bottom = @min(rect.bottom, y + row_h);
             if (is_active) {
                 fillSolidRect(hdc, .{ .left = rect.left, .top = y, .right = rect.right - border, .bottom = row_bottom }, theme.button_active_bg);
                 fillSolidRect(hdc, .{ .left = rect.left, .top = y, .right = rect.left + stripe_w, .bottom = row_bottom }, theme.accent);
+            } else if (hovered) {
+                fillSolidRect(hdc, .{ .left = rect.left, .top = y, .right = rect.right - border, .bottom = row_bottom }, blendColorRGB(theme.chrome_bg, theme.text_primary, 0.05));
             }
             const label: []const u8 = if (surface.effectiveTitle()) |t| t else "shell";
             drawPaletteRowText(hdc, label, .{
@@ -15078,7 +15290,7 @@ const Host = struct {
                 .top = y + self.scaled(4),
                 .right = text_right,
                 .bottom = y + half,
-            }, theme.text_primary);
+            }, if (hidden_by_zoom) theme.text_disabled else theme.text_primary);
             // The secondary line explains an active agent state in words and
             // preserves the latest notification. Idle panes use the usual
             // "[branch[*]  ]cwd[  :port :port]" metadata instead.
@@ -15086,9 +15298,20 @@ const Host = struct {
                 var ports_buf: [128]u8 = undefined;
                 var meta_buf: [384]u8 = undefined;
                 var attention_buf: [512]u8 = undefined;
+                var zoom_buf: [64]u8 = undefined;
                 const secondary: []const u8 = if (surface.attention_state != .none)
                     formatSidebarAttention(&attention_buf, surface.attention_state, surface.last_notification)
-                else blk: {
+                else if (hidden_by_zoom)
+                    "hidden by zoom"
+                else if (zoomed_handle != null) zoom_blk: {
+                    // The zoomed pane names its state; its usual metadata
+                    // is mostly redundant while it fills the whole tab.
+                    const cwd = if (surface.pwd) |pwd| basename(pwd) else "";
+                    break :zoom_blk std.fmt.bufPrint(&zoom_buf, "zoomed{s}{s}", .{
+                        if (cwd.len > 0) "  " else "",
+                        cwd,
+                    }) catch "zoomed";
+                } else blk: {
                     const ports_seg = formatSidebarPorts(&ports_buf, surface.listening_ports);
                     break :blk if (surface.pwd) |pwd| pwd_blk: {
                         const cwd = basename(pwd);
@@ -15103,28 +15326,43 @@ const Host = struct {
                     .top = y + half - self.scaled(2),
                     .right = text_right,
                     .bottom = row_bottom - self.scaled(2),
-                }, theme.text_secondary);
+                }, if (hidden_by_zoom) theme.text_disabled else theme.text_secondary);
             }
-            // paramux FR-4: status dot colored by the pane's attention state
-            // (working=blue, waiting=amber, done=green, error=red).
-            if (surface.attention_state != .none) {
-                const d = self.scaled(9);
-                const cx = rect.right - border - self.scaled(13);
-                const cy = y + @divTrunc(row_h, 2);
-                const dot_rect = RECT{ .left = cx - @divTrunc(d, 2), .top = cy - @divTrunc(d, 2), .right = cx + @divTrunc(d, 2), .bottom = cy + @divTrunc(d, 2) };
-                const attn = surface.attention_state.color();
-                drawRoundedRect(hdc, dot_rect, attn, attn, d);
-            }
-            // Drag-grip dots on multi-pane tabs: a quiet cue that rows can
-            // be dragged onto panes/rows to rearrange the layout.
-            if (show_drag_grip) {
-                const dot = self.scaled(2);
-                const gx = rect.right - border - self.scaled(7);
-                var gy = y + @divTrunc(row_h, 2) - self.scaled(7);
-                var k: usize = 0;
-                while (k < 4) : (k += 1) {
-                    fillSolidRect(hdc, .{ .left = gx, .top = gy, .right = gx + dot, .bottom = gy + dot }, theme.text_secondary);
-                    gy += self.scaled(4);
+            // Hovered rows swap the status/grip cluster for a close
+            // button; the attention STATE stays readable through the
+            // secondary-line words while hovering.
+            if (hovered) {
+                if (self.sidebarRowCloseRect(row_index)) |cr| {
+                    fillSolidRect(hdc, cr, blendColorRGB(theme.chrome_bg, theme.text_primary, 0.14));
+                    drawPaletteRowText(hdc, "\u{2715}", .{
+                        .left = cr.left + self.scaled(5),
+                        .top = cr.top + self.scaled(2),
+                        .right = cr.right,
+                        .bottom = cr.bottom,
+                    }, theme.text_primary);
+                }
+            } else {
+                // paramux FR-4: status dot colored by the pane's attention state
+                // (working=blue, waiting=amber, done=green, error=red).
+                if (surface.attention_state != .none) {
+                    const d = self.scaled(9);
+                    const cx = rect.right - border - self.scaled(13);
+                    const cy = y + @divTrunc(row_h, 2);
+                    const dot_rect = RECT{ .left = cx - @divTrunc(d, 2), .top = cy - @divTrunc(d, 2), .right = cx + @divTrunc(d, 2), .bottom = cy + @divTrunc(d, 2) };
+                    const attn = surface.attention_state.color();
+                    drawRoundedRect(hdc, dot_rect, attn, attn, d);
+                }
+                // Drag-grip dots on multi-pane tabs: a quiet cue that rows can
+                // be dragged onto panes/rows to rearrange the layout.
+                if (show_drag_grip) {
+                    const dot = self.scaled(2);
+                    const gx = rect.right - border - self.scaled(7);
+                    var gy = y + @divTrunc(row_h, 2) - self.scaled(7);
+                    var k: usize = 0;
+                    while (k < 4) : (k += 1) {
+                        fillSolidRect(hdc, .{ .left = gx, .top = gy, .right = gx + dot, .bottom = gy + dot }, theme.text_secondary);
+                        gy += self.scaled(4);
+                    }
                 }
             }
             // Subtle 1px separator under each row.
@@ -15381,6 +15619,10 @@ const Host = struct {
                         overlay_text,
                         self.selectedProfileIndex() orelse 0,
                     ) catch return
+                else if (self.overlay_mode == .confirm and self.confirm_payload != null)
+                    // Confirm prompts carry the caller's exact question
+                    // ("Close this terminal?") — never the generic label.
+                    alloc.dupe(u8, self.confirm_payload.?.title) catch return
                 else
                     buildOverlayPaintLabelText(
                         alloc,
@@ -15411,6 +15653,10 @@ const Host = struct {
                             self.app.launcher_profile_target,
                             self.app.launcher_quick_slot_keys,
                         ) catch return
+                else if (self.overlay_mode == .confirm and self.confirm_payload != null)
+                    // The payload body is the explanation the user needs
+                    // to answer the prompt ("A process is still running…").
+                    alloc.dupe(u8, self.confirm_payload.?.body) catch return
                 else feedback: {
                     var mru_buf: [5][]const u8 = undefined;
                     const mru = self.app.paletteMruSlice(&mru_buf);
@@ -15483,25 +15729,29 @@ const Host = struct {
                 textOutWz(hdc, overlay_label_x, overlay_rect.top + self.scaled(7), overlay_label_w);
             }
 
-            const overlay_padding = self.scaled(host_overlay_padding);
-            const overlay_accept_w = if (overlayAcceptButtonVisible(self.overlay_mode))
-                self.scaled(host_overlay_accept_width) + overlay_padding
-            else
-                0;
-            const edit_frame = overlayEditFrameRect(
-                client_rect.right,
-                tab_h,
-                overlay_padding,
-                self.scaled(host_overlay_label_width),
-                self.scaled(host_overlay_cancel_width),
-                overlay_accept_w,
-                self.scaled(host_overlay_row_height),
-            );
-            const overlay_edit_focused = if (self.overlay_edit_hwnd) |edit_hwnd|
-                GetFocus() == edit_hwnd
-            else
-                false;
-            drawRoundedRect(hdc, edit_frame, theme.edit_frame_bg, overlayEditBorderColor(self.overlay_mode, overlay_edit_focused, theme.is_dark), self.scaled(4));
+            // Confirm overlays have no editable query — skip the empty
+            // edit frame so the (payload-title) label can span the bar.
+            if (self.overlay_mode != .confirm) {
+                const overlay_padding = self.scaled(host_overlay_padding);
+                const overlay_accept_w = if (overlayAcceptButtonVisible(self.overlay_mode))
+                    self.scaled(host_overlay_accept_width) + overlay_padding
+                else
+                    0;
+                const edit_frame = overlayEditFrameRect(
+                    client_rect.right,
+                    tab_h,
+                    overlay_padding,
+                    self.scaled(host_overlay_label_width),
+                    self.scaled(host_overlay_cancel_width),
+                    overlay_accept_w,
+                    self.scaled(host_overlay_row_height),
+                );
+                const overlay_edit_focused = if (self.overlay_edit_hwnd) |edit_hwnd|
+                    GetFocus() == edit_hwnd
+                else
+                    false;
+                drawRoundedRect(hdc, edit_frame, theme.edit_frame_bg, overlayEditBorderColor(self.overlay_mode, overlay_edit_focused, theme.is_dark), self.scaled(4));
+            }
 
             _ = SetTextColor(hdc, if (self.overlay_mode == .profile and self.banner_text == null)
                 if (self.selectedProfile()) |profile|
@@ -21468,6 +21718,10 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                         runUiActionOrLog("settings button failed", v.app.openConfig());
                         return 0;
                     },
+                    1912 => {
+                        v.showHelpMenu();
+                        return 0;
+                    },
                     1911 => {
                         v.showOverflowMenu();
                         return 0;
@@ -21575,6 +21829,14 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                 const mx = signedLowWord(lParamBits(lParam));
                 const my = signedHighWord(lParamBits(lParam));
                 if (v.sidebarRowAtPoint(mx, my)) |row| {
+                    // Click on the row's hover close button closes the
+                    // pane instead of focusing it.
+                    if (v.sidebarRowCloseRect(row)) |cr| {
+                        if (mx >= cr.left and mx < cr.right and my >= cr.top and my < cr.bottom) {
+                            _ = v.closeSidebarRow(row);
+                            return 0;
+                        }
+                    }
                     _ = v.activateSidebarRowAtPoint(mx, my);
                     // Arm a potential pane drag; a plain click already
                     // activated the row above, so nothing else happens
@@ -21672,12 +21934,16 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     .y = signedHighWord(lParamBits(lParam)),
                 };
                 v.setHoveredQuickSlot(v.quickSlotProfileIndexAtPoint(point));
+                v.setSidebarHoverRow(v.sidebarRowAtPoint(point.x, point.y));
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
 
         WM_MOUSELEAVE => {
-            if (host) |v| v.setHoveredQuickSlot(null);
+            if (host) |v| {
+                v.setHoveredQuickSlot(null);
+                v.setSidebarHoverRow(null);
+            }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
 
@@ -21729,6 +21995,13 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     };
                     if (v.openSelectedProfile(open_target)) return 0;
                     return 0;
+                }
+                // Middle-click on a sidebar row closes its pane — same
+                // muscle memory as browser tabs.
+                if (msg == WM_MBUTTONUP) {
+                    if (v.sidebarRowAtPoint(point.x, point.y)) |row| {
+                        if (v.closeSidebarRow(row)) return 0;
+                    }
                 }
                 // Right-click on a sidebar row: focus that pane first, then
                 // offer the pane menu — it targets the active surface, which
