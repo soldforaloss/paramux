@@ -57,9 +57,24 @@ VersionInfoOriginalFileName=paramux-{#MyAppVersion}-windows-{#PackageArch}-setup
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
+Name: "contextmenu"; Description: "Add ""Open in Paramux"" to the Explorer right-click menu for folders"
 
 [Files]
 Source: "{#StageDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+; Explorer "Open in Paramux" verbs (per-user; mirrors install-paramux.ps1 and
+; src\apprt\win32_explorer_menu.zig). "%V\." instead of "%V": a root folder's
+; trailing backslash would escape the closing quote otherwise.
+[Registry]
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\Paramux"; ValueType: string; ValueData: "Open in Paramux"; Flags: uninsdeletekey; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\Paramux"; ValueType: string; ValueName: "Icon"; ValueData: """{app}\paramux.exe"",0"; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\Paramux\command"; ValueType: string; ValueData: """{app}\paramux.exe"" --working-directory=""%V\."""; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\Directory\Background\shell\Paramux"; ValueType: string; ValueData: "Open in Paramux"; Flags: uninsdeletekey; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\Directory\Background\shell\Paramux"; ValueType: string; ValueName: "Icon"; ValueData: """{app}\paramux.exe"",0"; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\Directory\Background\shell\Paramux\command"; ValueType: string; ValueData: """{app}\paramux.exe"" --working-directory=""%V\."""; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\Drive\shell\Paramux"; ValueType: string; ValueData: "Open in Paramux"; Flags: uninsdeletekey; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\Drive\shell\Paramux"; ValueType: string; ValueName: "Icon"; ValueData: """{app}\paramux.exe"",0"; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\Drive\shell\Paramux\command"; ValueType: string; ValueData: """{app}\paramux.exe"" --working-directory=""%V\."""; Tasks: contextmenu
 
 [Icons]
 Name: "{group}\paramux"; Filename: "{app}\paramux.exe"; AppUserModelID: "{#AppUserModelId}"

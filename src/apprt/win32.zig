@@ -23,6 +23,7 @@ const win32_uia = @import("win32_uia/mod.zig");
 const win32_palette = @import("win32_palette.zig");
 const win32_settings = @import("win32_settings.zig");
 const win32_aumid = @import("win32_aumid.zig");
+const win32_explorer_menu = @import("win32_explorer_menu.zig");
 const win32_clipboard_html = @import("win32_clipboard_html.zig");
 const win32_undo = @import("win32_undo.zig");
 const win32_toast_winrt = @import("win32_toast_winrt.zig");
@@ -3571,6 +3572,11 @@ pub const App = struct {
         // for basic terminal function.
         win32_aumid.setProcessAumid();
         win32_aumid.registerAumidDisplayName(core_app.alloc);
+
+        // If the user opted into the Explorer "Open in Paramux" verb and
+        // the portable folder has since moved, repoint the registered
+        // command at the running exe. Never registers from scratch.
+        win32_explorer_menu.refreshIfStale(core_app.alloc);
 
         // Boot the WinRT toast notifier. Failure falls back to the
         // host banner/log path in `showDesktopNotificationWithLaunch`.
@@ -17035,6 +17041,12 @@ comptime {
     _ = win32_focus_ring.FocusRingTracker;
     _ = win32_focus_ring.ringRect;
     _ = win32_focus_ring.isDrawable;
+    // Explorer context-menu verb helpers.
+    _ = win32_explorer_menu.buildCommand;
+    _ = win32_explorer_menu.commandMatchesExe;
+    _ = win32_explorer_menu.register;
+    _ = win32_explorer_menu.unregister;
+    _ = win32_explorer_menu.status;
 }
 
 /// Scan argv for a `wgh://activate?...` entry. Malformed activation
