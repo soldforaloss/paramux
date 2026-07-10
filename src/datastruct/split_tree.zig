@@ -494,6 +494,31 @@ pub fn SplitTree(comptime V: type) type {
             s.ratio = ratio;
         }
 
+        /// Swap the views of two leaf nodes, returning a new tree. Both
+        /// handles MUST reference leaf nodes (asserted via union access).
+        /// Split layouts, ratios, handles, and the zoom state are all
+        /// untouched — only the two leaf payloads trade places — so this
+        /// is the primitive behind drag-and-drop pane rearrangement.
+        pub fn swap(
+            self: *const Self,
+            gpa: Allocator,
+            a: Node.Handle,
+            b: Node.Handle,
+        ) Allocator.Error!Self {
+            assert(a.idx() < self.nodes.len);
+            assert(b.idx() < self.nodes.len);
+
+            const new = try self.clone(gpa);
+            // Same constCast rationale as `resizeInPlace`: we own this
+            // memory (freshly cloned); the const on `nodes` only guards
+            // external consumers.
+            const nodes = @constCast(new.nodes);
+            const view_a = nodes[a.idx()].leaf;
+            nodes[a.idx()] = .{ .leaf = nodes[b.idx()].leaf };
+            nodes[b.idx()] = .{ .leaf = view_a };
+            return new;
+        }
+
         /// Insert another tree into this tree at the given node in the
         /// specified direction. The other tree will be inserted in the
         /// new direction. For example, if the direction is "right" then
@@ -1767,6 +1792,55 @@ test "SplitTree: remove leaf" {
         \\+---+
         \\| B |
         \\+---+
+        \\
+    );
+}
+
+test "SplitTree: swap leaves keeps structure and zoom" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var v1: TestTree.View = .{ .label = "A" };
+    var t1: TestTree = try .init(alloc, &v1);
+    defer t1.deinit();
+    var v2: TestTree.View = .{ .label = "B" };
+    var t2: TestTree = try .init(alloc, &v2);
+    defer t2.deinit();
+    var v3: TestTree.View = .{ .label = "C" };
+    var t3: TestTree = try .init(alloc, &v3);
+    defer t3.deinit();
+
+    // A | B horizontal, then C below.
+    var split1 = try t1.split(alloc, .root, .right, 0.5, &t2);
+    defer split1.deinit();
+    var split2 = try split1.split(alloc, .root, .down, 0.5, &t3);
+    defer split2.deinit();
+
+    // Find A's and C's handles.
+    var handle_a: ?TestTree.Node.Handle = null;
+    var handle_c: ?TestTree.Node.Handle = null;
+    var it = split2.iterator();
+    while (it.next()) |entry| {
+        if (std.mem.eql(u8, entry.view.label, "A")) handle_a = entry.handle;
+        if (std.mem.eql(u8, entry.view.label, "C")) handle_c = entry.handle;
+    }
+
+    // Zoom C, then swap A <-> C: layout unchanged, payloads traded,
+    // and the zoomed HANDLE still points at the same slot (now A).
+    split2.zoom(handle_c);
+    var swapped = try split2.swap(alloc, handle_a.?, handle_c.?);
+    defer swapped.deinit();
+    try testing.expectEqual(handle_c, swapped.zoomed);
+
+    const str = try std.fmt.allocPrint(alloc, "{f}", .{std.fmt.alt(swapped, .formatDiagram)});
+    defer alloc.free(str);
+    try testing.expectEqualStrings(str,
+        \\+---++---+
+        \\| C || B |
+        \\+---++---+
+        \\+--------+
+        \\|    A   |
+        \\+--------+
         \\
     );
 }

@@ -35,6 +35,7 @@ const win32_surface_drop = @import("win32_surface_drop.zig");
 const win32_surface_drop_target = @import("win32_surface_drop_target.zig");
 const win32_toast_activation = @import("win32_toast_activation.zig");
 const win32_tab_drag = @import("win32_tab_drag.zig");
+const win32_pane_drag = @import("win32_pane_drag.zig");
 const win32_ports = @import("win32_ports.zig");
 const win32_tab_drag_ole = @import("win32_tab_drag_ole.zig");
 const win32_split_resize = @import("win32_split_resize.zig");
@@ -360,6 +361,7 @@ const GWL_STYLE = -16;
 const GWL_EXSTYLE = -20;
 const IDC_ARROW = @as(INTRESOURCE, @ptrFromInt(32512));
 const IDC_SIZEWE = @as(INTRESOURCE, @ptrFromInt(32644));
+const IDC_SIZEALL = @as(INTRESOURCE, @ptrFromInt(32646));
 const IDC_SIZENS = @as(INTRESOURCE, @ptrFromInt(32645));
 const ID_ICON_GHOSTTY = 1;
 const IMAGE_ICON = 1;
@@ -492,6 +494,7 @@ const SWP_NOMOVE = 0x0002;
 const SWP_NOZORDER = 0x0004;
 const SWP_NOACTIVATE = 0x0010;
 const SWP_FRAMECHANGED = 0x0020;
+const SWP_SHOWWINDOW = 0x0040;
 const RDW_INVALIDATE: UINT = 0x0001;
 const RDW_INTERNALPAINT: UINT = 0x0002;
 const RDW_ERASE: UINT = 0x0004;
@@ -1300,6 +1303,7 @@ const class_name = std.unicode.utf8ToUtf16LeStringLiteral("paramux.win32");
 const host_class_name = std.unicode.utf8ToUtf16LeStringLiteral("paramux.win32.host");
 const palette_list_class_name = std.unicode.utf8ToUtf16LeStringLiteral("paramux.win32.palette_list");
 const scrollbar_class_name = std.unicode.utf8ToUtf16LeStringLiteral("paramux.win32.scrollbar");
+const pane_drop_preview_class_name = std.unicode.utf8ToUtf16LeStringLiteral("paramux.win32.pane_drop_preview");
 
 /// Palette list row height at 96 DPI. Scaled via `Host.scaled` at paint.
 const palette_row_height: i32 = 36;
@@ -3472,6 +3476,7 @@ pub const App = struct {
     host_class_atom: ATOM = 0,
     palette_list_class_atom: ATOM = 0,
     scrollbar_class_atom: ATOM = 0,
+    pane_drop_preview_class_atom: ATOM = 0,
     hosts: std.ArrayListUnmanaged(*Host) = .empty,
     windows: std.ArrayListUnmanaged(*Surface) = .empty,
     /// Internal test seam so action-path tests can drive real
@@ -6296,6 +6301,30 @@ pub const App = struct {
         }
     }
 
+    fn ensurePaneDropPreviewClass(self: *App) !void {
+        if (self.pane_drop_preview_class_atom != 0) return;
+
+        var wc: WNDCLASSEXW = .{
+            .cbSize = @sizeOf(WNDCLASSEXW),
+            .style = 0,
+            .lpfnWndProc = &paneDropPreviewProc,
+            .cbClsExtra = 0,
+            .cbWndExtra = 0,
+            .hInstance = self.hinstance,
+            .hIcon = null,
+            .hCursor = LoadCursorW(null, IDC_ARROW),
+            .hbrBackground = null,
+            .lpszMenuName = null,
+            .lpszClassName = pane_drop_preview_class_name,
+            .hIconSm = null,
+        };
+
+        self.pane_drop_preview_class_atom = RegisterClassExW(&wc);
+        if (self.pane_drop_preview_class_atom == 0) {
+            return windows.unexpectedError(windows.kernel32.GetLastError());
+        }
+    }
+
     fn createWindowSurface(
         self: *App,
         config: *const configpkg.Config,
@@ -9000,6 +9029,14 @@ const Host = struct {
     split_down_placement: ChildPlacement = .{},
     settings_hwnd: ?HWND = null, // settings gear button (⚙)
     settings_placement: ChildPlacement = .{},
+    // Pane drag-and-drop rearrangement (source = a sidebar row; drop =
+    // another row to swap, or a pane's edge/center to dock/swap).
+    pane_drag: win32_pane_drag.DragState = .{},
+    pane_drag_source: ?*Surface = null,
+    pane_drop_target: ?*Surface = null,
+    pane_drop_zone: ?win32_pane_drag.DropZone = null,
+    pane_drop_row: ?usize = null,
+    pane_drop_preview_hwnd: ?HWND = null,
     overlay_label_placement: ChildPlacement = .{},
     overlay_edit_placement: ChildPlacement = .{},
     overlay_hint_placement: ChildPlacement = .{},
@@ -10267,6 +10304,7 @@ const Host = struct {
         destroySubclassedWindowWithPrev(&self.settings_hwnd, chrome_prev);
         destroySubclassedWindowWithPrev(&self.overflow_hwnd, chrome_prev);
         destroyChildWindow(&self.tooltip_hwnd);
+        destroyChildWindow(&self.pane_drop_preview_hwnd);
 
         destroyChildWindow(&self.palette_list_hwnd);
 
@@ -12449,6 +12487,256 @@ const Host = struct {
         if (self.activeTab()) |merged_tab| {
             if (merged_tab.leafCount() <= 1) merged_tab.tree.zoom(null);
         }
+    }
+
+    /// Sidebar row index under host-client point (x, y), if any.
+    fn sidebarRowAtPoint(self: *Host, x: i32, y: i32) ?usize {
+        const tab = self.activeTab() orelse return null;
+        const content = self.contentRect() catch return null;
+        const sidebar_rect = RECT{
+            .left = 0,
+            .top = content.top,
+            .right = content.left,
+            .bottom = content.bottom,
+        };
+        return sidebarRowIndexAtPoint(
+            sidebar_rect,
+            self.scaled(host_sidebar_row_height),
+            x,
+            y,
+            tab.leafCount(),
+        );
+    }
+
+    /// The pane behind sidebar row `row` (rows follow tree iteration order,
+    /// same as `paintSidebar`).
+    fn surfaceAtSidebarRow(self: *Host, row: usize) ?*Surface {
+        const tab = self.activeTab() orelse return null;
+        var index: usize = 0;
+        var it = tab.tree.iterator();
+        while (it.next()) |entry| : (index += 1) {
+            if (index == row) return entry.view;
+        }
+        return null;
+    }
+
+    /// The pane whose on-screen rect contains host-client point (x, y),
+    /// with that rect. When zoomed, only the zoomed pane counts (the other
+    /// pane windows are hidden but keep stale rects).
+    fn paneAtPoint(self: *Host, x: i32, y: i32) ?struct { surface: *Surface, rect: win32_pane_drag.Rect } {
+        const tab = self.activeTab() orelse return null;
+        const host_hwnd = self.hwnd orelse return null;
+        var it = tab.tree.iterator();
+        while (it.next()) |entry| {
+            if (tab.tree.zoomed) |zoomed| {
+                if (entry.handle != zoomed) continue;
+            }
+            const surface_hwnd = entry.view.hwnd orelse continue;
+            var sr: RECT = undefined;
+            if (GetWindowRect(surface_hwnd, &sr) == 0) continue;
+            var tl = POINT{ .x = sr.left, .y = sr.top };
+            var br = POINT{ .x = sr.right, .y = sr.bottom };
+            _ = ScreenToClient(host_hwnd, &tl);
+            _ = ScreenToClient(host_hwnd, &br);
+            const rect = win32_pane_drag.Rect{ .left = tl.x, .top = tl.y, .right = br.x, .bottom = br.y };
+            if (rect.contains(x, y)) return .{ .surface = entry.view, .rect = rect };
+        }
+        return null;
+    }
+
+    fn ensurePaneDropPreview(self: *Host) ?HWND {
+        if (self.pane_drop_preview_hwnd) |h| return h;
+        const hwnd = self.hwnd orelse return null;
+        self.app.ensurePaneDropPreviewClass() catch return null;
+        self.pane_drop_preview_hwnd = CreateWindowExW(
+            WS_EX_LAYERED,
+            pane_drop_preview_class_name,
+            std.unicode.utf8ToUtf16LeStringLiteral(""),
+            WS_CHILD,
+            0,
+            0,
+            10,
+            10,
+            hwnd,
+            null,
+            self.app.hinstance,
+            null,
+        );
+        const h = self.pane_drop_preview_hwnd orelse return null;
+        _ = SetWindowLongPtrW(h, GWLP_USERDATA, @as(LONG_PTR, @intCast(@intFromPtr(self))));
+        _ = SetLayeredWindowAttributes(h, 0, 96, LWA_ALPHA);
+        return h;
+    }
+
+    fn positionPaneDropPreview(self: *Host, rect: RECT) void {
+        const h = self.ensurePaneDropPreview() orelse return;
+        // null insert-after = HWND_TOP, keeping the preview above the GL
+        // pane children.
+        _ = SetWindowPos(
+            h,
+            null,
+            rect.left,
+            rect.top,
+            @max(1, rect.right - rect.left),
+            @max(1, rect.bottom - rect.top),
+            SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        );
+        _ = InvalidateRect(h, null, 1);
+    }
+
+    fn hidePaneDropPreview(self: *Host) void {
+        if (self.pane_drop_preview_hwnd) |h| _ = ShowWindow(h, SW_HIDE);
+    }
+
+    /// Track the drop target + preview for the current cursor position.
+    fn updatePaneDragAtPoint(self: *Host, x: i32, y: i32) void {
+        if (!self.pane_drag.dragging) return;
+        self.pane_drop_target = null;
+        self.pane_drop_zone = null;
+        self.pane_drop_row = null;
+
+        // Dropping on another sidebar row swaps the two panes.
+        if (self.sidebarRowAtPoint(x, y)) |row| {
+            if (row != self.pane_drag.source_row and self.surfaceAtSidebarRow(row) != null) {
+                self.pane_drop_row = row;
+                const content = self.contentRect() catch return;
+                const row_h = self.scaled(host_sidebar_row_height);
+                const top = content.top + @as(i32, @intCast(row)) * row_h;
+                self.positionPaneDropPreview(.{
+                    .left = 0,
+                    .top = top,
+                    .right = content.left,
+                    .bottom = top + row_h,
+                });
+                return;
+            }
+            self.hidePaneDropPreview();
+            return;
+        }
+
+        // Over a pane: edge bands dock as a new split, the middle swaps.
+        if (self.paneAtPoint(x, y)) |hit| {
+            if (hit.surface != self.pane_drag_source) {
+                if (win32_pane_drag.zoneAt(hit.rect, x, y)) |zone| {
+                    self.pane_drop_target = hit.surface;
+                    self.pane_drop_zone = zone;
+                    const pr = win32_pane_drag.zonePreviewRect(hit.rect, zone);
+                    self.positionPaneDropPreview(.{
+                        .left = pr.left,
+                        .top = pr.top,
+                        .right = pr.right,
+                        .bottom = pr.bottom,
+                    });
+                    return;
+                }
+            }
+        }
+        self.hidePaneDropPreview();
+    }
+
+    /// Reset all drag state + hide the preview. Does NOT release capture —
+    /// callers do that (WM_CAPTURECHANGED means it is already gone).
+    fn cancelPaneDrag(self: *Host) void {
+        self.pane_drag.cancel();
+        self.pane_drag_source = null;
+        self.pane_drop_target = null;
+        self.pane_drop_zone = null;
+        self.pane_drop_row = null;
+        self.hidePaneDropPreview();
+    }
+
+    /// Execute the drop recorded by `updatePaneDragAtPoint`.
+    fn commitPaneDrag(self: *Host) void {
+        const source = self.pane_drag_source orelse return;
+        if (self.pane_drop_row) |row| {
+            if (self.surfaceAtSidebarRow(row)) |target| {
+                self.swapPanesInActiveTab(source, target);
+            }
+            return;
+        }
+        const target = self.pane_drop_target orelse return;
+        const zone = self.pane_drop_zone orelse return;
+        switch (zone) {
+            .swap => self.swapPanesInActiveTab(source, target),
+            .left => self.movePaneAsSplit(source, target, .left),
+            .right => self.movePaneAsSplit(source, target, .right),
+            .top => self.movePaneAsSplit(source, target, .up),
+            .bottom => self.movePaneAsSplit(source, target, .down),
+        }
+    }
+
+    /// Swap two panes in the active tab. Structure/ratios stay put; focus
+    /// follows the dragged pane to its new slot.
+    fn swapPanesInActiveTab(self: *Host, a: *Surface, b: *Surface) void {
+        const tab = self.activeTab() orelse return;
+        if (a == b) return;
+        const handle_a = tab.findHandle(a) orelse return;
+        const handle_b = tab.findHandle(b) orelse return;
+        const alloc = self.app.core_app.alloc;
+        const next = tab.tree.swap(alloc, handle_a, handle_b) catch |err| {
+            log.warn("pane swap failed err={}", .{err});
+            return;
+        };
+        tab.clearRedoHistory();
+        self.clearStructuralHistory(.normal);
+        tab.tree.deinit();
+        tab.tree = next;
+        if (tab.findHandle(a)) |h| tab.focused = h;
+        self.layout() catch {};
+        self.invalidateSidebar();
+        self.app.activateSurface(a);
+    }
+
+    /// Move `source` out of its slot and dock it as a new split on
+    /// `direction` of `target`. Composed as remove + split; the moved
+    /// surface stays alive across the two steps via its own single-leaf
+    /// tree ref (mirroring the surface-attach path).
+    fn movePaneAsSplit(
+        self: *Host,
+        source: *Surface,
+        target: *Surface,
+        direction: SplitTreeSurface.Split.Direction,
+    ) void {
+        const tab = self.activeTab() orelse return;
+        if (source == target) return;
+        const alloc = self.app.core_app.alloc;
+        const source_handle = tab.findHandle(source) orelse return;
+
+        var insert = SplitTreeSurface.init(alloc, source) catch |err| {
+            log.warn("pane move failed (insert tree) err={}", .{err});
+            return;
+        };
+        defer insert.deinit();
+
+        var removed = tab.tree.remove(alloc, source_handle) catch |err| {
+            log.warn("pane move failed (remove) err={}", .{err});
+            return;
+        };
+        // Re-resolve the target in the post-remove tree: handles were
+        // rebuilt by `remove`.
+        const target_handle = blk: {
+            var it = removed.iterator();
+            while (it.next()) |entry| {
+                if (entry.view == target) break :blk entry.handle;
+            }
+            removed.deinit();
+            return;
+        };
+        const next = removed.split(alloc, target_handle, direction, 0.5, &insert) catch |err| {
+            log.warn("pane move failed (split) err={}", .{err});
+            removed.deinit();
+            return;
+        };
+        removed.deinit();
+
+        tab.clearRedoHistory();
+        self.clearStructuralHistory(.normal);
+        tab.tree.deinit();
+        tab.tree = next;
+        if (tab.findHandle(source)) |h| tab.focused = h;
+        self.layout() catch {};
+        self.invalidateSidebar();
+        self.app.activateSurface(source);
     }
 
     fn isOverlayButton(self: *const Host, child: HWND) bool {
@@ -14719,6 +15007,7 @@ const Host = struct {
             }
         }.f;
 
+        const show_drag_grip = tab.leafCount() > 1;
         var y: i32 = rect.top;
         var it = tab.tree.iterator();
         while (it.next()) |entry| {
@@ -14772,6 +15061,18 @@ const Host = struct {
                 const dot_rect = RECT{ .left = cx - @divTrunc(d, 2), .top = cy - @divTrunc(d, 2), .right = cx + @divTrunc(d, 2), .bottom = cy + @divTrunc(d, 2) };
                 const attn = surface.attention_state.color();
                 drawRoundedRect(hdc, dot_rect, attn, attn, d);
+            }
+            // Drag-grip dots on multi-pane tabs: a quiet cue that rows can
+            // be dragged onto panes/rows to rearrange the layout.
+            if (show_drag_grip) {
+                const dot = self.scaled(2);
+                const gx = rect.right - border - self.scaled(7);
+                var gy = y + @divTrunc(row_h, 2) - self.scaled(7);
+                var k: usize = 0;
+                while (k < 4) : (k += 1) {
+                    fillSolidRect(hdc, .{ .left = gx, .top = gy, .right = gx + dot, .bottom = gy + dot }, theme.text_secondary);
+                    gy += self.scaled(4);
+                }
             }
             // Subtle 1px separator under each row.
             fillSolidRect(hdc, .{ .left = rect.left, .top = row_bottom - border, .right = rect.right - border, .bottom = row_bottom }, theme.chrome_border);
@@ -17373,6 +17674,10 @@ comptime {
     _ = win32_explorer_menu.register;
     _ = win32_explorer_menu.unregister;
     _ = win32_explorer_menu.status;
+    // Pane drag-and-drop dock-zone helpers.
+    _ = win32_pane_drag.zoneAt;
+    _ = win32_pane_drag.zonePreviewRect;
+    _ = win32_pane_drag.DragState;
 }
 
 /// Scan argv for a `wgh://activate?...` entry. Malformed activation
@@ -17864,6 +18169,37 @@ fn paletteListProc(
                 state,
             )) |lr| return lr;
             return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+        else => return DefWindowProcW(hwnd, msg, wParam, lParam),
+    }
+}
+
+/// Window proc for the translucent pane drag-and-drop preview: a layered
+/// child of the Host filled with the theme accent (alpha comes from
+/// `SetLayeredWindowAttributes` at creation). Mouse input never reaches it
+/// — the Host holds capture for the whole drag.
+fn paneDropPreviewProc(
+    hwnd: HWND,
+    msg: UINT,
+    wParam: WPARAM,
+    lParam: LPARAM,
+) callconv(.winapi) LRESULT {
+    switch (msg) {
+        WM_ERASEBKGND => return 1,
+        WM_PAINT => {
+            var ps: PAINTSTRUCT = undefined;
+            const hdc = BeginPaint(hwnd, &ps) orelse return 0;
+            defer _ = EndPaint(hwnd, &ps);
+            var rc: RECT = undefined;
+            if (GetClientRect(hwnd, &rc) != 0) {
+                const userdata = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+                const color: u32 = if (userdata != 0) blk: {
+                    const host: *Host = @ptrFromInt(@as(usize, @intCast(userdata)));
+                    break :blk host.app.resolved_theme.accent;
+                } else rgb(116, 156, 224);
+                fillSolidRect(hdc, rc, color);
+            }
+            return 0;
         },
         else => return DefWindowProcW(hwnd, msg, wParam, lParam),
     }
@@ -21116,7 +21452,21 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
             if (host) |v| {
                 const mx = signedLowWord(lParamBits(lParam));
                 const my = signedHighWord(lParamBits(lParam));
-                if (v.activateSidebarRowAtPoint(mx, my)) return 0;
+                if (v.sidebarRowAtPoint(mx, my)) |row| {
+                    _ = v.activateSidebarRowAtPoint(mx, my);
+                    // Arm a potential pane drag; a plain click already
+                    // activated the row above, so nothing else happens
+                    // until the cursor crosses the drag threshold.
+                    if (v.activeTab()) |tab| {
+                        if (tab.leafCount() > 1) {
+                            v.pane_drag.arm(row, mx, my);
+                            v.pane_drag_source = v.surfaceAtSidebarRow(row);
+                            _ = SetCapture(hwnd);
+                            log.debug("pane drag: armed row={d}", .{row});
+                        }
+                    }
+                    return 0;
+                }
                 if (v.dividerAtPoint(mx, my)) |divider| {
                     v.split_resize.begin(divider, v.scaled(win32_split_resize.min_pane_px));
                     _ = SetCapture(hwnd);
@@ -21157,6 +21507,18 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
 
         WM_MOUSEMOVE => {
             if (host) |v| {
+                if (v.pane_drag.armed or v.pane_drag.dragging) {
+                    const mx = signedLowWord(lParamBits(lParam));
+                    const my = signedHighWord(lParamBits(lParam));
+                    if (v.pane_drag.onMouseMove(mx, my, v.scaled(win32_pane_drag.drag_threshold_px))) {
+                        log.debug("pane drag: promoted at ({d},{d})", .{ mx, my });
+                    }
+                    if (v.pane_drag.dragging) {
+                        v.updatePaneDragAtPoint(mx, my);
+                        _ = SetCursor(LoadCursorW(null, IDC_SIZEALL));
+                        return 0;
+                    }
+                }
                 if (v.split_resize.active) {
                     const mx = signedLowWord(lParamBits(lParam));
                     const my = signedHighWord(lParamBits(lParam));
@@ -21213,6 +21575,17 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
 
         WM_LBUTTONUP, WM_MBUTTONUP, WM_RBUTTONUP => {
             if (host) |v| {
+                if (msg == WM_LBUTTONUP and (v.pane_drag.armed or v.pane_drag.dragging)) {
+                    log.debug("pane drag: drop dragging={} row={?d} zone={?}", .{
+                        v.pane_drag.dragging,
+                        v.pane_drop_row,
+                        v.pane_drop_zone,
+                    });
+                    if (v.pane_drag.dragging) v.commitPaneDrag();
+                    v.cancelPaneDrag();
+                    _ = ReleaseCapture();
+                    return 0;
+                }
                 if (msg == WM_LBUTTONUP and v.split_resize.active) {
                     v.split_resize.end();
                     _ = ReleaseCapture();
@@ -21252,6 +21625,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
         WM_CAPTURECHANGED => {
             if (host) |v| {
                 if (v.split_resize.active) v.split_resize.end();
+                if (v.pane_drag.armed or v.pane_drag.dragging) v.cancelPaneDrag();
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
