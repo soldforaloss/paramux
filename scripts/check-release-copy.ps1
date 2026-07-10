@@ -194,7 +194,7 @@ if ($null -ne $readme -and $readme -match 'releases/tag/v([0-9]+\.[0-9]+\.[0-9]+
     Add-Failure "README.md: could not find an explicitly tagged semantic prerelease."
 }
 
-Forbid-Contains -Needle "releases/latest" -Reason "The private prerelease must use an explicit, reviewable tag."
+Forbid-Contains -Needle "releases/latest" -Reason "The prerelease must use an explicit, reviewable tag."
 Forbid-Contains -Needle "winget install" -Reason "Paramux has no published WinGet package."
 Forbid-Contains -Needle "scoop install" -Reason "Paramux has no published Scoop package."
 
@@ -220,7 +220,7 @@ if ($version) {
     Require-Contains -RelativePath "PACKAGING.md" -Needle "publishes exactly these two assets" -Reason "Packaging copy must separate current artifacts from future channels."
     Require-Contains -RelativePath "docs/status.md" -Needle "x64 only" -Reason "Status must not imply a verified ARM64 release."
     Require-Contains -RelativePath "site/components/hero/release-chip.jsx" -Needle $version -Reason "The site badge must match the README prerelease."
-    Require-Contains -RelativePath "site/components/heroes.jsx" -Needle "releases/tag/$tag" -Reason "The site CTA must point at the pinned private release."
+    Require-Contains -RelativePath "site/components/heroes.jsx" -Needle "releases/tag/$tag" -Reason "The site CTA must point at the pinned release."
     Require-Contains -RelativePath "site/components/release/release-block.jsx" -Needle $tag -Reason "The site release facts must match the README prerelease."
     Require-Contains -RelativePath "site/components/why/product-facts.jsx" -Needle $tag -Reason "The site product facts must match the README prerelease."
     Require-Contains -RelativePath "site/bundle.js" -Needle $tag -Reason "The generated site bundle must be rebuilt after release-copy changes."

@@ -9,7 +9,7 @@ export function ReleaseBlock() {
         <strong>{RELEASE_TAG}</strong>
       </div>
       <div className="wg-release__facts" aria-label="Private, Windows x64 portable ZIP, unsigned, OpenGL 4.3 or newer">
-        <span>private</span>
+        <span>public</span>
         <span>Windows x64</span>
         <span>portable ZIP</span>
         <span>unsigned</span>

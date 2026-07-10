@@ -31,7 +31,7 @@ export function HeroColorPop() {
             target="_blank"
             rel="noreferrer"
           >
-            Open private release ↗
+            Open latest release ↗
           </a>
           <ReleaseBlock />
         </div>

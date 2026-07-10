@@ -11,7 +11,7 @@ mapping.
 
 - Windows 10 or Windows 11 on x64.
 - A GPU and driver that expose OpenGL 4.3 or newer through WGL.
-- Access to the private `soldforaloss/paramux` repository to download the
+- The public `soldforaloss/paramux` repository to download the
   current prerelease.
 
 The current user artifact is the unsigned x64 portable prerelease
@@ -24,7 +24,7 @@ retained library surface.
 
 ## Current install mode
 
-Download these two private release assets:
+Download these two release assets:
 
 - `paramux-0.1.0-paramux.6-windows-x64-portable.zip`
 - `SHA256SUMS-windows-x64.txt`
@@ -35,7 +35,7 @@ its folder to the current user's `PATH`. Open a new terminal and run `paramux`.
 
 The helper is not a system installer: it does not copy Paramux to Program
 Files, add an uninstaller, or establish Authenticode publisher trust. Run it
-only after verifying the unsigned ZIP came from the private Paramux release.
+only after verifying the unsigned ZIP came from the official Paramux release.
 
 ## Paths
 
@@ -242,6 +242,6 @@ same extracted build.
 
 ### Updating the prerelease
 
-The current private portable prerelease does not have an automatic apply path.
-Download the next private ZIP, verify its checksum, extract it, and rerun the
+The current portable prerelease does not have an automatic apply path.
+Download the next ZIP, verify its checksum, extract it, and rerun the
 PATH helper for the replacement folder.

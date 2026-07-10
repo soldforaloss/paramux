@@ -44,7 +44,7 @@ function Require-FileText {
 $forbiddenRules = @(
     @{ Pattern = "winget install"; Reason = "Paramux has no public WinGet package." },
     @{ Pattern = "scoop install"; Reason = "Paramux has no public Scoop package." },
-    @{ Pattern = "releases/latest"; Reason = "The private prerelease CTA must use an explicit tag." },
+    @{ Pattern = "releases/latest"; Reason = "The prerelease CTA must use an explicit tag." },
     @{ Pattern = "D3D11"; Reason = "The shipping renderer is OpenGL 4.3 through WGL." },
     @{ Pattern = "DirectX 11"; Reason = "The shipping renderer is OpenGL 4.3 through WGL." },
     @{ Pattern = "%APPDATA%\paramux\config"; Reason = "The real config root is under LOCALAPPDATA." },
@@ -76,14 +76,14 @@ if (-not $version) {
     Add-Failure "components/hero/release-chip.jsx: could not parse PARAMUX_VERSION."
 } else {
     $tag = "v$version"
-    Require-FileText -RelativePath "components\heroes.jsx" -Needle "releases/tag/$tag" -Reason "The primary CTA must point at the pinned private prerelease."
+    Require-FileText -RelativePath "components\heroes.jsx" -Needle "releases/tag/$tag" -Reason "The primary CTA must point at the pinned prerelease."
     Require-FileText -RelativePath "components\release\release-block.jsx" -Needle $tag -Reason "Release facts must agree with the hero badge."
     Require-FileText -RelativePath "components\why\product-facts.jsx" -Needle $tag -Reason "Product facts must agree with the hero badge."
     Require-FileText -RelativePath "bundle.js" -Needle $tag -Reason "The generated bundle must be current."
 }
 
 Require-FileText -RelativePath "index.html" -Needle "Paramux" -Reason "Document metadata must use the product brand."
-Require-FileText -RelativePath "bundle.js" -Needle "private prerelease" -Reason "The current release is access-controlled."
+Require-FileText -RelativePath "bundle.js" -Needle "public prerelease" -Reason "The release badge must reflect public availability."
 Require-FileText -RelativePath "bundle.js" -Needle "Windows x64" -Reason "The only verified release architecture is x64."
 Require-FileText -RelativePath "bundle.js" -Needle "unsigned" -Reason "The current binary is not Authenticode signed."
 Require-FileText -RelativePath "bundle.js" -Needle "LOCALAPPDATA" -Reason "Automation copy must use the real local state root."

@@ -9,7 +9,7 @@ export function TopBar({ theme, setTheme }) {
           <ParamuxWordmark size={24} />
         </a>
         <div className="wg-topbar__actions">
-          <span className="wg-topbar__status">private preview</span>
+          <span className="wg-topbar__status">public preview</span>
           <ParamuxToggle theme={theme} onToggle={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
         </div>
       </div>

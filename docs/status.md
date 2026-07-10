@@ -4,7 +4,7 @@ This page describes what currently works in Paramux, what remains partial, and
 what is not part of the current release. When release copy disagrees with this
 page, prefer the checked artifact and repository state.
 
-Last reviewed: 2026-07-10, against the private `v0.1.0-paramux.6`
+Last reviewed: 2026-07-10, against the public `v0.1.0-paramux.6`
 prerelease.
 
 Paramux is derived from Winghostty, which in turn carries the Ghostty terminal
@@ -22,7 +22,7 @@ Ghostty documentation to current Paramux behavior.
 
 - **Windows 10 and Windows 11 on x64** are the current prerelease target.
 - The renderer requires OpenGL 4.3 or newer through WGL.
-- `v0.1.0-paramux.6` is private, portable, prerelease-only, and unsigned.
+- `v0.1.0-paramux.6` is public, portable, prerelease-only, and unsigned.
 - Its ZIP is feature- and branding-complete: Paramux README, completions, and
   VERSIONINFO, plus the agent-hooks payload, config presets, and the
   `+send`/`+send-key` verbs. It also carries the 2026-07-10 UI/UX overhaul
@@ -131,7 +131,7 @@ then install the relevant adapter and restart that agent.
 ### Stable updater path
 
 The codebase contains a checksum- and Authenticode-gated installer updater for
-a future stable signed release. It is not a current update path: the private
+a future stable signed release. It is not a current update path: the public
 `v0.1.0-paramux.6` release is a prerelease with only an unsigned portable ZIP.
 Current users update manually.
 
@@ -147,8 +147,8 @@ child-HWND lifetime, focus, and repaint semantics.
 - **Unsigned test build.** Verify the SHA-256 checksum before running the
   current portable ZIP. The included PATH helper unblocks the extracted files,
   but does not provide Authenticode publisher trust.
-- **Private access.** Release links require access to
-  `soldforaloss/paramux`; there is no public download today.
+- **Public prerelease.** Releases are public on `soldforaloss/paramux`;
+  there is still no package-manager or signed-installer channel.
 - **Hardware requirement.** Paramux has no DirectX or ANGLE fallback. A driver
   that cannot expose OpenGL 4.3 through WGL cannot run this build.
 - **Portable resource tree.** Keep `paramux.exe`, `paramux.com`,
@@ -158,7 +158,7 @@ child-HWND lifetime, focus, and repaint semantics.
 - **No package-manager channel.** Any old Winghostty WinGet or Scoop identifiers
   belong to the predecessor project and do not install Paramux.
 - **No portable auto-apply.** Replace the extracted folder manually after
-  verifying a newer private prerelease.
+  verifying a newer prerelease.
 - **Local-only crash capture.** Windows can write `.dmp` files for
   process-level unhandled exceptions, but some hard-abort paths may terminate
   before a dump is available.

@@ -21,7 +21,7 @@ Marketing copy must stay aligned with the repository source of truth:
 - [docs/paramux/capability-parity.md](../docs/paramux/capability-parity.md)
 - [docs/paramux/paramux-prd.md](../docs/paramux/paramux-prd.md)
 
-Current distribution is deliberately narrow: private, unsigned Windows x64
+Current distribution is deliberately narrow: an unsigned Windows x64
 portable prerelease `v0.1.0-paramux.6` in `soldforaloss/paramux`. There is no
 public WinGet or Scoop package, signed installer, or verified ARM64 release yet.
 

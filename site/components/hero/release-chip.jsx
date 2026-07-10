@@ -7,7 +7,7 @@ export function ReleaseChip() {
     <span className="wg-hero__badge">
       <ColorDots />
       <span className="wg-hero__badge-version">{`v${PARAMUX_VERSION}`}</span>
-      <span className="wg-hero__badge-latest">private prerelease</span>
+      <span className="wg-hero__badge-latest">public prerelease</span>
       <span className="wg-hero__badge-sep" aria-hidden="true" />
       <span className="wg-hero__badge-meta">Windows 10/11 · x64 portable</span>
       <span className="wg-hero__badge-sep" aria-hidden="true" />

@@ -5,7 +5,7 @@ behavior on Windows. Paramux descends from Winghostty and retains Ghostty's
 terminal core, config grammar, resource formats, and `libghostty-vt`; its native
 Windows host and agent workflow are Paramux-specific.
 
-Last reviewed: 2026-07-10, against the private x64 portable prerelease
+Last reviewed: 2026-07-10, against the public x64 portable prerelease
 `v0.1.0-paramux.6`.
 
 ## Status legend
@@ -38,7 +38,7 @@ Last reviewed: 2026-07-10, against the private x64 portable prerelease
 | [Configuration: `background-blur`](https://ghostty.org/docs/config/reference) | On supported Windows 11 builds, a transparent background plus enabled blur requests a DWM system backdrop. Older Windows versions accept the option without the same backdrop. Numeric radii act as enabled/disabled rather than tunable blur strength. |
 | [Features overview](https://ghostty.org/docs/features) | Accessibility is partial: the Win32 host exposes a UI Automation root provider and the command palette exposes a list provider, but terminal scrollback is not yet available through `ITextProvider`. |
 | OSC 52 clipboard selectors | Windows has one native clipboard. Writes using `c`, `s`, or `p` target that clipboard; read replies preserve the requested selector for client correlation. |
-| [Configuration: `auto-update`](https://ghostty.org/docs/config/reference) | The codebase has a future signed-installer check/download path. The current private prerelease is unsigned and portable-only, so it must be updated manually; `auto-update = download` is not a current distribution path. |
+| [Configuration: `auto-update`](https://ghostty.org/docs/config/reference) | The codebase has a future signed-installer check/download path. The current prerelease is unsigned and portable-only, so it must be updated manually; `auto-update = download` is not a current distribution path. |
 
 ## Windows-specific
 
@@ -51,7 +51,7 @@ Last reviewed: 2026-07-10, against the private x64 portable prerelease
 | Agent workspace | A per-pane sidebar shows available cwd/Git/port/notification metadata. `working`, `waiting`, `done`, and `error` states drive sidebar, pane, tab, toast, and taskbar attention. |
 | Local automation | `paramux +list-windows` reports `paramux.windows.v2` structural JSON. `+perform-action`, `+notify`, `+read-pane`, `+send`, and `+send-key` are token-gated; `PARAMUX_SURFACE_ID` targets panes and `PARAMUX_TOKEN` authenticates in-pane clients. The generic `+perform-action` allowlist rejects terminal-input, arbitrary-file helper, and crash actions; the dedicated `+send`/`+send-key` methods are the bounded terminal-input path. |
 | Windows UX | DWM dark-title-bar integration, high-contrast palette switching, IME, file drag-and-drop, native context menus, profile selection, taskbar progress, and WinRT toast attempts are implemented in the Win32 host. |
-| Current distribution | The private `v0.1.0-paramux.6` release contains one unsigned x64 portable ZIP, `SHA256SUMS-windows-x64.txt`, and the `install-paramux.cmd` PATH helper. Signed installer, WinGet, Scoop, ARM64, and public stable channels are planned. |
+| Current distribution | The public `v0.1.0-paramux.6` release contains one unsigned x64 portable ZIP, `SHA256SUMS-windows-x64.txt`, and the `install-paramux.cmd` PATH helper. Signed installer, WinGet, Scoop, ARM64, and public stable channels are planned. |
 
 ## Maintenance anchors
 

@@ -1,15 +1,14 @@
 # Getting started with Paramux
 
-This guide covers the current private Windows prerelease: download, verify,
+This guide covers the current Windows prerelease: download, verify,
 extract, add Paramux to `PATH`, launch agent panes, configure the terminal, and
 uninstall it.
 
-## 1. Get the private x64 prerelease
+## 1. Get the x64 prerelease
 
 The current build is
 [`v0.1.0-paramux.6`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.6)
-in the private `soldforaloss/paramux` repository. You must be signed in to an
-account with repository access.
+in the public `soldforaloss/paramux` repository.
 
 Download both assets:
 
@@ -251,8 +250,8 @@ helper, and crash actions. New action variants remain disabled until reviewed.
 ## 10. Updates
 
 Do not rely on the built-in stable installer updater for the current release.
-`v0.1.0-paramux.6` is private, marked as a prerelease, portable-only, and
-unsigned. Update manually by downloading the next private portable ZIP,
+`v0.1.0-paramux.6` is a public prerelease, portable-only, and
+unsigned. Update manually by downloading the next portable ZIP,
 verifying its checksum, and replacing the extracted folder.
 
 A signed installer update lane is planned, but it is not a current user path.

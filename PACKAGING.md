@@ -1,12 +1,12 @@
 # Packaging Paramux for Windows
 
-Paramux is currently distributed as a private Windows prerelease. This page
+Paramux is currently distributed as an unsigned public Windows prerelease. This page
 describes the artifacts that exist today and keeps future distribution work
 separate from the current user path.
 
 ## Current distribution contract
 
-As of 2026-07-10, the current build is the private prerelease
+As of 2026-07-10, the current build is the public prerelease
 [`v0.1.0-paramux.6`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.6).
 The release is visible only to people who can access `soldforaloss/paramux`.
 
@@ -93,7 +93,7 @@ dist\artifacts\paramux-0.1.0-paramux.6-windows-x64\
 
 The packaging script performs its own package smoke checks and emits the
 portable ZIP plus `SHA256SUMS-windows-x64.txt`. Unsigned local packaging is the
-expected path for the current private prerelease.
+expected path for the current prerelease.
 
 `-SkipInstaller` keeps prerelease suffixes out of Inno Setup's numeric version
 fields and produces only the artifact that exists today. A separate numeric
@@ -127,7 +127,7 @@ For `v0.1.0-paramux.6`, `NotSigned` is the expected signature status. A future
 signed channel must instead fail closed unless the expected Authenticode signer
 and checksum both validate.
 
-## Private prerelease checklist
+## Prerelease checklist
 
 For the current release lane:
 
@@ -140,8 +140,8 @@ For the current release lane:
 7. Publish to `soldforaloss/paramux` as a **prerelease**, not a stable release.
 8. Upload only the artifacts that were actually built and verified.
 
-The repository and release are private. Do not describe this lane as a public
-download or package-manager release.
+The repository and releases are public, but this lane is still not a signed
+installer or package-manager release. Do not describe it as one.
 
 ## Planned signed installer
 
@@ -190,7 +190,7 @@ they are not Paramux distribution channels.
 
 ## Versioning and lineage
 
-Current private test tags use `v0.1.0-paramux.<revision>`. The exact inherited
+Current test tags use `v0.1.0-paramux.<revision>`. The exact inherited
 Ghostty compatibility base remains recorded in
 `dist/windows/release-metadata.json` for maintainers.
 

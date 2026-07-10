@@ -74,7 +74,7 @@ lineage and compatibility names; **Paramux is the product and executable.**
 - Portable packaging with `paramux.exe`, the console-friendly `paramux.com`
   launcher, and an idempotent user-PATH installer.
 
-The current build is a private prerelease. Signed installers, WinGet, and Scoop
+The current build is a public, unsigned prerelease. Signed installers, WinGet, and Scoop
 distribution are not published yet; the portable build is the truthful install
 path today.
 
