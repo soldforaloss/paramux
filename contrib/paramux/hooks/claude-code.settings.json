@@ -1,29 +1,32 @@
 {
-  "//": "paramux agent-attention hooks for Claude Code. Merge the `hooks` block",
-  "//1": "into your Claude Code settings.json (~/.claude/settings.json for all",
-  "//2": "projects, or .claude/settings.json in a project). Requires paramux",
-  "//3": "on PATH; otherwise replace `paramux` with the full path to",
-  "//4": "paramux.com. Each hook runs inside the pane, so +notify writes to",
-  "//5": "that pane's console and lights exactly that pane. Lifecycle mapping:",
-  "//6": "prompt submitted -> working (blue), needs input -> waiting (amber),",
-  "//7": "finished -> done (green).",
   "hooks": {
     "UserPromptSubmit": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "paramux +notify --state=working Claude Code is working"
+            "command": "__PARAMUX_EXECUTABLE__?RUN_INSTALL_PARAMUX_PS1",
+            "args": [
+              "+notify",
+              "--state=working",
+              "Claude Code is working"
+            ]
           }
         ]
       }
     ],
     "Notification": [
       {
+        "matcher": "permission_prompt|elicitation_dialog",
         "hooks": [
           {
             "type": "command",
-            "command": "paramux +notify --state=waiting Claude Code needs your input"
+            "command": "__PARAMUX_EXECUTABLE__?RUN_INSTALL_PARAMUX_PS1",
+            "args": [
+              "+notify",
+              "--state=waiting",
+              "Claude Code needs your input"
+            ]
           }
         ]
       }
@@ -33,7 +36,27 @@
         "hooks": [
           {
             "type": "command",
-            "command": "paramux +notify --state=done Claude Code finished responding"
+            "command": "__PARAMUX_EXECUTABLE__?RUN_INSTALL_PARAMUX_PS1",
+            "args": [
+              "+notify",
+              "--state=done",
+              "Claude Code finished responding"
+            ]
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__PARAMUX_EXECUTABLE__?RUN_INSTALL_PARAMUX_PS1",
+            "args": [
+              "+notify",
+              "--state=error",
+              "Claude Code stopped with an error"
+            ]
           }
         ]
       }

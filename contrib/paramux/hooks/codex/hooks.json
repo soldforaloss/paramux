@@ -1,0 +1,40 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '%s\\n' 'Paramux Codex hooks require Windows and a configured portable install.' >&2; exit 1",
+            "commandWindows": "__PARAMUX_CODEX_COMMAND_WINDOWS__?RUN_INSTALL_PARAMUX_PS1",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '%s\\n' 'Paramux Codex hooks require Windows and a configured portable install.' >&2; exit 1",
+            "commandWindows": "__PARAMUX_CODEX_COMMAND_WINDOWS__?RUN_INSTALL_PARAMUX_PS1",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '%s\\n' 'Paramux Codex hooks require Windows and a configured portable install.' >&2; exit 1",
+            "commandWindows": "__PARAMUX_CODEX_COMMAND_WINDOWS__?RUN_INSTALL_PARAMUX_PS1",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

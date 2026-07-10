@@ -1,0 +1,38 @@
+{
+  "hooks": {
+    "BeforeAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "call \"${extensionPath}/scripts/notify.cmd\"",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "ToolPermission",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "call \"${extensionPath}/scripts/notify.cmd\"",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "AfterAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "call \"${extensionPath}/scripts/notify.cmd\"",
+            "timeout": 10000
+          }
+        ]
+      }
+    ]
+  }
+}

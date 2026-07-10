@@ -7,12 +7,12 @@ toast + taskbar flash.
 
 ## How it works
 
-`paramux +notify [--state=<state>] [--title=<t>] <message...>` emits an
-OSC 777 desktop-notification escape sequence on the terminal it runs in. Because
-the sequence travels the pane's own ConPTY, it **auto-targets the pane the
-command ran in** — no window or surface id needed. On Windows the sequence is
-written directly to `CONOUT$` rather than stdout, so it still reaches paramux
-even though agent hooks capture their child processes' stdout.
+`paramux +notify [--state=<state>] [--title=<t>] <message...>` prefers the
+authenticated local IPC route using the `PARAMUX_SURFACE_ID` and
+`PARAMUX_TOKEN` that Paramux injects into every pane. This **auto-targets the
+pane the command ran in** — no window or surface id needed — and still works
+when an agent hook hides or captures its child console. If IPC is unavailable,
+the CLI falls back to an OSC 777 notification through the pane's `CONOUT$`.
 
 `--state` is one of:
 
@@ -25,46 +25,86 @@ even though agent hooks capture their child processes' stdout.
 
 A plain `+notify "msg"` with no `--state` defaults to `waiting`.
 
-Prerequisite: `paramux` must be on `PATH` (Windows resolves `paramux` to
-`paramux.com`, the console variant). Otherwise use the full path to
-`paramux.com` in the commands below.
+Run `install-paramux.cmd` before installing these adapters. It adds Paramux to
+`PATH`, sets the absolute `PARAMUX_HOME` used by copied plugins, and replaces
+the deliberately non-executable Claude/Codex template values with paths rooted
+in that verified portable install. Restart each agent after installation so it
+inherits `PARAMUX_HOME`. Codex and Gemini also require Node on `PATH`; their
+launchers leave the project directory before resolving Node, validate each
+payload, call the absolute `PARAMUX_HOME\paramux.com` with fixed arguments,
+suppress child stdout, and return the JSON their hook protocols require.
 
 ## Claude Code
 
-Merge [`claude-code.settings.json`](claude-code.settings.json) into your Claude
-Code `settings.json` (`~/.claude/settings.json` for every project, or
-`.claude/settings.json` inside one project). It maps Claude Code's lifecycle
-hooks — `UserPromptSubmit` → working, `Notification` → waiting, `Stop` → done.
+After running the portable installer, merge
+[`claude-code.settings.json`](claude-code.settings.json) into your Claude Code
+`settings.json` (`~/.claude/settings.json` for every project, or
+`.claude/settings.json` inside one project). The installer writes the absolute
+`paramux.com` path into this exec-form configuration. Do not copy the source
+template while it still contains
+`__PARAMUX_EXECUTABLE__?RUN_INSTALL_PARAMUX_PS1`. The settings map:
+
+- `UserPromptSubmit` to `working`
+- `Notification` to `waiting`, limited to
+  `permission_prompt|elicitation_dialog` (the 60-second `idle_prompt`
+  notification is deliberately excluded so it cannot overwrite a `done` pane)
+- `Stop` to `done`
+- `StopFailure` to `error`
 
 ## Codex CLI
 
-Codex runs a program on turn completion via the `notify` setting in
-`~/.codex/config.toml`. Point it at a small script that calls `+notify`:
+After running the portable installer, copy
+[`codex/hooks.json`](codex/hooks.json) to `~/.codex/hooks.json`. If
+`hooks.json` already exists, merge the three event arrays instead of replacing
+the file. Do not copy a source template that still contains
+`__PARAMUX_CODEX_COMMAND_WINDOWS__?RUN_INSTALL_PARAMUX_PS1`. The installer
+writes an absolute, encoded first-hop command; the packaged
+`paramux-codex-hook.cmd` then anchors
+itself to the portable root before resolving the adjacent bounded Node helper.
+A repository working directory therefore cannot shadow either launcher. Run
+this from the installed `agent-hooks` folder, not a repository checkout:
 
-```toml
-notify = ["paramux", "+notify", "--state=done", "Codex finished"]
+```powershell
+New-Item -ItemType Directory -Path "$HOME\.codex" -Force | Out-Null
+if (Test-Path "$HOME\.codex\hooks.json") {
+    Write-Warning 'hooks.json already exists; merge the three event arrays from .\codex\hooks.json instead of overwriting.'
+} else {
+    Copy-Item .\codex\hooks.json "$HOME\.codex\hooks.json"
+}
 ```
 
-Codex appends a JSON argument describing the event; `+notify` ignores extra
-trailing args, so the fixed `--state=done` message still fires on completion.
-For a richer mapping, wrap it in a script that inspects the JSON `type` field
-and picks `--state=waiting` vs `--state=done`.
+Restart Codex, then review and trust the commands through `/hooks`. The adapter
+maps `UserPromptSubmit` to `working`, `PermissionRequest` to `waiting`, and
+`Stop` to `done`. Codex has no stable generic turn-error event, so this adapter
+does not guess at an `error` transition. The helper emits exactly `{}` on
+stdout after a successful notification because Codex `Stop` parses hook stdout
+as JSON. The legacy `notify` config is completion-only and is not used here.
 
 ## Gemini CLI
 
-Gemini CLI has no stable hook surface yet. Two options:
+[`gemini-paramux`](gemini-paramux) is an installable Gemini CLI extension:
 
-1. **Wrapper alias** — run Gemini through a wrapper that emits
-   `paramux +notify --state=working ...` before launch and
-   `paramux +notify --state=done ...` after it exits.
-2. **OSC fallback** — any tool that emits an OSC 9 or OSC 777 notification
-   sequence lights the pane automatically (paramux already listens for these).
+```powershell
+gemini extensions install .\gemini-paramux
+```
+
+Restart Gemini after installation so the extension inherits `PARAMUX_HOME`.
+The extension maps `BeforeAgent` to
+`working`, `Notification` with matcher `ToolPermission` to `waiting`, and
+`AfterAgent` to `done`. Its bounded helper validates stdin and emits exactly
+`{}` on successful completion. Gemini has no stable generic agent-error event,
+so the extension does not infer one from individual tool failures.
 
 ## OpenCode
 
-OpenCode exposes a plugin/event system. Add a plugin that shells out to
-`paramux +notify --state=<state> ...` on its session-idle / session-complete
-events, mirroring the Claude Code mapping.
+Copy [`opencode/paramux.js`](opencode/paramux.js) to the project plugin directory
+`.opencode/plugins/paramux.js`, or to the global plugin directory
+`~/.config/opencode/plugins/paramux.js`. OpenCode loads local plugins at
+startup. Restart OpenCode after `PARAMUX_HOME` is installed. The plugin uses
+the absolute `PARAMUX_HOME\paramux.com` path with a no-shell child process and
+maps `session.status` busy/idle to `working`/`done`, `permission.asked` to `waiting`,
+and `session.error` to `error`. A same-session idle event after an error is
+ignored so it cannot immediately overwrite the red error state.
 
 ## Manual test
 
@@ -75,4 +115,5 @@ paramux +notify --state=waiting testing paramux attention
 ```
 
 The pane's sidebar dot should turn amber and a Windows toast should appear.
-Focusing the pane clears the state.
+Focus or pane navigation preserves the alert so it remains readable; typing,
+pasting, or clicking inside that terminal acknowledges and clears it.
