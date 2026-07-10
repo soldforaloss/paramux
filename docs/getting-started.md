@@ -247,12 +247,29 @@ Page Down while respecting the pane's active terminal keyboard modes. The
 generic action allowlist continues to reject terminal-write, arbitrary file
 helper, and crash actions. New action variants remain disabled until reviewed.
 
-## 10. Updates
+## 10. Updates and uninstall
 
-Do not rely on the built-in stable installer updater for the current release.
-`v0.1.0-paramux.6` is a public prerelease, portable-only, and
-unsigned. Update manually by downloading the next portable ZIP,
-verifying its checksum, and replacing the extracted folder.
+Update the portable install in place from a newer GitHub release:
+
+```powershell
+paramux +update --check   # report whether a newer release exists
+paramux +update           # download, verify SHA-256, and swap files in place
+```
+
+`+update` refuses to run while a paramux window is open from that folder,
+never touches your configuration, and verifies the release checksum before
+changing anything. The manual path still works too: download the next
+portable ZIP, verify its checksum, and replace the extracted folder.
+
+Uninstall with:
+
+```powershell
+paramux +uninstall           # PATH, PARAMUX_HOME, Explorer menu
+paramux +uninstall --purge   # also deletes %LOCALAPPDATA%\paramux
+```
+
+Then delete the extracted folder itself. `paramux +install` is the CLI
+equivalent of `install-paramux.cmd` for wiring a folder back up.
 
 A signed installer update lane is planned, but it is not a current user path.
 

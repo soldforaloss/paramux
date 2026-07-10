@@ -128,12 +128,16 @@ CLI extension, and an OpenCode plugin. Their lifecycle events differ, so each
 adapter maps only events its agent exposes. Run `install-paramux.cmd` first,
 then install the relevant adapter and restart that agent.
 
-### Stable updater path
+### Update paths
 
-The codebase contains a checksum- and Authenticode-gated installer updater for
-a future stable signed release. It is not a current update path: the public
-`v0.1.0-paramux.6` release is a prerelease with only an unsigned portable ZIP.
-Current users update manually.
+The portable install updates itself: `paramux +update` fetches the newest
+GitHub release (prereleases included), verifies the portable ZIP's SHA-256
+against the published checksum file, and swaps the files in place while
+preserving configuration. `paramux +install` / `paramux +uninstall` wire and
+un-wire the folder (PATH, `PARAMUX_HOME`, Explorer context menu, agent
+hooks). The separate checksum- and Authenticode-gated installer updater in
+the codebase targets a future stable signed release and is not a current
+update path.
 
 ### Win32 runtime extraction
 
@@ -157,8 +161,9 @@ child-HWND lifetime, focus, and repaint semantics.
   verification remains outstanding.
 - **No package-manager channel.** Any old Winghostty WinGet or Scoop identifiers
   belong to the predecessor project and do not install Paramux.
-- **No portable auto-apply.** Replace the extracted folder manually after
-  verifying a newer prerelease.
+- **CLI-driven portable updates.** `paramux +update` applies a
+  checksum-verified newer release in place; there is no background
+  auto-update, and windows must be closed while it runs.
 - **Local-only crash capture.** Windows can write `.dmp` files for
   process-level unhandled exceptions, but some hard-abort paths may terminate
   before a dump is available.

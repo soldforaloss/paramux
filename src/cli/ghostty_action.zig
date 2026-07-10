@@ -79,6 +79,18 @@ pub const Action = enum {
     // Convert a Windows Terminal color scheme into a paramux theme.
     @"import-theme",
 
+    // Wire this folder into the user environment (PATH, PARAMUX_HOME,
+    // Explorer context menu, agent hooks).
+    install,
+
+    // Reverse +install for this folder; --purge also deletes the
+    // per-user data directory.
+    uninstall,
+
+    // Update this portable install in place from the newest GitHub
+    // release (checksum-verified).
+    update,
+
     pub fn detectSpecialCase(arg: []const u8) ?SpecialCase(Action) {
         // If we see a "-e" and we haven't seen a command yet, then
         // we are done looking for commands. This special case enables

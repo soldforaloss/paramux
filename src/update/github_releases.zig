@@ -10,6 +10,9 @@ const log = std.log.scoped(.update_github_releases);
 pub const repo_owner = "soldforaloss";
 pub const repo_name = "paramux";
 pub const latest_stable_api_url = "https://api.github.com/repos/soldforaloss/paramux/releases/latest";
+/// List endpoint: unlike `/releases/latest`, this includes prereleases,
+/// which is every paramux release so far. Used by the CLI `+update` verb.
+pub const releases_list_api_url = "https://api.github.com/repos/soldforaloss/paramux/releases?per_page=15";
 pub const releases_url = "https://github.com/soldforaloss/paramux/releases";
 pub const windows_checksums_asset_name_legacy = "SHA256SUMS.txt";
 const windows_asset_metadata = switch (builtin.cpu.arch) {
@@ -50,9 +53,13 @@ pub const Release = struct {
     version_text: []u8,
     release_url: []u8,
     windows_install: ?WindowsInstallCandidate = null,
+    /// The unsigned portable-ZIP asset pair, when the release carries one.
+    /// This is the asset the CLI `+update` verb consumes.
+    windows_portable: ?WindowsInstallCandidate = null,
 
     pub fn deinit(self: *Release, alloc: Allocator) void {
         if (self.windows_install) |*candidate| candidate.deinit(alloc);
+        if (self.windows_portable) |*candidate| candidate.deinit(alloc);
         alloc.free(self.version_text);
         alloc.free(self.release_url);
         self.* = undefined;
@@ -674,7 +681,10 @@ fn parseLatestStableReleaseResponse(alloc: Allocator, body: []const u8) !Release
         .object => |value| value,
         else => return error.InvalidReleaseResponse,
     };
+    return parseReleaseObject(alloc, root);
+}
 
+fn parseReleaseObject(alloc: Allocator, root: anytype) !Release {
     const tag_name = switch (root.get("tag_name") orelse return error.InvalidReleaseResponse) {
         .string => |value| value,
         else => return error.InvalidReleaseResponse,
@@ -690,17 +700,141 @@ fn parseLatestStableReleaseResponse(alloc: Allocator, body: []const u8) !Release
     const release_url = try alloc.dupe(u8, html_url);
     errdefer alloc.free(release_url);
 
-    return .{
+    var release: Release = .{
         .version_text = version_text,
         .release_url = release_url,
-        .windows_install = try parseWindowsInstallCandidate(alloc, root, version_text),
+    };
+    release.windows_install = try parseWindowsInstallCandidate(alloc, root, version_text);
+    errdefer if (release.windows_install) |*c| c.deinit(alloc);
+    release.windows_portable = try parseWindowsAssetCandidate(alloc, root, version_text, .portable);
+    return release;
+}
+
+/// Fetch the newest non-draft release (prereleases included) that carries a
+/// portable Windows ZIP for this architecture. Returns
+/// `error.NoPortableRelease` when none of the listed releases qualify.
+pub fn fetchLatestPortableRelease(alloc: Allocator) !Release {
+    var client: std.http.Client = .{ .allocator = alloc };
+    defer client.deinit();
+
+    var response_buf: std.Io.Writer.Allocating = .init(alloc);
+    defer response_buf.deinit();
+
+    const result = try client.fetch(.{
+        .location = .{ .url = releases_list_api_url },
+        .extra_headers = &.{
+            .{ .name = "accept", .value = "application/vnd.github+json" },
+            .{ .name = "user-agent", .value = "paramux-updater" },
+            .{ .name = "x-github-api-version", .value = "2022-11-28" },
+        },
+        .response_writer = &response_buf.writer,
+    });
+
+    try requireOkHttpStatus("release list", releases_list_api_url, result.status);
+
+    const body = try response_buf.toOwnedSlice();
+    defer alloc.free(body);
+
+    return parseLatestPortableReleaseResponse(alloc, body);
+}
+
+fn parseLatestPortableReleaseResponse(alloc: Allocator, body: []const u8) !Release {
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, body, .{});
+    defer parsed.deinit();
+
+    const list = switch (parsed.value) {
+        .array => |value| value,
+        else => return error.InvalidReleaseResponse,
+    };
+
+    // GitHub orders the list newest-first. Skip drafts and releases
+    // without a portable asset (e.g. future source-only tags).
+    for (list.items) |item| {
+        const obj = switch (item) {
+            .object => |value| value,
+            else => continue,
+        };
+        if (obj.get("draft")) |draft| {
+            if (draft == .bool and draft.bool) continue;
+        }
+        var release = parseReleaseObject(alloc, obj) catch continue;
+        if (release.windows_portable == null) {
+            release.deinit(alloc);
+            continue;
+        }
+        return release;
+    }
+    return error.NoPortableRelease;
+}
+
+/// Stage the portable-ZIP update: download the ZIP + checksums into the
+/// update staging area and verify the SHA-256. Unlike the stable-installer
+/// path there is no Authenticode gate — the portable prerelease lane is
+/// unsigned by design and integrity comes from the checksum asset.
+/// Stateless: nothing is recorded in the updater state file.
+pub fn stagePortableUpdate(
+    alloc: Allocator,
+    state_path: []const u8,
+    release: *const Release,
+) !StagedWindowsInstall {
+    const candidate = release.windows_portable orelse return error.NoPortableRelease;
+    if (!std.fs.path.isAbsolute(state_path)) return error.InvalidStatePath;
+
+    const state_dir = std.fs.path.dirname(state_path) orelse return error.InvalidStatePath;
+    const stage_dir = try std.fs.path.join(alloc, &.{ state_dir, "updates", release.version_text });
+    defer alloc.free(stage_dir);
+    try std.fs.cwd().makePath(stage_dir);
+
+    const zip_path = try std.fs.path.join(alloc, &.{ stage_dir, candidate.installer_name });
+    errdefer alloc.free(zip_path);
+    const checksums_path = try std.fs.path.join(alloc, &.{ stage_dir, windowsChecksumsAssetName() });
+    defer alloc.free(checksums_path);
+
+    try downloadUrlToFile(alloc, candidate.checksums_url, checksums_path);
+    try downloadUrlToFile(alloc, candidate.installer_url, zip_path);
+
+    const checksums = try std.fs.cwd().readFileAlloc(alloc, checksums_path, 1024 * 1024);
+    defer alloc.free(checksums);
+    const expected_digest = try parseExpectedSha256(checksums, candidate.installer_name);
+
+    const actual_digest = try sha256File(zip_path);
+    if (!std.mem.eql(u8, &expected_digest, &actual_digest)) return error.InstallerChecksumMismatch;
+
+    const sha256_hex = try alloc.dupe(u8, &std.fmt.bytesToHex(actual_digest, .lower));
+    errdefer alloc.free(sha256_hex);
+
+    return .{
+        .version_text = try alloc.dupe(u8, release.version_text),
+        .installer_path = zip_path,
+        .sha256_hex = sha256_hex,
     };
 }
+
+const WindowsAssetKind = enum {
+    setup,
+    portable,
+
+    fn assetNameFmt(self: WindowsAssetKind) []const u8 {
+        return switch (self) {
+            .setup => "paramux-{s}-windows-{s}-setup.exe",
+            .portable => "paramux-{s}-windows-{s}-portable.zip",
+        };
+    }
+};
 
 fn parseWindowsInstallCandidate(
     alloc: Allocator,
     root: anytype,
     version_text: []const u8,
+) !?WindowsInstallCandidate {
+    return parseWindowsAssetCandidate(alloc, root, version_text, .setup);
+}
+
+fn parseWindowsAssetCandidate(
+    alloc: Allocator,
+    root: anytype,
+    version_text: []const u8,
+    kind: WindowsAssetKind,
 ) !?WindowsInstallCandidate {
     const assets_value = root.get("assets") orelse return null;
     const assets = switch (assets_value) {
@@ -708,11 +842,13 @@ fn parseWindowsInstallCandidate(
         else => return null,
     };
 
-    const expected_installer_name = try std.fmt.allocPrint(
-        alloc,
-        "paramux-{s}-windows-{s}-setup.exe",
-        .{ version_text, windowsInstallerArch() },
-    );
+    const expected_installer_name = switch (kind) {
+        inline else => |k| try std.fmt.allocPrint(
+            alloc,
+            comptime k.assetNameFmt(),
+            .{ version_text, windowsInstallerArch() },
+        ),
+    };
     errdefer alloc.free(expected_installer_name);
     const expected_checksums_name = windowsChecksumsAssetName();
 
@@ -1208,4 +1344,46 @@ test "release parser accepts long semver tags for windows install candidate" {
 
     try std.testing.expect(release.windows_install != null);
     try std.testing.expectEqualStrings(installer_name, release.windows_install.?.installer_name);
+}
+
+test "portable release list picks newest non-draft with portable asset" {
+    const alloc = std.testing.allocator;
+    // Newest-first, mirroring the GitHub list endpoint: a draft first
+    // (skipped), then a prerelease carrying the portable pair for this
+    // arch (chosen), then an older release.
+    const arch = windowsInstallerArch();
+    const body = try std.fmt.allocPrint(
+        alloc,
+        "[" ++
+            "{{\"tag_name\":\"v0.1.0-paramux.9\",\"html_url\":\"https://example.com/9\",\"draft\":true,\"prerelease\":true," ++
+            "\"assets\":[{{\"name\":\"paramux-0.1.0-paramux.9-windows-{s}-portable.zip\",\"browser_download_url\":\"https://example.com/9.zip\"}}," ++
+            "{{\"name\":\"SHA256SUMS-windows-{s}.txt\",\"browser_download_url\":\"https://example.com/9.sums\"}}]}}," ++
+            "{{\"tag_name\":\"v0.1.0-paramux.6\",\"html_url\":\"https://example.com/6\",\"draft\":false,\"prerelease\":true," ++
+            "\"assets\":[{{\"name\":\"paramux-0.1.0-paramux.6-windows-{s}-portable.zip\",\"browser_download_url\":\"https://example.com/6.zip\"}}," ++
+            "{{\"name\":\"SHA256SUMS-windows-{s}.txt\",\"browser_download_url\":\"https://example.com/6.sums\"}}]}}," ++
+            "{{\"tag_name\":\"v0.1.0-paramux.5\",\"html_url\":\"https://example.com/5\",\"draft\":false,\"prerelease\":true," ++
+            "\"assets\":[{{\"name\":\"paramux-0.1.0-paramux.5-windows-{s}-portable.zip\",\"browser_download_url\":\"https://example.com/5.zip\"}}," ++
+            "{{\"name\":\"SHA256SUMS-windows-{s}.txt\",\"browser_download_url\":\"https://example.com/5.sums\"}}]}}" ++
+            "]",
+        .{ arch, arch, arch, arch, arch, arch },
+    );
+    defer alloc.free(body);
+
+    var release = try parseLatestPortableReleaseResponse(alloc, body);
+    defer release.deinit(alloc);
+    try std.testing.expectEqualStrings("0.1.0-paramux.6", release.version_text);
+    const portable = release.windows_portable orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("https://example.com/6.zip", portable.installer_url);
+    try std.testing.expectEqualStrings("https://example.com/6.sums", portable.checksums_url);
+}
+
+test "portable release list without portable assets errors" {
+    const alloc = std.testing.allocator;
+    const body =
+        "[{\"tag_name\":\"v0.1.0-paramux.6\",\"html_url\":\"https://example.com/6\",\"draft\":false,\"prerelease\":true," ++
+        "\"assets\":[{\"name\":\"source-only.tar.gz\",\"browser_download_url\":\"https://example.com/src\"}]}]";
+    try std.testing.expectError(
+        error.NoPortableRelease,
+        parseLatestPortableReleaseResponse(alloc, body),
+    );
 }

@@ -73,6 +73,8 @@ lineage and compatibility names; **Paramux is the product and executable.**
   import.
 - Portable packaging with `paramux.exe`, the console-friendly `paramux.com`
   launcher, and an idempotent user-PATH installer.
+- CLI lifecycle management: `paramux +install`, `+uninstall [--purge]`, and
+  checksum-verified in-place `+update` from GitHub releases.
 
 The current build is a public, unsigned prerelease. Signed installers, WinGet, and Scoop
 distribution are not published yet; the portable build is the truthful install
@@ -120,7 +122,17 @@ Get-AuthenticodeSignature .\paramux\paramux.exe |
 paramux
 ```
 
-To undo the PATH change later:
+The CLI can manage its own lifecycle from there on:
+
+```powershell
+paramux +update --check   # is a newer release available?
+paramux +update           # checksum-verified in-place update
+paramux +uninstall        # remove PATH/PARAMUX_HOME/Explorer entries
+paramux +uninstall --purge  # ... and delete %LOCALAPPDATA%\paramux
+paramux +install          # re-wire a moved folder (same as install-paramux.cmd)
+```
+
+To undo the PATH change with the script instead:
 
 ```powershell
 .\install-paramux.ps1 -Remove

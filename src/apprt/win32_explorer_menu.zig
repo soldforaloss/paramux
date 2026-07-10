@@ -126,12 +126,29 @@ pub fn commandMatchesExe(command: []const u8, exe_path: []const u8) bool {
     return command[1 + exe_path.len] == '"';
 }
 
-/// Write all three verb keys pointing at the running exe. Failures are
+/// The exe the verbs should launch: always the GUI `paramux.exe`. When the
+/// caller is the console launcher (`paramux.com`, e.g. `paramux +install`),
+/// the sibling `paramux.exe` is used so Explorer launches never flash a
+/// console window. Falls back to the running image if no sibling exists
+/// (unusual dev layouts). Caller owns the result.
+pub fn registrationTargetPath(alloc: std.mem.Allocator) ![]u8 {
+    const self_path = try std.fs.selfExePathAlloc(alloc);
+    if (std.ascii.endsWithIgnoreCase(self_path, "\\paramux.exe")) return self_path;
+    defer alloc.free(self_path);
+
+    const dir = std.fs.path.dirname(self_path) orelse return error.FileNotFound;
+    const gui_path = try std.fs.path.join(alloc, &.{ dir, "paramux.exe" });
+    errdefer alloc.free(gui_path);
+    try std.fs.accessAbsolute(gui_path, .{});
+    return gui_path;
+}
+
+/// Write all three verb keys pointing at the GUI exe. Failures are
 /// advisory (logged, best-effort): Explorer integration is never worth
 /// blocking the app over.
 pub fn register(alloc: std.mem.Allocator) void {
-    const exe_path = std.fs.selfExePathAlloc(alloc) catch |err| {
-        std.log.warn("explorer menu: self exe path unavailable err={}", .{err});
+    const exe_path = registrationTargetPath(alloc) catch |err| {
+        std.log.warn("explorer menu: registration target unavailable err={}", .{err});
         return;
     };
     defer alloc.free(exe_path);
@@ -238,7 +255,7 @@ pub fn status(alloc: std.mem.Allocator) Status {
     const command = std.unicode.utf16LeToUtf8Alloc(alloc, wide) catch return .stale;
     defer alloc.free(command);
 
-    const exe_path = std.fs.selfExePathAlloc(alloc) catch return .stale;
+    const exe_path = registrationTargetPath(alloc) catch return .stale;
     defer alloc.free(exe_path);
 
     return if (commandMatchesExe(command, exe_path)) .registered else .stale;

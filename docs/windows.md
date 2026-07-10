@@ -242,6 +242,9 @@ same extracted build.
 
 ### Updating the prerelease
 
-The current portable prerelease does not have an automatic apply path.
-Download the next ZIP, verify its checksum, extract it, and rerun the
-PATH helper for the replacement folder.
+Run `paramux +update` (or `paramux +update --check` to only look). It
+downloads the newest release's portable ZIP, verifies its SHA-256 against
+the published checksum file, and swaps the files in place; close paramux
+windows first, and configuration is never touched. The manual path —
+download the next ZIP, verify its checksum, extract, rerun the PATH
+helper — still works.

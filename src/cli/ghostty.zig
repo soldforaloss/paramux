@@ -27,6 +27,9 @@ const read_pane = @import("read_pane.zig");
 const send = @import("send.zig");
 const send_key = @import("send_key.zig");
 const import_theme = @import("import_theme.zig");
+const install = @import("install.zig");
+const uninstall = @import("uninstall.zig");
+const update = @import("update.zig");
 
 pub const Action = @import("ghostty_action.zig").Action;
 
@@ -87,6 +90,9 @@ fn runMain(self: Action, alloc: Allocator) !u8 {
         .send => try send.run(alloc),
         .@"send-key" => try send_key.run(alloc),
         .@"import-theme" => try import_theme.run(alloc),
+        .install => try install.run(alloc),
+        .uninstall => try uninstall.run(alloc),
+        .update => try update.run(alloc),
     };
 }
 
@@ -120,6 +126,9 @@ pub fn options(comptime self: Action) type {
             .send => send.Options,
             .@"send-key" => send_key.Options,
             .@"import-theme" => import_theme.Options,
+            .install => install.Options,
+            .uninstall => uninstall.Options,
+            .update => update.Options,
         };
     }
 }
