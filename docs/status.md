@@ -4,7 +4,7 @@ This page describes what currently works in Paramux, what remains partial, and
 what is not part of the current release. When release copy disagrees with this
 page, prefer the checked artifact and repository state.
 
-Last reviewed: 2026-07-10, against the public `v0.1.0-paramux.6`
+Last reviewed: 2026-07-10, against the public `v0.1.0-paramux.7`
 prerelease.
 
 Paramux is derived from Winghostty, which in turn carries the Ghostty terminal
@@ -22,15 +22,17 @@ Ghostty documentation to current Paramux behavior.
 
 - **Windows 10 and Windows 11 on x64** are the current prerelease target.
 - The renderer requires OpenGL 4.3 or newer through WGL.
-- `v0.1.0-paramux.6` is public, portable, prerelease-only, and unsigned.
+- `v0.1.0-paramux.7` is public, portable, prerelease-only, and unsigned.
 - Its ZIP is feature- and branding-complete: Paramux README, completions, and
   VERSIONINFO, plus the agent-hooks payload, config presets, and the
-  `+send`/`+send-key` verbs. It also carries the 2026-07-10 UI/UX overhaul
+  `+send`/`+send-key` verbs. It carries the 2026-07-10 UI/UX overhaul
   (toolbar tooltips, split-down/settings buttons, pane drag-and-drop,
   settings theme picker, merge/zoom/equalize menu actions, first-run hints,
-  and the optional Explorer context-menu entry). The earlier
-  `v0.1.0-paramux.4` build is a superseded legacy test artifact.
-- The release contains `paramux-0.1.0-paramux.6-windows-x64-portable.zip` and
+  the optional Explorer context-menu entry) plus the CLI lifecycle verbs
+  (`+install`, `+uninstall [--purge]`, checksum-verified `+update`) — the
+  first release the CLI can update FROM. The earlier `v0.1.0-paramux.4`
+  build is a superseded legacy test artifact.
+- The release contains `paramux-0.1.0-paramux.7-windows-x64-portable.zip` and
   `SHA256SUMS-windows-x64.txt`.
 - `install-paramux.cmd` is a PATH helper inside the ZIP, not a system
   installer.

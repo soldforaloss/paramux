@@ -83,17 +83,19 @@ path today.
 ## Try the current prerelease
 
 The current test build is
-[`v0.1.0-paramux.6`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.6),
+[`v0.1.0-paramux.7`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.7),
 published 2026-07-10 for Windows x64:
 
-- [`paramux-0.1.0-paramux.6-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.6/paramux-0.1.0-paramux.6-windows-x64-portable.zip)
-- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.6/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.0-paramux.7-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.7/paramux-0.1.0-paramux.7-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.7/SHA256SUMS-windows-x64.txt)
 
-This build adds the UI/UX overhaul on top of the feature- and
-branding-complete `v0.1.0-paramux.5` base: the five-button toolbar with
-tooltips, drag-and-drop pane rearrangement, the settings theme picker,
-merge/zoom/equalize menu actions, first-run hints, and the optional
-Explorer "Open in Paramux" entry. Earlier prereleases are superseded
+This build adds CLI lifecycle management (`+install`, `+uninstall`,
+checksum-verified in-place `+update`) on top of the `v0.1.0-paramux.6`
+UI/UX overhaul (five-button toolbar with tooltips, drag-and-drop pane
+rearrangement, settings theme picker, merge/zoom/equalize actions,
+first-run hints, and the Explorer "Open in Paramux" entry). It is the
+first release the CLI can update FROM: future releases apply with
+`paramux +update`. Earlier prereleases are superseded
 (`v0.1.0-paramux.4` remains a legacy test artifact).
 
 1. Download both the portable ZIP and `SHA256SUMS-windows-x64.txt`.
@@ -101,7 +103,7 @@ Explorer "Open in Paramux" entry. Earlier prereleases are superseded
    release checksum:
 
 ```powershell
-Get-FileHash .\paramux-0.1.0-paramux.6-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\paramux-0.1.0-paramux.7-windows-x64-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 

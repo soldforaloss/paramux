@@ -7,26 +7,27 @@ uninstall it.
 ## 1. Get the x64 prerelease
 
 The current build is
-[`v0.1.0-paramux.6`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.6)
+[`v0.1.0-paramux.7`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.7)
 in the public `soldforaloss/paramux` repository.
 
 Download both assets:
 
-- `paramux-0.1.0-paramux.6-windows-x64-portable.zip`
+- `paramux-0.1.0-paramux.7-windows-x64-portable.zip`
 - `SHA256SUMS-windows-x64.txt`
 
 This is an **unsigned x64 portable prerelease**. There is no current Paramux
 installer, WinGet package, Scoop package, ARM64 release, or public stable
 download.
 
-This build is feature- and branding-complete and adds the UI/UX overhaul:
-the five-button toolbar with hover tooltips, drag-and-drop pane
-rearrangement from the sidebar, the settings theme picker, merge/zoom/
-equalize actions, first-run hints, and the optional Explorer "Open in
-Paramux" entry — on top of the agent-hook adapters, the `+send`/`+send-key`
-commands (section 9), the packaged tmux-prefix preset (section 7), and
-fully populated Paramux VERSIONINFO. The earlier `v0.1.0-paramux.4` build
-is a superseded legacy test artifact.
+This build adds CLI lifecycle management — `paramux +install`,
+`+uninstall [--purge]`, and checksum-verified in-place `+update`
+(section 10) — on top of the `v0.1.0-paramux.6` UI/UX overhaul (five-button
+toolbar with hover tooltips, drag-and-drop pane rearrangement, settings
+theme picker, merge/zoom/equalize actions, first-run hints, the Explorer
+"Open in Paramux" entry), the agent-hook adapters, the `+send`/`+send-key`
+commands (section 9), and the packaged tmux-prefix preset (section 7). It
+is the first release the CLI can update FROM. The earlier
+`v0.1.0-paramux.4` build is a superseded legacy test artifact.
 
 Paramux requires Windows 10 or Windows 11 and a GPU/driver that exposes OpenGL
 4.3 or newer through WGL.
@@ -37,7 +38,7 @@ From the folder containing both downloaded files:
 
 ```powershell
 Get-FileHash `
-  .\paramux-0.1.0-paramux.6-windows-x64-portable.zip `
+  .\paramux-0.1.0-paramux.7-windows-x64-portable.zip `
   -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
