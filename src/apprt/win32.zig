@@ -17002,11 +17002,12 @@ fn applyPreferredAppDarkMode(os_build: u32) void {
     const FlushMenuThemesFn = *const fn () callconv(.winapi) void;
 
     if (windows.kernel32.GetProcAddress(uxtheme, @ptrFromInt(135))) |proc| {
-        const set_mode: SetPreferredAppModeFn = @ptrCast(proc);
+        // FARPROC is align(1); fn pointers are align(4) on aarch64.
+        const set_mode: SetPreferredAppModeFn = @ptrCast(@alignCast(proc));
         _ = set_mode(1); // AllowDark (follows the system theme)
     }
     if (windows.kernel32.GetProcAddress(uxtheme, @ptrFromInt(136))) |proc| {
-        const flush: FlushMenuThemesFn = @ptrCast(proc);
+        const flush: FlushMenuThemesFn = @ptrCast(@alignCast(proc));
         flush();
     }
 }
