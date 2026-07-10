@@ -3681,6 +3681,11 @@ pub const App = struct {
             self.use_integrated_titlebar,
         });
 
+        // Opt classic Win32 popups (context menus, combo dropdowns) into
+        // dark theming when the system theme is dark. Must run before any
+        // menu is created.
+        applyPreferredAppDarkMode(self.os_build);
+
         self.initComApartment();
         self.taskbar_progress = win32_taskbar_progress.TaskbarProgress.init() catch |err| blk: {
             std.log.warn("taskbar progress init failed err={}; falling back to title-only progress", .{err});
@@ -3694,8 +3699,8 @@ pub const App = struct {
             .ctx = @ptrCast(self),
             .alloc = core_app.alloc,
             .hinstance = self.hinstance,
-            .chromeBg = &settingsChromeBgThunk,
-            .textPrimary = &settingsTextPrimaryThunk,
+            .uiColors = &settingsUiColorsThunk,
+            .decorateWindow = &settingsDecorateWindowThunk,
             .openInEditor = &settingsOpenInEditorThunk,
             .currentConfig = &settingsCurrentConfigThunk,
             .saveAndReload = &settingsSaveAndReloadThunk,
@@ -16977,6 +16982,35 @@ fn titlebarTextColor(theme: *const ThemeColors, config: *const configpkg.Config)
     return theme.text_primary;
 }
 
+/// Opt the process into dark-mode rendering for classic Win32 popups —
+/// context menus and combo dropdown lists follow the SYSTEM theme after
+/// this (light systems are unaffected). Uses the undocumented-but-
+/// ubiquitous uxtheme ordinals (135 = SetPreferredAppMode on 1903+,
+/// AllowDarkModeForApp on 1809; both take a single int where 1 = allow
+/// dark; 136 = FlushMenuThemes). Best-effort: absent ordinals no-op.
+fn applyPreferredAppDarkMode(os_build: u32) void {
+    if (os_build < 17763) return;
+    if (isHighContrastActive()) return;
+
+    const uxtheme = windows.kernel32.GetModuleHandleW(
+        std.unicode.utf8ToUtf16LeStringLiteral("uxtheme.dll"),
+    ) orelse windows.kernel32.LoadLibraryW(
+        std.unicode.utf8ToUtf16LeStringLiteral("uxtheme.dll"),
+    ) orelse return;
+
+    const SetPreferredAppModeFn = *const fn (i32) callconv(.winapi) i32;
+    const FlushMenuThemesFn = *const fn () callconv(.winapi) void;
+
+    if (windows.kernel32.GetProcAddress(uxtheme, @ptrFromInt(135))) |proc| {
+        const set_mode: SetPreferredAppModeFn = @ptrCast(proc);
+        _ = set_mode(1); // AllowDark (follows the system theme)
+    }
+    if (windows.kernel32.GetProcAddress(uxtheme, @ptrFromInt(136))) |proc| {
+        const flush: FlushMenuThemesFn = @ptrCast(proc);
+        flush();
+    }
+}
+
 fn applyDwmThemeWithBuild(hwnd: HWND, theme: *const ThemeColors, config: *const configpkg.Config, os_build: u32) void {
     if (isHighContrastActive()) return; // Let system control title bar in HC mode
     const dark_mode: u32 = if (theme.is_dark) 1 else 0;
@@ -17268,13 +17302,27 @@ fn paletteListNameThunk(ctx: *anyopaque, buf: []u8) []const u8 {
 /// Thunks adapting `*App` into the `AppHandle` callback shape used by
 /// `win32_settings.SettingsWindow`. Kept inline so a theme swap is
 /// picked up on the next paint without cache invalidation.
-fn settingsChromeBgThunk(ctx: *anyopaque) u32 {
+fn settingsUiColorsThunk(ctx: *anyopaque) win32_settings.UiColors {
     const app: *const App = @ptrCast(@alignCast(ctx));
-    return app.resolved_theme.chrome_bg;
+    const theme = &app.resolved_theme;
+    // field_bg: nudge the chrome background toward the text color so
+    // inputs read as recessed surfaces in both light and dark themes.
+    const field_bg = blendColorRGB(theme.chrome_bg, theme.text_primary, 0.06);
+    return .{
+        .bg = theme.chrome_bg,
+        .rail_bg = blendColorRGB(theme.chrome_bg, theme.text_primary, 0.03),
+        .text = theme.text_primary,
+        .text_muted = theme.text_secondary,
+        .accent = theme.accent,
+        .field_bg = field_bg,
+        .border = theme.chrome_border,
+        .active_bg = theme.button_active_bg,
+        .is_dark = theme.is_dark,
+    };
 }
-fn settingsTextPrimaryThunk(ctx: *anyopaque) u32 {
+fn settingsDecorateWindowThunk(ctx: *anyopaque, hwnd: HWND) void {
     const app: *const App = @ptrCast(@alignCast(ctx));
-    return app.resolved_theme.text_primary;
+    applyDwmThemeWithBuild(hwnd, &app.resolved_theme, &app.config, app.os_build);
 }
 fn settingsOpenInEditorThunk(ctx: *anyopaque) void {
     const app: *App = @ptrCast(@alignCast(ctx));

@@ -116,6 +116,7 @@ const EN_KILLFOCUS: u16 = 0x0200;
 const CBN_SELCHANGE: u16 = 0x0001;
 const BN_CLICKED: u16 = 0x0000;
 const WM_SETTEXT: UINT = 0x000C;
+const WM_SETFONT: UINT = 0x0030;
 const EM_LIMITTEXT: UINT = 0x00C5;
 const BS_AUTOCHECKBOX: u32 = 0x3;
 const BM_SETCHECK: UINT = 0x00F1;
@@ -149,6 +150,7 @@ const EM_SETCUEBANNER: UINT = 0x1501;
 const WM_DRAWITEM: UINT = 0x002B;
 const ODT_LISTBOX: u32 = 2;
 const ODS_SELECTED: u32 = 0x0001;
+const ODS_FOCUS: u32 = 0x0010;
 const theme_list_item_height: i32 = 26;
 
 /// Owner-draw payload for WM_DRAWITEM. Mirrors winuser.h DRAWITEMSTRUCT.
@@ -218,11 +220,11 @@ pub const Section = enum(u32) {
         return switch (self) {
             .appearance => "Font family, size, theme, opacity, cursor, padding, and background blur.",
             .theme => "Click a theme to select it; Save (or double-click) applies it live.",
-            .terminal => "Scrollback, close confirmation, copy behavior, OSC 52 clipboard policy, link opening, and notifications.",
+            .terminal => "Scrollback, close confirmation, clipboard policy, links, and notifications.",
             .shell => "Default shell command and shell integration detection mode.",
             .keybindings => "Open the config file for keybind edits; list defaults, actions, and docs from the CLI.",
             .windows => "Windows shell integration: the Explorer right-click menu entry.",
-            .advanced => "Updater defaults plus the text editor escape hatch for config keys that do not yet have native controls.",
+            .advanced => "Updater defaults and the raw config-file escape hatch.",
         };
     }
 };
@@ -332,7 +334,71 @@ extern "gdi32" fn FillRect(hdc: HDC, lprc: *const RECT, hbr: HBRUSH) callconv(.w
 extern "gdi32" fn GetStockObject(i: i32) callconv(.winapi) HGDIOBJ;
 extern "gdi32" fn SetDCBrushColor(hdc: HDC, color: COLORREF) callconv(.winapi) COLORREF;
 extern "gdi32" fn SetTextColor(hdc: HDC, color: COLORREF) callconv(.winapi) COLORREF;
+extern "gdi32" fn SetBkColor(hdc: HDC, color: COLORREF) callconv(.winapi) COLORREF;
 extern "gdi32" fn SetBkMode(hdc: HDC, mode: i32) callconv(.winapi) i32;
+extern "gdi32" fn SelectObject(hdc: HDC, h: HGDIOBJ) callconv(.winapi) HGDIOBJ;
+extern "gdi32" fn DeleteObject(ho: HGDIOBJ) callconv(.winapi) BOOL;
+extern "gdi32" fn CreateFontW(
+    cHeight: i32,
+    cWidth: i32,
+    cEscapement: i32,
+    cOrientation: i32,
+    cWeight: i32,
+    bItalic: u32,
+    bUnderline: u32,
+    bStrikeOut: u32,
+    iCharSet: u32,
+    iOutPrecision: u32,
+    iClipPrecision: u32,
+    iQuality: u32,
+    iPitchAndFamily: u32,
+    pszFaceName: LPCWSTR,
+) callconv(.winapi) HGDIOBJ;
+extern "uxtheme" fn SetWindowTheme(hwnd: HWND, pszSubAppName: ?LPCWSTR, pszSubIdList: ?LPCWSTR) callconv(.winapi) i32;
+extern "user32" fn EnumChildWindows(
+    hWndParent: HWND,
+    lpEnumFunc: *const fn (hwnd: HWND, lParam: LPARAM) callconv(.winapi) BOOL,
+    lParam: LPARAM,
+) callconv(.winapi) BOOL;
+extern "user32" fn GetClassNameW(hWnd: HWND, lpClassName: [*]u16, nMaxCount: i32) callconv(.winapi) i32;
+
+const WM_CTLCOLOREDIT: UINT = 0x0133;
+const WM_CTLCOLORLISTBOX: UINT = 0x0134;
+const WM_CTLCOLORBTN: UINT = 0x0135;
+const WM_CTLCOLORSTATIC: UINT = 0x0138;
+const WM_GETMINMAXINFO: UINT = 0x0024;
+const FW_NORMAL: i32 = 400;
+const FW_SEMIBOLD: i32 = 600;
+const CLEARTYPE_QUALITY: u32 = 5;
+const ODT_BUTTON_CTL: u32 = 4;
+
+const MINMAXINFO = extern struct {
+    ptReserved: POINT,
+    ptMaxSize: POINT,
+    ptMaxPosition: POINT,
+    ptMinTrackSize: POINT,
+    ptMaxTrackSize: POINT,
+};
+const POINT = extern struct { x: i32, y: i32 };
+
+fn makeUiFont(height_px: i32, weight: i32) HGDIOBJ {
+    return CreateFontW(
+        -height_px,
+        0,
+        0,
+        0,
+        weight,
+        0,
+        0,
+        0,
+        0, // ANSI_CHARSET default
+        0,
+        0,
+        CLEARTYPE_QUALITY,
+        0,
+        std.unicode.utf8ToUtf16LeStringLiteral("Segoe UI"),
+    );
+}
 extern "user32" fn DrawTextW(hDC: HDC, lpchText: LPCWSTR, cchText: i32, lprc: *RECT, format: UINT) callconv(.winapi) i32;
 
 const DC_BRUSH: i32 = 18;
@@ -370,6 +436,20 @@ pub const SaveError = error{
     SavedButMasked,
 };
 
+/// The color set the settings window paints with, snapshotted from the
+/// app's resolved chrome theme per query so theme swaps propagate.
+pub const UiColors = struct {
+    bg: COLORREF,
+    rail_bg: COLORREF,
+    text: COLORREF,
+    text_muted: COLORREF,
+    accent: COLORREF,
+    field_bg: COLORREF,
+    border: COLORREF,
+    active_bg: COLORREF,
+    is_dark: bool,
+};
+
 /// Minimal hook into the apprt `App` so the settings module can fetch
 /// the chrome brush colors without pulling in the whole app type.
 pub const AppHandle = struct {
@@ -380,11 +460,11 @@ pub const AppHandle = struct {
     alloc: std.mem.Allocator,
     /// HINSTANCE used for window class registration + creation.
     hinstance: HINSTANCE,
-    /// Chrome background color (COLORREF) to paint into the settings
-    /// content pane. Queried per paint so theme swaps propagate.
-    chromeBg: *const fn (ctx: *anyopaque) COLORREF,
-    /// Primary text color.
-    textPrimary: *const fn (ctx: *anyopaque) COLORREF,
+    /// Theme color snapshot. Queried per paint so theme swaps propagate.
+    uiColors: *const fn (ctx: *anyopaque) UiColors,
+    /// Apply the app's DWM window decoration (dark titlebar, caption
+    /// colors) to the settings HWND. Called once per window creation.
+    decorateWindow: *const fn (ctx: *anyopaque, hwnd: HWND) void,
     /// Fire-and-forget shell-out to the OS default text editor with
     /// the resolved `ghostty.conf` path. Used by the Advanced-pane
     /// escape hatch.
@@ -456,6 +536,10 @@ pub const SettingsWindow = struct {
     /// `theme_arena`; loaded once per window open, dropped on close.
     theme_arena: ?std.heap.ArenaAllocator = null,
     themes: []ThemeEntry = &.{},
+    /// UI fonts, created with the HWND and deleted with it.
+    font_title: HGDIOBJ = null,
+    font_body: HGDIOBJ = null,
+    font_label: HGDIOBJ = null,
     btn_save: ?HWND = null,
     btn_keybindings_editor: ?HWND = null,
     edit_scrollback: ?HWND = null,
@@ -569,6 +653,7 @@ pub const SettingsWindow = struct {
     /// both WM_CLOSE and WM_NCDESTROY so the next `open()` recreates
     /// fresh children and clones.
     fn clearChildRefs(self: *SettingsWindow) void {
+        self.clearFonts();
         self.hwnd = null;
         self.btn_open_editor = null;
         self.btn_section_appearance = null;
@@ -631,11 +716,32 @@ pub const SettingsWindow = struct {
         self.themes = &.{};
     }
 
+    /// Delete the UI fonts. Runs with window teardown, so no control
+    /// still references them. Safe to call repeatedly.
+    fn clearFonts(self: *SettingsWindow) void {
+        if (self.font_title) |f| _ = DeleteObject(f);
+        if (self.font_body) |f| _ = DeleteObject(f);
+        if (self.font_label) |f| _ = DeleteObject(f);
+        self.font_title = null;
+        self.font_body = null;
+        self.font_label = null;
+    }
+
     fn setActiveSection(self: *SettingsWindow, next: Section) void {
         if (self.active_section == next and self.hwnd != null) return;
         self.active_section = next;
         self.applySectionVisibility();
         if (self.hwnd) |h| _ = InvalidateRect(h, null, 1);
+        // Owner-drawn rail buttons repaint from their own DC, so the
+        // parent invalidation above doesn't move the active stripe.
+        inline for (.{
+            self.btn_section_appearance, self.btn_section_theme,
+            self.btn_section_terminal,   self.btn_section_shell,
+            self.btn_section_keybindings, self.btn_section_windows,
+            self.btn_section_advanced,
+        }) |maybe_btn| {
+            if (maybe_btn) |btn| _ = InvalidateRect(btn, null, 1);
+        }
     }
 
     fn applySectionVisibility(self: *SettingsWindow) void {
@@ -918,9 +1024,9 @@ pub const SettingsWindow = struct {
     fn drawThemeListItem(self: *SettingsWindow, dis: *const DRAWITEMSTRUCT) void {
         const hdc = dis.hDC;
         const brush = GetStockObject(DC_BRUSH);
-        const chrome_bg = self.handle.chromeBg(self.handle.ctx);
+        const colors = self.handle.uiColors(self.handle.ctx);
         const selected = (dis.itemState & ODS_SELECTED) != 0;
-        const row_bg: COLORREF = if (selected) tintBg(chrome_bg) else chrome_bg;
+        const row_bg: COLORREF = if (selected) colors.active_bg else colors.field_bg;
 
         _ = SetDCBrushColor(hdc, row_bg);
         _ = FillRect(hdc, &dis.rcItem, brush);
@@ -973,7 +1079,7 @@ pub const SettingsWindow = struct {
         }
 
         _ = SetBkMode(hdc, TRANSPARENT);
-        _ = SetTextColor(hdc, self.handle.textPrimary(self.handle.ctx));
+        _ = SetTextColor(hdc, colors.text);
         var name_w: [256]u16 = undefined;
         const w = utf8ToW(&name_w, entry.name);
         var text_rect = RECT{
@@ -983,6 +1089,72 @@ pub const SettingsWindow = struct {
             .bottom = dis.rcItem.bottom,
         };
         _ = DrawTextW(hdc, w, -1, &text_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    }
+
+    /// Owner-draw for every push button: the section rail (flat rows,
+    /// accent stripe + active fill for the current section), the primary
+    /// Save button (accent fill), and secondary utility buttons (outline).
+    fn drawOwnerButton(self: *SettingsWindow, dis: *const DRAWITEMSTRUCT) void {
+        const hdc = dis.hDC;
+        const brush = GetStockObject(DC_BRUSH);
+        const colors = self.handle.uiColors(self.handle.ctx);
+        const pressed = (dis.itemState & ODS_SELECTED) != 0;
+        const focused = (dis.itemState & ODS_FOCUS) != 0;
+
+        var label_w: [128]u16 = undefined;
+        const label_len = GetWindowTextW(dis.hwndItem, &label_w, label_w.len);
+        const label: [*:0]const u16 = blk: {
+            label_w[@intCast(@max(0, label_len))] = 0;
+            break :blk @ptrCast(&label_w);
+        };
+
+        if (Section.fromButtonId(dis.CtlID)) |section| {
+            const active = section == self.active_section;
+            const bg: COLORREF = if (active)
+                colors.active_bg
+            else if (pressed)
+                colors.field_bg
+            else
+                colors.rail_bg;
+            _ = SetDCBrushColor(hdc, bg);
+            _ = FillRect(hdc, &dis.rcItem, brush);
+            if (active) {
+                var stripe = dis.rcItem;
+                stripe.right = stripe.left + 3;
+                _ = SetDCBrushColor(hdc, colors.accent);
+                _ = FillRect(hdc, &stripe, brush);
+            }
+            if (focused) strokeRect(hdc, dis.rcItem, colors.accent);
+            _ = SetBkMode(hdc, TRANSPARENT);
+            _ = SetTextColor(hdc, if (active) colors.text else colors.text_muted);
+            if (self.font_body) |font| _ = SelectObject(hdc, font);
+            var text_rect = dis.rcItem;
+            text_rect.left += 16;
+            _ = DrawTextW(hdc, label, -1, &text_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+            return;
+        }
+
+        const primary = dis.CtlID == BTN_SAVE;
+        const bg: COLORREF = if (primary)
+            (if (pressed) colors.active_bg else colors.accent)
+        else
+            (if (pressed) colors.active_bg else colors.field_bg);
+        _ = SetDCBrushColor(hdc, bg);
+        _ = FillRect(hdc, &dis.rcItem, brush);
+        // 1px outline so secondary buttons read as buttons on flat bg;
+        // keyboard focus upgrades it to the accent color.
+        strokeRect(
+            hdc,
+            dis.rcItem,
+            if (primary or focused) colors.accent else colors.border,
+        );
+
+        _ = SetBkMode(hdc, TRANSPARENT);
+        // Accent-filled Save gets contrast-appropriate text.
+        _ = SetTextColor(hdc, if (primary and !colors.is_dark) 0x00FFFFFF else colors.text);
+        if (self.font_body) |font| _ = SelectObject(hdc, font);
+        var text_rect = dis.rcItem;
+        _ = DrawTextW(hdc, label, -1, &text_rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
     }
 
     /// BN_CLICKED on the Explorer checkbox: apply the registry change
@@ -1614,14 +1786,21 @@ pub const SettingsWindow = struct {
             WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
-            960,
-            720,
+            1000,
+            760,
             null,
             null,
             self.handle.hinstance,
             self,
         ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
         self.hwnd = hwnd;
+
+        // Match the app's DWM decoration (dark titlebar + caption colors)
+        // and build the UI font set before any control paints.
+        self.handle.decorateWindow(self.handle.ctx, hwnd);
+        self.font_title = makeUiFont(26, FW_SEMIBOLD);
+        self.font_body = makeUiFont(16, FW_NORMAL);
+        self.font_label = makeUiFont(14, FW_NORMAL);
 
         const btn_class = std.unicode.utf8ToUtf16LeStringLiteral("BUTTON");
 
@@ -1645,7 +1824,7 @@ pub const SettingsWindow = struct {
             0,
             btn_class,
             btn_label,
-            WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON,
+            WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
             0,
             0,
             220,
@@ -1663,7 +1842,7 @@ pub const SettingsWindow = struct {
             0,
             btn_class,
             btn_save_label,
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
             0,
             0,
             90,
@@ -1679,7 +1858,7 @@ pub const SettingsWindow = struct {
             0,
             btn_class,
             btn_keybind_label,
-            WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON,
+            WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
             0,
             0,
             220,
@@ -1887,12 +2066,52 @@ pub const SettingsWindow = struct {
             &.{ "default", "stable", "tip" },
         );
 
+        // Every control exists now: apply the shared UI font and the
+        // system dark-mode control themes in one pass.
+        self.themeChildControls();
+
         self.refreshAllControls();
 
         self.applySectionVisibility();
 
         _ = ShowWindow(hwnd, SW_SHOWNORMAL);
         layoutChildren(self);
+    }
+
+    /// Apply `font_body` and (when the chrome theme is dark) the system
+    /// "DarkMode" visual styles to every child control by class. One
+    /// EnumChildWindows pass so future controls are covered automatically.
+    fn themeChildControls(self: *SettingsWindow) void {
+        const hwnd = self.hwnd orelse return;
+        const ctx = ThemeChildCtx{
+            .font = self.font_body,
+            .dark = self.handle.uiColors(self.handle.ctx).is_dark,
+        };
+        _ = EnumChildWindows(hwnd, &themeChildProc, @bitCast(@intFromPtr(&ctx)));
+    }
+
+    const ThemeChildCtx = struct {
+        font: HGDIOBJ,
+        dark: bool,
+    };
+
+    fn themeChildProc(child: HWND, lparam: LPARAM) callconv(.winapi) BOOL {
+        const ctx: *const ThemeChildCtx = @ptrFromInt(@as(usize, @bitCast(lparam)));
+        if (ctx.font) |font| {
+            _ = SendMessageW(child, WM_SETFONT, @intFromPtr(font), 1);
+        }
+        if (ctx.dark) {
+            var class_buf: [64]u16 = undefined;
+            const n = GetClassNameW(child, &class_buf, class_buf.len);
+            const class = class_buf[0..@intCast(@max(0, n))];
+            const combo = std.unicode.utf8ToUtf16LeStringLiteral("ComboBox");
+            const theme_name = if (std.mem.eql(u16, class, combo))
+                std.unicode.utf8ToUtf16LeStringLiteral("DarkMode_CFD")
+            else
+                std.unicode.utf8ToUtf16LeStringLiteral("DarkMode_Explorer");
+            _ = SetWindowTheme(child, theme_name, null);
+        }
+        return 1;
     }
 };
 
@@ -2001,7 +2220,7 @@ fn makeSectionButton(
         0,
         class,
         section.label(),
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
         0,
         0,
         100,
@@ -2018,6 +2237,189 @@ const section_btn_height: i32 = 36;
 const section_btn_top_pad: i32 = 16;
 const section_btn_gap: i32 = 4;
 const side_pad: i32 = 16;
+
+// Content-pane header block: title, one-line summary, separator.
+const header_title_h: i32 = 34;
+const header_summary_h: i32 = 20;
+const header_sep_gap: i32 = 8;
+const header_below_gap: i32 = 17;
+
+fn contentTop() i32 {
+    return section_btn_top_pad + header_title_h + header_summary_h +
+        header_sep_gap + 1 + header_below_gap;
+}
+
+// Field grid. One `SectionRow` per control, in the exact order
+// `sectionGridControls` returns handles; `layoutChildren` and `paint`
+// both walk the same table through the same cursor, so control
+// positions and painted labels can't drift apart.
+const grid_label_reserve: i32 = 22;
+const grid_row_gap: i32 = 18;
+const grid_col_gap: i32 = 28;
+const grid_controls_max: usize = 12;
+
+const SectionRow = struct {
+    /// Painted above the control; empty for controls that carry
+    /// their own text (checkboxes, buttons with captions).
+    label: []const u8 = "",
+    /// Desired control width; clamped to the column width.
+    w: i32 = 280,
+    /// Visible control height used for vertical flow.
+    h: i32 = 30,
+    /// Extra dropdown height (combos) added to the window height
+    /// at layout time but not to the flow.
+    drop_h: i32 = 0,
+    /// Full-width row spanning both columns.
+    span: bool = false,
+};
+
+const terminal_rows = [_]SectionRow{
+    .{ .label = "Scrollback limit (rows, 0 = unlimited)", .w = 220, .h = 28 },
+    .{ .label = "Close confirmation", .w = 220, .drop_h = 160 },
+    .{ .label = "Copy on select", .w = 220, .drop_h = 160 },
+    .{ .label = "Clipboard read (OSC 52)", .w = 220, .drop_h = 160 },
+    .{ .label = "Clipboard write (OSC 52)", .w = 220, .drop_h = 160 },
+    .{ .label = "Clickable URLs", .w = 220, .drop_h = 160 },
+    .{ .label = "Link previews", .w = 220, .drop_h = 160 },
+    .{ .w = 300, .h = 24 },
+    .{ .w = 340, .h = 24 },
+    .{ .w = 340, .h = 24 },
+    .{ .w = 340, .h = 24 },
+};
+
+const appearance_rows = [_]SectionRow{
+    .{ .label = "Font family fallbacks (comma-separated)", .w = 340, .h = 28 },
+    .{ .label = "Font size (pt)", .w = 160, .h = 28 },
+    .{ .label = "Theme (name, path, or light:X,dark:Y)", .w = 340, .h = 28 },
+    .{ .label = "Background opacity (0.0 – 1.0)", .w = 160, .h = 28 },
+    .{ .label = "Window theme", .w = 220, .drop_h = 180 },
+    .{ .label = "Cursor style", .w = 220, .drop_h = 160 },
+    .{ .label = "Window padding X (px)", .w = 160, .h = 28 },
+    .{ .label = "Window padding Y (px)", .w = 160, .h = 28 },
+    .{ .label = "Padding balance", .w = 220, .drop_h = 160 },
+    .{ .w = 300, .h = 24 },
+};
+
+const shell_rows = [_]SectionRow{
+    .{ .label = "Default command (blank = auto-detect)", .h = 28, .span = true },
+    .{ .label = "Shell integration", .w = 220, .drop_h = 200 },
+};
+
+const advanced_rows = [_]SectionRow{
+    .{ .label = "Auto-update mode", .w = 220, .drop_h = 160 },
+    .{ .label = "Auto-update channel", .w = 220, .drop_h = 140 },
+    .{ .label = "Full config editor", .w = 220, .h = 32 },
+};
+
+fn sectionGridRows(section: Section) []const SectionRow {
+    return switch (section) {
+        .terminal => &terminal_rows,
+        .appearance => &appearance_rows,
+        .shell => &shell_rows,
+        .advanced => &advanced_rows,
+        else => &[_]SectionRow{},
+    };
+}
+
+fn sectionGridControls(
+    self: *SettingsWindow,
+    section: Section,
+    buf: *[grid_controls_max]?HWND,
+) usize {
+    switch (section) {
+        .terminal => {
+            const list = [_]?HWND{
+                self.edit_scrollback,          self.combo_confirm_close,
+                self.combo_copy_on_select,     self.combo_clipboard_read,
+                self.combo_clipboard_write,    self.combo_link_url,
+                self.combo_link_previews,      self.chk_trim_trail,
+                self.chk_desktop_notifications, self.chk_app_notify_clipboard,
+                self.chk_app_notify_config,
+            };
+            @memcpy(buf[0..list.len], &list);
+            return list.len;
+        },
+        .appearance => {
+            const list = [_]?HWND{
+                self.edit_font_family, self.edit_font_size,
+                self.edit_theme,       self.edit_bg_opacity,
+                self.combo_window_theme, self.combo_cursor_style,
+                self.edit_pad_x,       self.edit_pad_y,
+                self.combo_pad_balance, self.chk_bg_blur,
+            };
+            @memcpy(buf[0..list.len], &list);
+            return list.len;
+        },
+        .shell => {
+            const list = [_]?HWND{ self.edit_command, self.combo_shell_integ };
+            @memcpy(buf[0..list.len], &list);
+            return list.len;
+        },
+        .advanced => {
+            const list = [_]?HWND{
+                self.combo_auto_update,
+                self.combo_auto_update_channel,
+                self.btn_open_editor,
+            };
+            @memcpy(buf[0..list.len], &list);
+            return list.len;
+        },
+        else => return 0,
+    }
+}
+
+const RowPlacement = struct {
+    control: RECT,
+    label_y: i32,
+    /// Right edge available for the painted label — the full column
+    /// (or pane, for span rows), not just the control width.
+    label_right: i32,
+};
+
+/// Two-column flow cursor. Every row reserves a label line so control
+/// tops stay aligned across columns even when labels are empty.
+const GridCursor = struct {
+    left: i32,
+    right: i32,
+    y: i32,
+    col: usize = 0,
+    row_bottom: i32 = 0,
+
+    fn init(client: RECT) GridCursor {
+        return .{
+            .left = left_rail_width + side_pad,
+            .right = client.right - side_pad,
+            .y = contentTop(),
+        };
+    }
+
+    fn place(self: *GridCursor, row: SectionRow) RowPlacement {
+        const cw = @divTrunc(self.right - self.left - grid_col_gap, 2);
+        if (row.span and self.col == 1) self.wrap();
+        const x = if (self.col == 0) self.left else self.left + cw + grid_col_gap;
+        const w = if (row.span) self.right - self.left else @min(row.w, cw);
+        const label_y = self.y;
+        const control: RECT = .{
+            .left = x,
+            .top = self.y + grid_label_reserve,
+            .right = x + w,
+            .bottom = self.y + grid_label_reserve + row.h,
+        };
+        self.row_bottom = @max(self.row_bottom, control.bottom + grid_row_gap);
+        if (row.span or self.col == 1) self.wrap() else self.col = 1;
+        return .{
+            .control = control,
+            .label_y = label_y,
+            .label_right = if (row.span) self.right else x + cw,
+        };
+    }
+
+    fn wrap(self: *GridCursor) void {
+        self.y = @max(self.y, self.row_bottom);
+        self.row_bottom = self.y;
+        self.col = 0;
+    }
+};
 
 fn layoutChildren(self: *SettingsWindow) void {
     const hwnd = self.hwnd orelse return;
@@ -2044,170 +2446,57 @@ fn layoutChildren(self: *SettingsWindow) void {
     }
 
     const pane_left = left_rail_width + side_pad;
-    const pane_top = section_btn_top_pad;
-    const row_gap: i32 = 48;
 
-    // Terminal section stack. All rows share this section and are
-    // hidden by `applySectionVisibility` when another section is
-    // active. Layout is a single-column flow from the content-pane
-    // header down.
-    {
-        var ty: i32 = pane_top + 72;
-        if (self.edit_scrollback) |e| {
-            _ = MoveWindow(e, pane_left, ty, 200, 28, 1);
-            ty += row_gap;
-        }
-        if (self.combo_confirm_close) |e| {
-            _ = MoveWindow(e, pane_left, ty, 200, 160, 1);
-            ty += row_gap;
-        }
-        if (self.combo_copy_on_select) |e| {
-            _ = MoveWindow(e, pane_left, ty, 200, 160, 1);
-            ty += row_gap;
-        }
-        if (self.combo_clipboard_read) |e| {
-            _ = MoveWindow(e, pane_left, ty, 200, 160, 1);
-            ty += row_gap;
-        }
-        if (self.combo_clipboard_write) |e| {
-            _ = MoveWindow(e, pane_left, ty, 200, 160, 1);
-            ty += row_gap;
-        }
-        if (self.combo_link_url) |e| {
-            _ = MoveWindow(e, pane_left, ty, 200, 160, 1);
-            ty += row_gap;
-        }
-        if (self.combo_link_previews) |e| {
-            _ = MoveWindow(e, pane_left, ty, 200, 160, 1);
-            ty += row_gap;
-        }
-        if (self.chk_trim_trail) |e| {
-            _ = MoveWindow(e, pane_left, ty, 260, 24, 1);
-            ty += row_gap;
-        }
-        if (self.chk_desktop_notifications) |e| {
-            _ = MoveWindow(e, pane_left, ty, 320, 24, 1);
-            ty += row_gap;
-        }
-        if (self.chk_app_notify_clipboard) |e| {
-            _ = MoveWindow(e, pane_left, ty, 320, 24, 1);
-            ty += row_gap;
-        }
-        if (self.chk_app_notify_config) |e| {
-            _ = MoveWindow(e, pane_left, ty, 320, 24, 1);
-        }
-    }
-
-    // Appearance section stack.
-    {
-        var ty: i32 = pane_top + 72;
-        if (self.edit_font_family) |e| {
-            _ = MoveWindow(e, pane_left, ty, 300, 28, 1);
-            ty += row_gap;
-        }
-        if (self.edit_font_size) |e| {
-            _ = MoveWindow(e, pane_left, ty, 160, 28, 1);
-            ty += row_gap;
-        }
-        if (self.edit_theme) |e| {
-            _ = MoveWindow(e, pane_left, ty, 300, 28, 1);
-            ty += row_gap;
-        }
-        if (self.edit_bg_opacity) |e| {
-            _ = MoveWindow(e, pane_left, ty, 160, 28, 1);
-            ty += row_gap;
-        }
-        if (self.combo_window_theme) |e| {
-            _ = MoveWindow(e, pane_left, ty, 200, 180, 1);
-            ty += row_gap;
-        }
-        if (self.combo_cursor_style) |e| {
-            _ = MoveWindow(e, pane_left, ty, 200, 160, 1);
-            ty += row_gap;
-        }
-        if (self.edit_pad_x) |e| {
-            _ = MoveWindow(e, pane_left, ty, 160, 28, 1);
-            ty += row_gap;
-        }
-        if (self.edit_pad_y) |e| {
-            _ = MoveWindow(e, pane_left, ty, 160, 28, 1);
-            ty += row_gap;
-        }
-        if (self.combo_pad_balance) |e| {
-            _ = MoveWindow(e, pane_left, ty, 200, 160, 1);
-            ty += row_gap;
-        }
-        if (self.chk_bg_blur) |e| {
-            _ = MoveWindow(e, pane_left, ty, 260, 24, 1);
-        }
-    }
-
-    // Shell section.
-    {
-        var ty: i32 = pane_top + 72;
-        if (self.edit_command) |e| {
-            _ = MoveWindow(e, pane_left, ty, 360, 28, 1);
-            ty += row_gap;
-        }
-        if (self.combo_shell_integ) |e| {
-            _ = MoveWindow(e, pane_left, ty, 200, 200, 1);
+    // Grid-driven sections. Each section is laid out independently
+    // from the same origin; `applySectionVisibility` hides everything
+    // but the active section's controls.
+    for ([_]Section{ .terminal, .appearance, .shell, .advanced }) |sec| {
+        const rows = sectionGridRows(sec);
+        var buf: [grid_controls_max]?HWND = undefined;
+        const n = sectionGridControls(self, sec, &buf);
+        var cursor = GridCursor.init(rect);
+        for (rows[0..@min(rows.len, n)], buf[0..@min(rows.len, n)]) |row, ctl_opt| {
+            const p = cursor.place(row);
+            if (ctl_opt) |ctl| _ = MoveWindow(
+                ctl,
+                p.control.left,
+                p.control.top,
+                p.control.right - p.control.left,
+                (p.control.bottom - p.control.top) + row.drop_h,
+                1,
+            );
         }
     }
 
     // Theme section: search box on top, list fills the remaining height
     // above the Save-button strip.
     {
-        var ty: i32 = pane_top + 72;
-        const picker_w: i32 = @max(320, @min(480, rect.right - pane_left - side_pad));
+        var ty: i32 = contentTop();
+        const picker_w: i32 = @max(320, @min(520, rect.right - pane_left - side_pad));
         if (self.edit_theme_search) |e| {
             _ = MoveWindow(e, pane_left, ty, picker_w, 28, 1);
-            ty += 36;
+            ty += 38;
         }
         if (self.list_themes) |e| {
-            const list_h: i32 = @max(120, rect.bottom - ty - 64);
+            const list_h: i32 = @max(120, rect.bottom - ty - 72);
             _ = MoveWindow(e, pane_left, ty, picker_w, list_h, 1);
         }
     }
 
     // Windows-integration section.
     if (self.chk_explorer_menu) |e| {
-        _ = MoveWindow(e, pane_left, pane_top + 72, 420, 24, 1);
+        _ = MoveWindow(e, pane_left, contentTop(), 420, 24, 1);
     }
 
+    // Keybindings section.
     if (self.btn_keybindings_editor) |btn| {
-        _ = MoveWindow(btn, pane_left, pane_top + 72, 220, 32, 1);
-    }
-
-    // Advanced-section "Open in default editor" button — anchored
-    // under the content-pane header.
-    {
-        var ty: i32 = pane_top + 72;
-        if (self.combo_auto_update) |e| {
-            _ = MoveWindow(e, pane_left, ty, 200, 160, 1);
-            ty += row_gap;
-        }
-        if (self.combo_auto_update_channel) |e| {
-            _ = MoveWindow(e, pane_left, ty, 200, 140, 1);
-            ty += row_gap;
-        }
-        if (self.btn_open_editor) |btn| {
-            const w: i32 = 220;
-            const h: i32 = 32;
-            _ = MoveWindow(
-                btn,
-                pane_left,
-                ty,
-                w,
-                h,
-                1,
-            );
-        }
+        _ = MoveWindow(btn, pane_left, contentTop(), 220, 32, 1);
     }
 
     // Save button — always-visible, bottom-right of window.
     if (self.btn_save) |btn| {
-        const w: i32 = 90;
-        const h: i32 = 32;
+        const w: i32 = 110;
+        const h: i32 = 34;
         _ = MoveWindow(
             btn,
             rect.right - w - side_pad,
@@ -2243,11 +2532,46 @@ fn wndProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.wina
             if (owner) |o| paint(hwnd, o);
             return 0;
         },
+        // Theme the plain controls: dark (or light) field backgrounds and
+        // readable text for edits, list boxes, and checkbox label strips.
+        WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX => {
+            if (owner) |o| {
+                const colors = o.handle.uiColors(o.handle.ctx);
+                const hdc: HDC = @ptrFromInt(wParam);
+                _ = SetTextColor(hdc, colors.text);
+                _ = SetBkColor(hdc, colors.field_bg);
+                _ = SetDCBrushColor(hdc, colors.field_bg);
+                return @bitCast(@intFromPtr(GetStockObject(DC_BRUSH)));
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+        WM_CTLCOLORSTATIC, WM_CTLCOLORBTN => {
+            if (owner) |o| {
+                const colors = o.handle.uiColors(o.handle.ctx);
+                const hdc: HDC = @ptrFromInt(wParam);
+                _ = SetTextColor(hdc, colors.text);
+                _ = SetBkColor(hdc, colors.bg);
+                _ = SetDCBrushColor(hdc, colors.bg);
+                return @bitCast(@intFromPtr(GetStockObject(DC_BRUSH)));
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+        WM_GETMINMAXINFO => {
+            const info: *MINMAXINFO = @ptrFromInt(@as(usize, @bitCast(lParam)));
+            info.ptMinTrackSize = .{ .x = 860, .y = 640 };
+            return 0;
+        },
         WM_DRAWITEM => {
             const dis: *const DRAWITEMSTRUCT = @ptrFromInt(@as(usize, @bitCast(lParam)));
             if (dis.CtlType == ODT_LISTBOX and dis.CtlID == LIST_THEMES) {
                 if (owner) |o| o.drawThemeListItem(dis);
                 return 1;
+            }
+            if (dis.CtlType == ODT_BUTTON_CTL) {
+                if (owner) |o| {
+                    o.drawOwnerButton(dis);
+                    return 1;
+                }
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
@@ -2435,6 +2759,7 @@ const DT_LEFT: UINT = 0x0;
 const DT_WORDBREAK: UINT = 0x10;
 const DT_TOP: UINT = 0x0;
 const DT_CALCRECT: UINT = 0x400;
+const DT_END_ELLIPSIS: UINT = 0x8000;
 
 fn paint(hwnd: HWND, owner: *SettingsWindow) void {
     var ps: PAINTSTRUCT = undefined;
@@ -2444,39 +2769,36 @@ fn paint(hwnd: HWND, owner: *SettingsWindow) void {
     var rect: RECT = undefined;
     if (GetClientRect(hwnd, &rect) == 0) return;
 
-    const bg = owner.handle.chromeBg(owner.handle.ctx);
-    const fg = owner.handle.textPrimary(owner.handle.ctx);
+    const colors = owner.handle.uiColors(owner.handle.ctx);
 
     const brush = GetStockObject(DC_BRUSH);
-    _ = SetDCBrushColor(hdc, bg);
+    _ = SetDCBrushColor(hdc, colors.bg);
     _ = FillRect(hdc, &rect, brush);
 
-    // Left rail gets a subtle tint so the section buttons visually
-    // separate from the content pane. We darken `bg` toward black;
-    // in light mode this becomes a slightly darker shade, in dark
-    // mode a slightly lighter one (from the DCBrushColor clamp).
+    // Left rail gets its own fill so the section buttons visually
+    // separate from the content pane.
     var rail_rect = rect;
     rail_rect.right = left_rail_width;
-    _ = SetDCBrushColor(hdc, tintBg(bg));
+    _ = SetDCBrushColor(hdc, colors.rail_bg);
     _ = FillRect(hdc, &rail_rect, brush);
 
     _ = SetBkMode(hdc, TRANSPARENT);
-    _ = SetTextColor(hdc, fg);
 
-    // Content pane: header + section summary.
     const pane_left = left_rail_width + side_pad;
     const pane_right = rect.right - side_pad;
     const pane_top = section_btn_top_pad;
 
-    // Section header at top-left of the content pane.
+    // Header block: section title, one-line muted summary, hairline.
     var header_buf_w: [128]u16 = undefined;
     const header_w = utf8ToW(&header_buf_w, owner.active_section.headerText());
     var header_rect: RECT = .{
         .left = pane_left,
         .top = pane_top,
         .right = pane_right,
-        .bottom = pane_top + 40,
+        .bottom = pane_top + header_title_h,
     };
+    _ = SetTextColor(hdc, colors.text);
+    if (owner.font_title) |f| _ = SelectObject(hdc, f);
     _ = DrawTextW(
         hdc,
         header_w,
@@ -2485,109 +2807,93 @@ fn paint(hwnd: HWND, owner: *SettingsWindow) void {
         DT_LEFT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX,
     );
 
-    // Section summary below the header.
     var body_buf_w: [256]u16 = undefined;
     const body_w = utf8ToW(&body_buf_w, owner.active_section.placeholderText());
     var body_rect: RECT = .{
         .left = pane_left,
-        .top = pane_top + 48,
+        .top = pane_top + header_title_h,
         .right = pane_right,
-        .bottom = pane_top + 68,
+        .bottom = pane_top + header_title_h + header_summary_h,
     };
+    _ = SetTextColor(hdc, colors.text_muted);
+    if (owner.font_label) |f| _ = SelectObject(hdc, f);
     _ = DrawTextW(
         hdc,
         body_w,
         -1,
         &body_rect,
-        DT_LEFT | DT_TOP | DT_WORDBREAK | DT_NOPREFIX,
+        DT_LEFT | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX,
     );
 
-    // Per-field labels painted just above each control. Labels are
-    // only drawn for the active section's controls to avoid clutter.
-    // The y-values match the layout stack in `layoutChildren` minus
-    // the label_pad.
-    const label_pad: i32 = 18;
-    const row_gap: i32 = 48;
-    switch (owner.active_section) {
-        .terminal => {
-            const labels = [_][]const u8{
-                "Scrollback limit (rows, 0 = unlimited)",
-                "Close confirmation",
-                "Copy on select",
-                "OSC 52 clipboard read requests",
-                "OSC 52 clipboard write requests",
-                "Clickable URL opening",
-                "Link preview popups",
-                "Clipboard trimming",
-                "Terminal notifications",
-                "Clipboard-copy notification",
-                "Config-reload notification",
-            };
-            var ly: i32 = pane_top + 72;
-            for (labels) |lbl| {
-                drawLabel(hdc, pane_left, ly - label_pad, pane_right, lbl);
-                ly += row_gap;
+    var sep_rect: RECT = .{
+        .left = pane_left,
+        .top = pane_top + header_title_h + header_summary_h + header_sep_gap,
+        .right = pane_right,
+        .bottom = pane_top + header_title_h + header_summary_h + header_sep_gap + 1,
+    };
+    _ = SetDCBrushColor(hdc, colors.border);
+    _ = FillRect(hdc, &sep_rect, brush);
+
+    // Field labels for grid sections — same table, same cursor as
+    // `layoutChildren`, so labels always sit above their controls.
+    const rows = sectionGridRows(owner.active_section);
+    if (rows.len > 0) {
+        _ = SetTextColor(hdc, colors.text_muted);
+        var cursor = GridCursor.init(rect);
+        for (rows) |row| {
+            const p = cursor.place(row);
+            if (row.label.len > 0) {
+                drawLabel(hdc, p.control.left, p.label_y + 2, p.label_right, row.label);
             }
-        },
-        .appearance => {
-            const labels = [_][]const u8{
-                "Font family fallbacks (comma-separated)",
-                "Font size (pt)",
-                "Terminal theme name, absolute path, or light/dark pair",
-                "Background opacity (0.0 .. 1.0)",
-                "Window theme",
-                "Cursor style",
-                "Window padding X (left/right or single value)",
-                "Window padding Y (top/bottom or single value)",
-                "Window padding balance",
-                "Background blur",
-            };
-            var ly: i32 = pane_top + 72;
-            for (labels) |lbl| {
-                drawLabel(hdc, pane_left, ly - label_pad, pane_right, lbl);
-                ly += row_gap;
-            }
-        },
-        .shell => {
-            drawLabel(hdc, pane_left, pane_top + 72 - label_pad, pane_right, "Default command (blank = auto-detect)");
-            drawLabel(hdc, pane_left, pane_top + 72 + row_gap - label_pad, pane_right, "Shell integration");
-        },
-        .keybindings => {
-            drawLabel(hdc, pane_left, pane_top + 72 - label_pad, pane_right, "Keybind configuration");
-            drawHelpBlock(
-                hdc,
-                pane_left,
-                pane_top + 72 + row_gap,
-                pane_right,
-                keybindingsHelpText(),
-            );
-        },
-        .advanced => {
-            drawLabel(hdc, pane_left, pane_top + 72 - label_pad, pane_right, "Auto-update mode");
-            drawLabel(hdc, pane_left, pane_top + 72 + row_gap - label_pad, pane_right, "Auto-update channel");
-            drawLabel(hdc, pane_left, pane_top + 72 + row_gap * 2 - label_pad, pane_right, "Full config editor");
-        },
-        .theme => {},
-        .windows => {
-            drawHelpBlock(
-                hdc,
-                pane_left,
-                pane_top + 72 + 36,
-                pane_right,
-                "Adds an \"Open in Paramux\" entry when right-clicking a folder, a folder background, " ++
-                    "or a drive in Explorer, opening that folder in a new window. Per-user registry only " ++
-                    "(no admin). On Windows 11 the entry appears under \"Show more options\". " ++
-                    "Applies immediately; if you move the paramux folder later, the entry re-points " ++
-                    "itself on the next launch.",
-            );
-        },
+        }
     }
+
+    // Bespoke sections: contextual help below the anchored control.
+    switch (owner.active_section) {
+        .keybindings => drawHelpBlock(
+            hdc,
+            pane_left,
+            contentTop() + 32 + 24,
+            pane_right,
+            keybindingsHelpText(),
+        ),
+        .windows => drawHelpBlock(
+            hdc,
+            pane_left,
+            contentTop() + 24 + 20,
+            pane_right,
+            "Adds an \"Open in Paramux\" entry when right-clicking a folder, a folder background, " ++
+                "or a drive in Explorer, opening that folder in a new window. Per-user registry only " ++
+                "(no admin). On Windows 11 the entry appears under \"Show more options\". " ++
+                "Applies immediately; if you move the paramux folder later, the entry re-points " ++
+                "itself on the next launch.",
+        ),
+        else => {},
+    }
+}
+
+/// 1px rectangle outline via four DC-brush fills.
+fn strokeRect(hdc: HDC, rect: RECT, color: COLORREF) void {
+    const brush = GetStockObject(DC_BRUSH);
+    _ = SetDCBrushColor(hdc, color);
+    var line = rect;
+    line.bottom = line.top + 1;
+    _ = FillRect(hdc, &line, brush);
+    line = rect;
+    line.top = line.bottom - 1;
+    _ = FillRect(hdc, &line, brush);
+    line = rect;
+    line.right = line.left + 1;
+    _ = FillRect(hdc, &line, brush);
+    line = rect;
+    line.left = line.right - 1;
+    _ = FillRect(hdc, &line, brush);
 }
 
 fn drawLabel(hdc: ?*anyopaque, x: i32, y: i32, right: i32, text: []const u8) void {
     var buf: [128]u16 = undefined;
     const w = utf8ToW(&buf, text);
-    var rect: RECT = .{ .left = x, .top = y, .right = right, .bottom = y + 16 };
+    var rect: RECT = .{ .left = x, .top = y, .right = right, .bottom = y + 19 };
     _ = DrawTextW(hdc, w, -1, &rect, DT_LEFT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
 }
 
@@ -2696,33 +3002,6 @@ fn utf8ToW(buf: []u16, text: []const u8) [*:0]const u16 {
     const n: usize = @min(written, buf.len - 1);
     buf[n] = 0;
     return @ptrCast(buf.ptr);
-}
-
-/// Lighten (in dark mode) or darken (in light mode) a COLORREF by a
-/// fixed delta. Used for the left-rail tint. Color is packed as
-/// 0x00BBGGRR (COLORREF) so we decompose and recompose per channel.
-fn tintBg(color: COLORREF) COLORREF {
-    const r: u32 = color & 0xFF;
-    const g: u32 = (color >> 8) & 0xFF;
-    const b: u32 = (color >> 16) & 0xFF;
-    // Heuristic: if the average channel is bright, darken; else lighten.
-    const avg = (r + g + b) / 3;
-    if (avg > 128) {
-        return packColor(sat8(r, -16), sat8(g, -16), sat8(b, -16));
-    }
-    return packColor(sat8(r, 16), sat8(g, 16), sat8(b, 16));
-}
-
-fn sat8(ch: u32, delta: i32) u32 {
-    const signed: i32 = @intCast(ch);
-    const out = signed + delta;
-    if (out < 0) return 0;
-    if (out > 255) return 255;
-    return @intCast(out);
-}
-
-fn packColor(r: u32, g: u32, b: u32) COLORREF {
-    return r | (g << 8) | (b << 16);
 }
 
 test "settings theme swatch parses colors and palette" {
