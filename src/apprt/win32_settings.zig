@@ -23,6 +23,8 @@ const windows = std.os.windows;
 const Config = @import("../config/Config.zig");
 const cli_help = @import("../cli/help.zig");
 const win32_types = @import("win32_types.zig");
+const win32_explorer_menu = @import("win32_explorer_menu.zig");
+const themepkg = @import("../config/theme.zig");
 
 /// Minimal set of Win32 aliases + externs we need here. Shared ABI structs
 /// live in `win32_types.zig` so this module stays free of an `*App` type
@@ -75,6 +77,8 @@ const BTN_SECTION_TERMINAL: usize = 202;
 const BTN_SECTION_SHELL: usize = 203;
 const BTN_SECTION_KEYBINDINGS: usize = 204;
 const BTN_SECTION_ADVANCED: usize = 205;
+const BTN_SECTION_THEME: usize = 206;
+const BTN_SECTION_WINDOWS: usize = 207;
 const BTN_SAVE: usize = 301;
 const BTN_KEYBINDINGS_EDITOR: usize = 302;
 const EDIT_SCROLLBACK: usize = 401;
@@ -102,6 +106,9 @@ const COMBO_CLIPBOARD_READ: usize = 422;
 const COMBO_CLIPBOARD_WRITE: usize = 423;
 const COMBO_LINK_URL: usize = 424;
 const COMBO_LINK_PREVIEWS: usize = 425;
+const EDIT_THEME_SEARCH: usize = 426;
+const LIST_THEMES: usize = 427;
+const CHK_EXPLORER_MENU: usize = 428;
 const ES_NUMBER: u32 = 0x2000;
 const ES_AUTOHSCROLL: u32 = 0x80;
 const EN_CHANGE: u16 = 0x0300;
@@ -122,23 +129,62 @@ const CB_RESETCONTENT: UINT = 0x014B;
 const CBS_DROPDOWNLIST: u32 = 0x3;
 const CBS_HASSTRINGS: u32 = 0x200;
 
+// Listbox (theme picker) styles + messages.
+const WS_VSCROLL: u32 = 0x00200000;
+const WS_BORDER: u32 = 0x00800000;
+const LBS_NOTIFY: u32 = 0x0001;
+const LBS_OWNERDRAWFIXED: u32 = 0x0010;
+const LBS_HASSTRINGS: u32 = 0x0040;
+const LB_ADDSTRING: UINT = 0x0180;
+const LB_RESETCONTENT: UINT = 0x0184;
+const LB_SETCURSEL: UINT = 0x0186;
+const LB_GETCURSEL: UINT = 0x0188;
+const LB_GETCOUNT: UINT = 0x018B;
+const LB_GETITEMDATA: UINT = 0x0199;
+const LB_SETITEMDATA: UINT = 0x019A;
+const LB_SETITEMHEIGHT: UINT = 0x01A0;
+const LBN_SELCHANGE: u16 = 1;
+const LBN_DBLCLK: u16 = 2;
+const EM_SETCUEBANNER: UINT = 0x1501;
+const WM_DRAWITEM: UINT = 0x002B;
+const ODT_LISTBOX: u32 = 2;
+const ODS_SELECTED: u32 = 0x0001;
+const theme_list_item_height: i32 = 26;
+
+/// Owner-draw payload for WM_DRAWITEM. Mirrors winuser.h DRAWITEMSTRUCT.
+const DRAWITEMSTRUCT = extern struct {
+    CtlType: u32,
+    CtlID: u32,
+    itemID: u32,
+    itemAction: u32,
+    itemState: u32,
+    hwndItem: HWND,
+    hDC: HDC,
+    rcItem: RECT,
+    itemData: usize,
+};
+
 /// Sections on the left rail. Section-specific controls (e.g. the
 /// "Open in default editor" button in Advanced) are shown / hidden on
 /// the active section; non-specific controls stay visible across
 /// sections.
 pub const Section = enum(u32) {
     appearance,
+    theme,
     terminal,
     shell,
     keybindings,
+    windows,
     advanced,
 
     fn fromButtonId(id: usize) ?Section {
         return switch (id) {
             BTN_SECTION_APPEARANCE => .appearance,
+            BTN_SECTION_THEME => .theme,
             BTN_SECTION_TERMINAL => .terminal,
             BTN_SECTION_SHELL => .shell,
             BTN_SECTION_KEYBINDINGS => .keybindings,
+            BTN_SECTION_WINDOWS => .windows,
             BTN_SECTION_ADVANCED => .advanced,
             else => null,
         };
@@ -147,9 +193,11 @@ pub const Section = enum(u32) {
     fn label(self: Section) [*:0]const u16 {
         return switch (self) {
             .appearance => std.unicode.utf8ToUtf16LeStringLiteral("Appearance"),
+            .theme => std.unicode.utf8ToUtf16LeStringLiteral("Theme"),
             .terminal => std.unicode.utf8ToUtf16LeStringLiteral("Terminal"),
             .shell => std.unicode.utf8ToUtf16LeStringLiteral("Shell"),
             .keybindings => std.unicode.utf8ToUtf16LeStringLiteral("Keybindings"),
+            .windows => std.unicode.utf8ToUtf16LeStringLiteral("Windows"),
             .advanced => std.unicode.utf8ToUtf16LeStringLiteral("Advanced"),
         };
     }
@@ -157,9 +205,11 @@ pub const Section = enum(u32) {
     fn headerText(self: Section) []const u8 {
         return switch (self) {
             .appearance => "Appearance",
+            .theme => "Theme",
             .terminal => "Terminal",
             .shell => "Shell",
             .keybindings => "Keybindings",
+            .windows => "Windows",
             .advanced => "Advanced",
         };
     }
@@ -167,9 +217,11 @@ pub const Section = enum(u32) {
     fn placeholderText(self: Section) []const u8 {
         return switch (self) {
             .appearance => "Font family, size, theme, opacity, cursor, padding, and background blur.",
+            .theme => "Click a theme to select it; Save (or double-click) applies it live.",
             .terminal => "Scrollback, close confirmation, copy behavior, OSC 52 clipboard policy, link opening, and notifications.",
             .shell => "Default shell command and shell integration detection mode.",
             .keybindings => "Open the config file for keybind edits; list defaults, actions, and docs from the CLI.",
+            .windows => "Windows shell integration: the Explorer right-click menu entry.",
             .advanced => "Updater defaults plus the text editor escape hatch for config keys that do not yet have native controls.",
         };
     }
@@ -368,15 +420,42 @@ pub const AppHandle = struct {
     onClosed: *const fn (ctx: *anyopaque) void,
 };
 
+/// One row of the theme picker: display name, absolute file path, and the
+/// lazily-parsed color swatch (tried-once semantics so unreadable files
+/// don't re-parse every paint).
+const ThemeEntry = struct {
+    name: [:0]u8,
+    path: [:0]u8,
+    swatch: ?ThemeSwatch = null,
+    swatch_tried: bool = false,
+};
+
+/// Colors extracted from a theme file for the picker's preview chips.
+/// Values are 0xRRGGBB (converted to COLORREF at draw time).
+pub const ThemeSwatch = struct {
+    background: ?u32 = null,
+    foreground: ?u32 = null,
+    palette: [8]?u32 = .{null} ** 8,
+};
+
 pub const SettingsWindow = struct {
     handle: AppHandle,
     hwnd: ?HWND = null,
     btn_open_editor: ?HWND = null,
     btn_section_appearance: ?HWND = null,
+    btn_section_theme: ?HWND = null,
     btn_section_terminal: ?HWND = null,
     btn_section_shell: ?HWND = null,
     btn_section_keybindings: ?HWND = null,
+    btn_section_windows: ?HWND = null,
     btn_section_advanced: ?HWND = null,
+    edit_theme_search: ?HWND = null,
+    list_themes: ?HWND = null,
+    chk_explorer_menu: ?HWND = null,
+    /// Theme catalogue backing the picker. All entry strings live in
+    /// `theme_arena`; loaded once per window open, dropped on close.
+    theme_arena: ?std.heap.ArenaAllocator = null,
+    themes: []ThemeEntry = &.{},
     btn_save: ?HWND = null,
     btn_keybindings_editor: ?HWND = null,
     edit_scrollback: ?HWND = null,
@@ -435,10 +514,16 @@ pub const SettingsWindow = struct {
         self.hwnd = null;
         self.btn_open_editor = null;
         self.btn_section_appearance = null;
+        self.btn_section_theme = null;
         self.btn_section_terminal = null;
         self.btn_section_shell = null;
         self.btn_section_keybindings = null;
+        self.btn_section_windows = null;
         self.btn_section_advanced = null;
+        self.edit_theme_search = null;
+        self.list_themes = null;
+        self.chk_explorer_menu = null;
+        self.clearThemeData();
         self.btn_save = null;
         self.btn_keybindings_editor = null;
         self.edit_scrollback = null;
@@ -487,10 +572,16 @@ pub const SettingsWindow = struct {
         self.hwnd = null;
         self.btn_open_editor = null;
         self.btn_section_appearance = null;
+        self.btn_section_theme = null;
         self.btn_section_terminal = null;
         self.btn_section_shell = null;
         self.btn_section_keybindings = null;
+        self.btn_section_windows = null;
         self.btn_section_advanced = null;
+        self.edit_theme_search = null;
+        self.list_themes = null;
+        self.chk_explorer_menu = null;
+        self.clearThemeData();
         self.btn_save = null;
         self.btn_keybindings_editor = null;
         self.edit_scrollback = null;
@@ -524,11 +615,20 @@ pub const SettingsWindow = struct {
     fn sectionButton(self: *const SettingsWindow, section: Section) ?HWND {
         return switch (section) {
             .appearance => self.btn_section_appearance,
+            .theme => self.btn_section_theme,
             .terminal => self.btn_section_terminal,
             .shell => self.btn_section_shell,
             .keybindings => self.btn_section_keybindings,
+            .windows => self.btn_section_windows,
             .advanced => self.btn_section_advanced,
         };
+    }
+
+    /// Drop the theme catalogue and its arena. Safe to call repeatedly.
+    fn clearThemeData(self: *SettingsWindow) void {
+        if (self.theme_arena) |*arena| arena.deinit();
+        self.theme_arena = null;
+        self.themes = &.{};
     }
 
     fn setActiveSection(self: *SettingsWindow, next: Section) void {
@@ -544,7 +644,12 @@ pub const SettingsWindow = struct {
         const show_appearance: i32 = if (self.active_section == .appearance) SW_SHOWNORMAL else SW_HIDE;
         const show_shell: i32 = if (self.active_section == .shell) SW_SHOWNORMAL else SW_HIDE;
         const show_keybindings: i32 = if (self.active_section == .keybindings) SW_SHOWNORMAL else SW_HIDE;
+        const show_theme: i32 = if (self.active_section == .theme) SW_SHOWNORMAL else SW_HIDE;
+        const show_windows: i32 = if (self.active_section == .windows) SW_SHOWNORMAL else SW_HIDE;
 
+        if (self.edit_theme_search) |e| _ = ShowWindow(e, show_theme);
+        if (self.list_themes) |e| _ = ShowWindow(e, show_theme);
+        if (self.chk_explorer_menu) |e| _ = ShowWindow(e, show_windows);
         if (self.btn_open_editor) |btn| _ = ShowWindow(btn, show_advanced);
         if (self.btn_keybindings_editor) |btn| _ = ShowWindow(btn, show_keybindings);
         if (self.edit_scrollback) |e| _ = ShowWindow(e, show_terminal);
@@ -689,6 +794,216 @@ pub const SettingsWindow = struct {
             }
         }
         setEditText(edit, writer.buffered(), &self.suppress_edit_events);
+    }
+
+    /// Enumerate every theme from the user + resources theme dirs into
+    /// `self.themes`, sorted case-insensitively, user dir winning name
+    /// collisions (same priority order the config loader uses). Loaded
+    /// once per window open; failures leave an empty catalogue (the
+    /// picker then just shows nothing — the raw theme edit still works).
+    fn loadThemeCatalogue(self: *SettingsWindow) void {
+        if (self.theme_arena != null) return;
+        var arena = std.heap.ArenaAllocator.init(self.handle.alloc);
+        const aa = arena.allocator();
+
+        var entries: std.ArrayListUnmanaged(ThemeEntry) = .{};
+        var seen: std.StringHashMapUnmanaged(void) = .{};
+        var it = themepkg.LocationIterator{ .arena_alloc = aa };
+        while (it.next() catch null) |loc| {
+            var dir = std.fs.cwd().openDir(loc.dir, .{ .iterate = true }) catch continue;
+            defer dir.close();
+            var dir_it = dir.iterate();
+            while (dir_it.next() catch null) |dent| {
+                if (dent.kind != .file) continue;
+                if (seen.contains(dent.name)) continue;
+                const name = aa.dupeZ(u8, dent.name) catch continue;
+                seen.put(aa, name, {}) catch continue;
+                const path = std.fs.path.joinZ(aa, &.{ loc.dir, dent.name }) catch continue;
+                entries.append(aa, .{ .name = name, .path = path }) catch continue;
+            }
+        }
+        std.mem.sort(ThemeEntry, entries.items, {}, themeEntryLessThan);
+        self.themes = entries.items;
+        self.theme_arena = arena;
+    }
+
+    /// Refill the theme listbox from the catalogue, filtered by the
+    /// search box (case-insensitive substring). Item data carries the
+    /// catalogue index so filtering never desyncs selection handling.
+    fn rebuildThemeList(self: *SettingsWindow) void {
+        const list = self.list_themes orelse return;
+        self.loadThemeCatalogue();
+
+        var filter_buf: [128]u8 = undefined;
+        const filter: []const u8 = blk: {
+            const edit = self.edit_theme_search orelse break :blk "";
+            const text = readEditUtf8(edit, &filter_buf) orelse break :blk "";
+            break :blk std.mem.trim(u8, text, " \t");
+        };
+
+        _ = SendMessageW(list, LB_RESETCONTENT, 0, 0);
+        for (self.themes, 0..) |entry, idx| {
+            if (filter.len > 0 and std.ascii.indexOfIgnoreCase(entry.name, filter) == null) continue;
+            var name_w: [256]u16 = undefined;
+            const w = utf8ToW(&name_w, entry.name);
+            const item: usize = @bitCast(SendMessageW(list, LB_ADDSTRING, 0, @bitCast(@intFromPtr(w))));
+            if (@as(isize, @bitCast(item)) >= 0) {
+                _ = SendMessageW(list, LB_SETITEMDATA, item, @bitCast(idx));
+            }
+        }
+        self.selectThemeListCurrent();
+    }
+
+    /// Highlight the pending theme in the list when it is a single
+    /// (non light/dark-split) name that survived the filter.
+    fn selectThemeListCurrent(self: *SettingsWindow) void {
+        const list = self.list_themes orelse return;
+        const p = self.pending orelse return;
+        const theme = p.theme orelse return;
+        if (!std.mem.eql(u8, theme.light, theme.dark)) return;
+
+        const count: isize = SendMessageW(list, LB_GETCOUNT, 0, 0);
+        if (count <= 0) return;
+        var i: usize = 0;
+        while (i < @as(usize, @intCast(count))) : (i += 1) {
+            const data: isize = SendMessageW(list, LB_GETITEMDATA, i, 0);
+            if (data < 0) continue;
+            const idx: usize = @intCast(data);
+            if (idx >= self.themes.len) continue;
+            if (std.mem.eql(u8, self.themes[idx].name, theme.light)) {
+                _ = SendMessageW(list, LB_SETCURSEL, i, 0);
+                return;
+            }
+        }
+    }
+
+    /// LBN_SELCHANGE: write the selected theme name into the pending
+    /// draft and mirror it into the raw theme edit (Appearance section)
+    /// so both surfaces agree.
+    fn applyThemeSelectionFromList(self: *SettingsWindow) void {
+        const list = self.list_themes orelse return;
+        const p = &(self.pending orelse return);
+        const sel: isize = SendMessageW(list, LB_GETCURSEL, 0, 0);
+        if (sel < 0) return;
+        const data: isize = SendMessageW(list, LB_GETITEMDATA, @intCast(sel), 0);
+        if (data < 0) return;
+        const idx: usize = @intCast(data);
+        if (idx >= self.themes.len) return;
+
+        const arena = p.*._arena.?.allocator();
+        var theme: Config.Theme = undefined;
+        theme.parseCLI(arena, self.themes[idx].name) catch return;
+        p.*.theme = theme;
+        self.displayThemeInEdit();
+    }
+
+    /// Parse the swatch colors for one catalogue entry (once).
+    fn ensureThemeSwatch(self: *SettingsWindow, idx: usize) ?ThemeSwatch {
+        if (idx >= self.themes.len) return null;
+        const entry = &self.themes[idx];
+        if (entry.swatch_tried) return entry.swatch;
+        entry.swatch_tried = true;
+
+        const file = std.fs.cwd().openFile(entry.path, .{}) catch return null;
+        defer file.close();
+        var buf: [8192]u8 = undefined;
+        const n = file.readAll(&buf) catch return null;
+        entry.swatch = parseThemeSwatch(buf[0..n]);
+        return entry.swatch;
+    }
+
+    /// Owner-draw for one theme row: [bg chip with "Aa" in fg] [8 palette
+    /// chips] name. Falls back to a plain text row when the theme file
+    /// couldn't be parsed.
+    fn drawThemeListItem(self: *SettingsWindow, dis: *const DRAWITEMSTRUCT) void {
+        const hdc = dis.hDC;
+        const brush = GetStockObject(DC_BRUSH);
+        const chrome_bg = self.handle.chromeBg(self.handle.ctx);
+        const selected = (dis.itemState & ODS_SELECTED) != 0;
+        const row_bg: COLORREF = if (selected) tintBg(chrome_bg) else chrome_bg;
+
+        _ = SetDCBrushColor(hdc, row_bg);
+        _ = FillRect(hdc, &dis.rcItem, brush);
+        if (dis.itemID == 0xFFFFFFFF) return;
+
+        const idx: usize = dis.itemData;
+        if (idx >= self.themes.len) return;
+        const entry = self.themes[idx];
+        const swatch = self.ensureThemeSwatch(idx);
+
+        var x: i32 = dis.rcItem.left + 6;
+        const row_h = dis.rcItem.bottom - dis.rcItem.top;
+
+        if (swatch) |sw| {
+            // Background chip with "Aa" rendered in the theme foreground.
+            const chip_h = row_h - 8;
+            const chip_w: i32 = 34;
+            var chip = RECT{
+                .left = x,
+                .top = dis.rcItem.top + 4,
+                .right = x + chip_w,
+                .bottom = dis.rcItem.top + 4 + chip_h,
+            };
+            const chip_bg: COLORREF = rgbToColorref(sw.background orelse 0x000000);
+            _ = SetDCBrushColor(hdc, chip_bg);
+            _ = FillRect(hdc, &chip, brush);
+            _ = SetBkMode(hdc, TRANSPARENT);
+            _ = SetTextColor(hdc, rgbToColorref(sw.foreground orelse 0xFFFFFF));
+            const aa_w = std.unicode.utf8ToUtf16LeStringLiteral("Aa");
+            var chip_text = chip;
+            _ = DrawTextW(hdc, aa_w, -1, &chip_text, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+            x += chip_w + 8;
+
+            // Palette chips (first 8 ANSI colors).
+            const dot: i32 = 8;
+            const dot_top = dis.rcItem.top + @divTrunc(row_h - dot, 2);
+            for (sw.palette) |maybe_color| {
+                const color = maybe_color orelse continue;
+                var dot_rect = RECT{
+                    .left = x,
+                    .top = dot_top,
+                    .right = x + dot,
+                    .bottom = dot_top + dot,
+                };
+                _ = SetDCBrushColor(hdc, rgbToColorref(color));
+                _ = FillRect(hdc, &dot_rect, brush);
+                x += dot + 2;
+            }
+            x += 8;
+        }
+
+        _ = SetBkMode(hdc, TRANSPARENT);
+        _ = SetTextColor(hdc, self.handle.textPrimary(self.handle.ctx));
+        var name_w: [256]u16 = undefined;
+        const w = utf8ToW(&name_w, entry.name);
+        var text_rect = RECT{
+            .left = x,
+            .top = dis.rcItem.top,
+            .right = dis.rcItem.right - 4,
+            .bottom = dis.rcItem.bottom,
+        };
+        _ = DrawTextW(hdc, w, -1, &text_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    }
+
+    /// BN_CLICKED on the Explorer checkbox: apply the registry change
+    /// immediately (it is not part of the config file / Save flow),
+    /// then re-read the actual status so a failed write can't leave
+    /// the checkbox lying.
+    fn syncExplorerMenuFromCheckbox(self: *SettingsWindow) void {
+        const chk = self.chk_explorer_menu orelse return;
+        const checked = SendMessageW(chk, BM_GETCHECK, 0, 0) == @as(LRESULT, @intCast(BST_CHECKED));
+        if (checked) {
+            win32_explorer_menu.register(self.handle.alloc);
+        } else {
+            win32_explorer_menu.unregister(self.handle.alloc);
+        }
+        self.displayExplorerMenuCheckbox();
+    }
+
+    fn displayExplorerMenuCheckbox(self: *SettingsWindow) void {
+        const chk = self.chk_explorer_menu orelse return;
+        const registered = win32_explorer_menu.status(self.handle.alloc) != .not_registered;
+        _ = SendMessageW(chk, BM_SETCHECK, if (registered) BST_CHECKED else BST_UNCHECKED, 0);
     }
 
     fn syncBgOpacityFromEdit(self: *SettingsWindow) void {
@@ -1192,10 +1507,15 @@ pub const SettingsWindow = struct {
         self.displayPadBalanceInCombo();
         self.displayAutoUpdateInCombo();
         self.displayAutoUpdateChannelInCombo();
+        self.displayExplorerMenuCheckbox();
+        self.rebuildThemeList();
     }
 
     fn save(self: *SettingsWindow) void {
+        // Flush kill-focus-synced edits that may not have lost focus yet.
         self.syncCommandFromEdit();
+        self.syncThemeFromEdit();
+        self.syncFontFamilyFromEdit();
         const p = self.pending orelse return;
         const o = self.original orelse return;
         const result = self.handle.saveAndReload(self.handle.ctx, &p, &o);
@@ -1309,9 +1629,11 @@ pub const SettingsWindow = struct {
         // the parent; the id maps back to a `Section` via
         // `Section.fromButtonId`.
         self.btn_section_appearance = makeSectionButton(hwnd, self.handle.hinstance, btn_class, Section.appearance);
+        self.btn_section_theme = makeSectionButton(hwnd, self.handle.hinstance, btn_class, Section.theme);
         self.btn_section_terminal = makeSectionButton(hwnd, self.handle.hinstance, btn_class, Section.terminal);
         self.btn_section_shell = makeSectionButton(hwnd, self.handle.hinstance, btn_class, Section.shell);
         self.btn_section_keybindings = makeSectionButton(hwnd, self.handle.hinstance, btn_class, Section.keybindings);
+        self.btn_section_windows = makeSectionButton(hwnd, self.handle.hinstance, btn_class, Section.windows);
         self.btn_section_advanced = makeSectionButton(hwnd, self.handle.hinstance, btn_class, Section.advanced);
 
         // "Open in default editor" button — escape hatch for users
@@ -1382,6 +1704,41 @@ pub const SettingsWindow = struct {
 
         // theme EDIT. Accepts a built-in/custom name or light/dark pair.
         self.edit_theme = makeEdit(hwnd, self.handle.hinstance, EDIT_THEME, 300, 0);
+
+        // Theme picker (Theme section): search box + owner-draw list with
+        // per-theme color swatches.
+        self.edit_theme_search = makeEdit(hwnd, self.handle.hinstance, EDIT_THEME_SEARCH, 420, 0);
+        if (self.edit_theme_search) |search| {
+            const cue = std.unicode.utf8ToUtf16LeStringLiteral("Search themes...");
+            _ = SendMessageW(search, EM_SETCUEBANNER, 1, @bitCast(@intFromPtr(cue)));
+        }
+        const listbox_class = std.unicode.utf8ToUtf16LeStringLiteral("LISTBOX");
+        self.list_themes = CreateWindowExW(
+            0,
+            listbox_class,
+            std.unicode.utf8ToUtf16LeStringLiteral(""),
+            WS_CHILD | WS_TABSTOP | WS_VSCROLL | WS_BORDER | LBS_NOTIFY | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS,
+            0,
+            0,
+            420,
+            400,
+            hwnd,
+            @ptrFromInt(LIST_THEMES),
+            self.handle.hinstance,
+            null,
+        );
+        if (self.list_themes) |list| {
+            _ = SendMessageW(list, LB_SETITEMHEIGHT, 0, theme_list_item_height);
+        }
+
+        // Windows-integration section: Explorer context-menu toggle.
+        self.chk_explorer_menu = makeCheckbox(
+            hwnd,
+            self.handle.hinstance,
+            CHK_EXPLORER_MENU,
+            std.unicode.utf8ToUtf16LeStringLiteral("Add \"Open in Paramux\" to the Explorer right-click menu"),
+            420,
+        );
 
         // background-opacity EDIT. Appearance section. 0.0..1.0.
         self.edit_bg_opacity = makeEdit(hwnd, self.handle.hinstance, EDIT_BG_OPACITY, 160, 0);
@@ -1633,9 +1990,11 @@ fn makeSectionButton(
 ) ?HWND {
     const id: usize = switch (section) {
         .appearance => BTN_SECTION_APPEARANCE,
+        .theme => BTN_SECTION_THEME,
         .terminal => BTN_SECTION_TERMINAL,
         .shell => BTN_SECTION_SHELL,
         .keybindings => BTN_SECTION_KEYBINDINGS,
+        .windows => BTN_SECTION_WINDOWS,
         .advanced => BTN_SECTION_ADVANCED,
     };
     return CreateWindowExW(
@@ -1671,9 +2030,11 @@ fn layoutChildren(self: *SettingsWindow) void {
     var y: i32 = section_btn_top_pad;
     for ([_]?HWND{
         self.btn_section_appearance,
+        self.btn_section_theme,
         self.btn_section_terminal,
         self.btn_section_shell,
         self.btn_section_keybindings,
+        self.btn_section_windows,
         self.btn_section_advanced,
     }) |btn_opt| {
         if (btn_opt) |btn| {
@@ -1793,6 +2154,26 @@ fn layoutChildren(self: *SettingsWindow) void {
         }
     }
 
+    // Theme section: search box on top, list fills the remaining height
+    // above the Save-button strip.
+    {
+        var ty: i32 = pane_top + 72;
+        const picker_w: i32 = @max(320, @min(480, rect.right - pane_left - side_pad));
+        if (self.edit_theme_search) |e| {
+            _ = MoveWindow(e, pane_left, ty, picker_w, 28, 1);
+            ty += 36;
+        }
+        if (self.list_themes) |e| {
+            const list_h: i32 = @max(120, rect.bottom - ty - 64);
+            _ = MoveWindow(e, pane_left, ty, picker_w, list_h, 1);
+        }
+    }
+
+    // Windows-integration section.
+    if (self.chk_explorer_menu) |e| {
+        _ = MoveWindow(e, pane_left, pane_top + 72, 420, 24, 1);
+    }
+
     if (self.btn_keybindings_editor) |btn| {
         _ = MoveWindow(btn, pane_left, pane_top + 72, 220, 32, 1);
     }
@@ -1862,6 +2243,14 @@ fn wndProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.wina
             if (owner) |o| paint(hwnd, o);
             return 0;
         },
+        WM_DRAWITEM => {
+            const dis: *const DRAWITEMSTRUCT = @ptrFromInt(@as(usize, @bitCast(lParam)));
+            if (dis.CtlType == ODT_LISTBOX and dis.CtlID == LIST_THEMES) {
+                if (owner) |o| o.drawThemeListItem(dis);
+                return 1;
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
         WM_SIZE => {
             if (owner) |o| layoutChildren(o);
             return 0;
@@ -1897,6 +2286,25 @@ fn wndProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.wina
             }
             if (id == EDIT_THEME and notify == EN_KILLFOCUS) {
                 if (owner) |o| o.syncThemeFromEdit();
+                return 0;
+            }
+            if (id == EDIT_THEME_SEARCH and notify == EN_CHANGE) {
+                if (owner) |o| o.rebuildThemeList();
+                return 0;
+            }
+            if (id == LIST_THEMES and notify == LBN_SELCHANGE) {
+                if (owner) |o| o.applyThemeSelectionFromList();
+                return 0;
+            }
+            if (id == LIST_THEMES and notify == LBN_DBLCLK) {
+                if (owner) |o| {
+                    o.applyThemeSelectionFromList();
+                    o.save();
+                }
+                return 0;
+            }
+            if (id == CHK_EXPLORER_MENU and notify == BN_CLICKED) {
+                if (owner) |o| o.syncExplorerMenuFromCheckbox();
                 return 0;
             }
             if (id == EDIT_BG_OPACITY and notify == EN_CHANGE) {
@@ -2159,6 +2567,20 @@ fn paint(hwnd: HWND, owner: *SettingsWindow) void {
             drawLabel(hdc, pane_left, pane_top + 72 + row_gap - label_pad, pane_right, "Auto-update channel");
             drawLabel(hdc, pane_left, pane_top + 72 + row_gap * 2 - label_pad, pane_right, "Full config editor");
         },
+        .theme => {},
+        .windows => {
+            drawHelpBlock(
+                hdc,
+                pane_left,
+                pane_top + 72 + 36,
+                pane_right,
+                "Adds an \"Open in Paramux\" entry when right-clicking a folder, a folder background, " ++
+                    "or a drive in Explorer, opening that folder in a new window. Per-user registry only " ++
+                    "(no admin). On Windows 11 the entry appears under \"Show more options\". " ++
+                    "Applies immediately; if you move the paramux folder later, the entry re-points " ++
+                    "itself on the next launch.",
+            );
+        },
     }
 }
 
@@ -2207,6 +2629,55 @@ fn parseFontFamilyEditText(alloc: std.mem.Allocator, text: []const u8) !Config.R
     return next;
 }
 
+fn themeEntryLessThan(_: void, a: ThemeEntry, b: ThemeEntry) bool {
+    return std.ascii.lessThanIgnoreCase(a.name, b.name);
+}
+
+/// 0xRRGGBB → COLORREF (0x00BBGGRR).
+fn rgbToColorref(rgb: u32) COLORREF {
+    const r = (rgb >> 16) & 0xFF;
+    const g = (rgb >> 8) & 0xFF;
+    const b = rgb & 0xFF;
+    return r | (g << 8) | (b << 16);
+}
+
+/// `#RRGGBB` or `RRGGBB` → 0xRRGGBB, else null.
+fn parseHexColor(text: []const u8) ?u32 {
+    var hex = std.mem.trim(u8, text, " \t\r");
+    if (hex.len > 0 and hex[0] == '#') hex = hex[1..];
+    if (hex.len != 6) return null;
+    return std.fmt.parseInt(u32, hex, 16) catch null;
+}
+
+/// Extract the preview colors from raw theme-file text. Tolerant parser:
+/// unknown lines are skipped, later duplicates win (same as config load).
+pub fn parseThemeSwatch(text: []const u8) ThemeSwatch {
+    var swatch: ThemeSwatch = .{};
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    while (lines.next()) |raw_line| {
+        const line = std.mem.trim(u8, raw_line, " \t\r");
+        if (line.len == 0 or line[0] == '#' or line[0] == ';') continue;
+        const eq = std.mem.indexOfScalar(u8, line, '=') orelse continue;
+        const key = std.mem.trimRight(u8, line[0..eq], " \t");
+        const value = std.mem.trimLeft(u8, line[eq + 1 ..], " \t");
+
+        if (std.mem.eql(u8, key, "background")) {
+            if (parseHexColor(value)) |c| swatch.background = c;
+        } else if (std.mem.eql(u8, key, "foreground")) {
+            if (parseHexColor(value)) |c| swatch.foreground = c;
+        } else if (std.mem.eql(u8, key, "palette")) {
+            // value shape: "N=#RRGGBB"
+            const inner_eq = std.mem.indexOfScalar(u8, value, '=') orelse continue;
+            const index_text = std.mem.trim(u8, value[0..inner_eq], " \t");
+            const color_text = value[inner_eq + 1 ..];
+            const index = std.fmt.parseInt(u8, index_text, 10) catch continue;
+            if (index >= swatch.palette.len) continue;
+            if (parseHexColor(color_text)) |c| swatch.palette[index] = c;
+        }
+    }
+    return swatch;
+}
+
 fn writeCommandForEdit(writer: *std.Io.Writer, value: Config.Command) !void {
     switch (value) {
         .shell => |v| try writer.writeAll(v),
@@ -2252,6 +2723,37 @@ fn sat8(ch: u32, delta: i32) u32 {
 
 fn packColor(r: u32, g: u32, b: u32) COLORREF {
     return r | (g << 8) | (b << 16);
+}
+
+test "settings theme swatch parses colors and palette" {
+    const swatch = parseThemeSwatch(
+        \\# a comment
+        \\palette = 0=#21222c
+        \\palette = 1=#ff5555
+        \\palette = 15=#ffffff
+        \\background = #282a36
+        \\foreground = f8f8f2
+        \\cursor-color = #f8f8f2
+    );
+    try std.testing.expectEqual(@as(?u32, 0x282a36), swatch.background);
+    try std.testing.expectEqual(@as(?u32, 0xf8f8f2), swatch.foreground);
+    try std.testing.expectEqual(@as(?u32, 0x21222c), swatch.palette[0]);
+    try std.testing.expectEqual(@as(?u32, 0xff5555), swatch.palette[1]);
+    // Index 15 is beyond the 8 preview chips and must be ignored.
+    try std.testing.expectEqual(@as(?u32, null), swatch.palette[7]);
+}
+
+test "settings theme swatch tolerates malformed input" {
+    const swatch = parseThemeSwatch("palette = x=#nothex\nbackground = short\n= no key\n");
+    try std.testing.expectEqual(@as(?u32, null), swatch.background);
+    try std.testing.expectEqual(@as(?u32, null), swatch.palette[0]);
+}
+
+test "settings hex color parser accepts both # and bare forms" {
+    try std.testing.expectEqual(@as(?u32, 0xa1b2c3), parseHexColor("#a1b2c3"));
+    try std.testing.expectEqual(@as(?u32, 0xa1b2c3), parseHexColor("a1b2c3"));
+    try std.testing.expectEqual(@as(?u32, null), parseHexColor("#a1b2"));
+    try std.testing.expectEqual(@as(?u32, null), parseHexColor(""));
 }
 
 test "settings background blur checkbox preserves enabled radius" {

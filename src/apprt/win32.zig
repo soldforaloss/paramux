@@ -1329,6 +1329,7 @@ const host_tab_new_button_label = std.unicode.utf8ToUtf16LeStringLiteral("+");
 const tooltip_new_tab = std.unicode.utf8ToUtf16LeStringLiteral("New tab (Ctrl+Shift+T)\nRight-click: new window \u{00B7} Middle-click: split");
 const tooltip_split_right = std.unicode.utf8ToUtf16LeStringLiteral("Split right (Ctrl+Shift+O)");
 const tooltip_split_down = std.unicode.utf8ToUtf16LeStringLiteral("Split down (Ctrl+Shift+E)");
+const tooltip_settings = std.unicode.utf8ToUtf16LeStringLiteral("Settings (Ctrl+,)");
 const tooltip_more_actions = std.unicode.utf8ToUtf16LeStringLiteral("More actions");
 const tooltip_search_prev = std.unicode.utf8ToUtf16LeStringLiteral("Previous match (Shift+Enter)");
 const tooltip_search_next = std.unicode.utf8ToUtf16LeStringLiteral("Next match (Enter)");
@@ -1338,6 +1339,7 @@ const tooltip_search_word = std.unicode.utf8ToUtf16LeStringLiteral("Whole word")
 const tooltip_search_close = std.unicode.utf8ToUtf16LeStringLiteral("Close search (Esc)");
 const host_tab_split_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{25EB}"); // ◫ square bisected = split
 const host_tab_split_down_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{229F}"); // ⊟ squared minus = split down
+const host_tab_settings_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{2699}"); // ⚙ gear = settings
 const host_tab_dropdown_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{25BE}"); // dropdown chevron
 const titlebar_icon_font_fluent = std.unicode.utf8ToUtf16LeStringLiteral("Segoe Fluent Icons");
 const titlebar_icon_font_mdl2 = std.unicode.utf8ToUtf16LeStringLiteral("Segoe MDL2 Assets");
@@ -1348,6 +1350,7 @@ const titlebar_glyph_close = std.unicode.utf8ToUtf16LeStringLiteral("\u{E8BB}");
 const titlebar_glyph_new_tab = std.unicode.utf8ToUtf16LeStringLiteral("\u{E710}");
 const titlebar_glyph_split = std.unicode.utf8ToUtf16LeStringLiteral("\u{E90D}");
 const titlebar_glyph_split_down = std.unicode.utf8ToUtf16LeStringLiteral("\u{E90E}");
+const titlebar_glyph_settings = std.unicode.utf8ToUtf16LeStringLiteral("\u{E713}");
 const titlebar_glyph_dropdown = std.unicode.utf8ToUtf16LeStringLiteral("\u{E70D}");
 const host_banner_inspector_inactive = "Inspector hidden. Terminal view is active.";
 const search_results_idle = "Type to search";
@@ -7689,12 +7692,15 @@ pub const App = struct {
         // preserves comments, formatting, relative include paths, and
         // unrelated fields.
         //
-        // Field types we currently support as GUI edits are all value
-        // types (bool, int, float, enum, packed struct, tagged union
-        // with no pointer variants). Assigning via `@field` is a
-        // shallow bit-copy and is safe without arena-transfer. Any
-        // GUI-exposed pointer field (string / slice) needs an explicit
-        // string-dupe branch here.
+        // Every field type participates in the diff, including optional
+        // and pointer-backed fields (`theme`, `command`,
+        // `working-directory`, ...): `changed()` compares by value and
+        // `patchOrAppendEdits` serializes straight from `pending` via
+        // `formatEntry`, so no per-type branch is needed. The `@field`
+        // assignment into `file_cfg` is a shallow bit-copy; `pending`
+        // outlives `file_cfg` (both are function-scoped) and
+        // `Config.deinit` only frees its own arena, so borrowed
+        // pointers are safe.
         var file_cfg = configpkg.Config.default(alloc) catch return error.SerializeFailed;
         defer file_cfg.deinit();
         // Seed the baseline from the ACTUAL target file, not the
@@ -7748,7 +7754,7 @@ pub const App = struct {
         inline for (@typeInfo(configpkg.Config).@"struct".fields) |field| {
             if (field.name[0] == '_') continue;
             switch (@typeInfo(field.type)) {
-                .bool, .int, .float, .@"enum", .@"struct", .@"union" => {
+                .bool, .int, .float, .@"enum", .@"struct", .@"union", .optional, .pointer => {
                     const key = @field(ConfigKey, field.name);
                     if (original.changed(pending, key)) {
                         @field(file_cfg, field.name) = @field(pending, field.name);
@@ -7756,7 +7762,7 @@ pub const App = struct {
                         any_edit = true;
                     }
                 },
-                else => {}, // skip pointer / optional-pointer / array fields
+                else => {}, // skip array fields (no GUI control edits them)
             }
         }
         // No-op short-circuit: if the user pressed Save without
@@ -7914,7 +7920,7 @@ pub const App = struct {
         inline for (@typeInfo(configpkg.Config).@"struct".fields) |field| {
             if (field.name[0] == '_') continue;
             switch (@typeInfo(field.type)) {
-                .bool, .int, .float, .@"enum", .@"struct", .@"union" => {
+                .bool, .int, .float, .@"enum", .@"struct", .@"union", .optional, .pointer => {
                     const key = @field(ConfigKey, field.name);
                     if (user_edited.isSet(@intFromEnum(key))) {
                         if (pending.changed(&reloaded, key)) {
@@ -8499,6 +8505,7 @@ const TitlebarButtonRole = enum {
     new_tab,
     split,
     split_down,
+    settings,
     dropdown,
 };
 
@@ -8510,6 +8517,7 @@ const TitlebarGlyphKind = enum {
     new_tab,
     split,
     split_down,
+    settings,
     dropdown,
 };
 
@@ -8558,6 +8566,7 @@ fn titlebarGlyphCodepoint(kind: TitlebarGlyphKind) u16 {
         .new_tab => 0xE710,
         .split => 0xE90D, // Segoe "DockRight" — reads as split-into-a-right-pane
         .split_down => 0xE90E, // Segoe "DockBottom" — split-into-a-bottom-pane
+        .settings => 0xE713, // Segoe "Settings" gear
         .dropdown => 0xE70D,
     };
 }
@@ -8571,6 +8580,7 @@ fn titlebarGlyphText(kind: TitlebarGlyphKind) [*:0]const u16 {
         .new_tab => titlebar_glyph_new_tab,
         .split => titlebar_glyph_split,
         .split_down => titlebar_glyph_split_down,
+        .settings => titlebar_glyph_settings,
         .dropdown => titlebar_glyph_dropdown,
     };
 }
@@ -8584,6 +8594,7 @@ fn titlebarFallbackIcon(kind: TitlebarGlyphKind) win32_icons.Kind {
         .new_tab => .plus,
         .split => .plus, // fallback bitmap only; the Segoe glyph is the real icon
         .split_down => .plus, // fallback bitmap only; the Segoe glyph is the real icon
+        .settings => .settings,
         .dropdown => .arrow_down,
     };
 }
@@ -8637,20 +8648,20 @@ fn titlebarButtonVisual(
     }
 
     const idle_glyph = switch (role) {
-        .new_tab, .split, .split_down, .dropdown => theme.button_chrome_fg,
+        .new_tab, .split, .split_down, .settings, .dropdown => theme.button_chrome_fg,
         else => theme.text_primary,
     };
     if (!active) return .{ .bg = null, .glyph = idle_glyph };
 
     const target_bg = switch (role) {
         .close => rgb(0xC4, 0x2B, 0x1C),
-        .minimize, .maximize, .new_tab, .split, .split_down, .dropdown => titlebarSubtleFill(parent_bg, theme.is_dark, pressed),
+        .minimize, .maximize, .new_tab, .split, .split_down, .settings, .dropdown => titlebarSubtleFill(parent_bg, theme.is_dark, pressed),
         .none => parent_bg,
     };
     const target_glyph = switch (role) {
         .close => if (pressed) blendColorRGB(target_bg, rgb(0xFF, 0xFF, 0xFF), 0.70) else rgb(0xFF, 0xFF, 0xFF),
         .minimize, .maximize => theme.text_primary,
-        .new_tab, .split, .split_down, .dropdown => theme.text_primary,
+        .new_tab, .split, .split_down, .settings, .dropdown => theme.text_primary,
         .none => idle_glyph,
     };
 
@@ -8987,6 +8998,8 @@ const Host = struct {
     split_placement: ChildPlacement = .{},
     split_down_hwnd: ?HWND = null, // one-click split-down button (⊟)
     split_down_placement: ChildPlacement = .{},
+    settings_hwnd: ?HWND = null, // settings gear button (⚙)
+    settings_placement: ChildPlacement = .{},
     overlay_label_placement: ChildPlacement = .{},
     overlay_edit_placement: ChildPlacement = .{},
     overlay_hint_placement: ChildPlacement = .{},
@@ -10251,6 +10264,7 @@ const Host = struct {
         destroySubclassedWindowWithPrev(&self.new_tab_hwnd, chrome_prev);
         destroySubclassedWindowWithPrev(&self.split_hwnd, chrome_prev);
         destroySubclassedWindowWithPrev(&self.split_down_hwnd, chrome_prev);
+        destroySubclassedWindowWithPrev(&self.settings_hwnd, chrome_prev);
         destroySubclassedWindowWithPrev(&self.overflow_hwnd, chrome_prev);
         destroyChildWindow(&self.tooltip_hwnd);
 
@@ -10832,6 +10846,7 @@ const Host = struct {
         if (self.new_tab_hwnd != null and child == self.new_tab_hwnd.?) return .new_tab;
         if (self.split_hwnd != null and child == self.split_hwnd.?) return .split;
         if (self.split_down_hwnd != null and child == self.split_down_hwnd.?) return .split_down;
+        if (self.settings_hwnd != null and child == self.settings_hwnd.?) return .settings;
         if (self.overflow_hwnd != null and child == self.overflow_hwnd.?) return .dropdown;
         return .none;
     }
@@ -10853,6 +10868,9 @@ const Host = struct {
             },
             .split_down => {
                 if (self.split_down_hwnd) |hwnd| _ = InvalidateRect(hwnd, null, 0);
+            },
+            .settings => {
+                if (self.settings_hwnd) |hwnd| _ = InvalidateRect(hwnd, null, 0);
             },
             .dropdown => {
                 if (self.overflow_hwnd) |hwnd| _ = InvalidateRect(hwnd, null, 0);
@@ -11273,7 +11291,7 @@ const Host = struct {
         self.tooltip_hwnd = CreateWindowExW(
             0,
             tooltips_class_name,
-            null,
+            std.unicode.utf8ToUtf16LeStringLiteral(""),
             WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
             0,
             0,
@@ -11366,6 +11384,25 @@ const Host = struct {
             ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
             self.subclassButton(self.split_down_hwnd.?, &hostButtonProc, &self.chrome_button_prev_proc);
             self.addTooltip(self.split_down_hwnd.?, tooltip_split_down);
+        }
+
+        if (self.settings_hwnd == null) {
+            self.settings_hwnd = CreateWindowExW(
+                0,
+                prompt_button_class,
+                host_tab_settings_button_label,
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+                0,
+                0,
+                host_tab_small_button_width,
+                host_tab_height - 8,
+                hwnd,
+                @ptrFromInt(1909),
+                self.app.hinstance,
+                null,
+            ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
+            self.subclassButton(self.settings_hwnd.?, &hostButtonProc, &self.chrome_button_prev_proc);
+            self.addTooltip(self.settings_hwnd.?, tooltip_settings);
         }
 
         if (self.overflow_hwnd == null) {
@@ -12777,6 +12814,7 @@ const Host = struct {
             .new_tab => .new_tab,
             .split => .split,
             .split_down => .split_down,
+            .settings => .settings,
             .dropdown => .dropdown,
             else => return,
         };
@@ -13337,13 +13375,14 @@ const Host = struct {
 
     fn rightButtonsWidth(self: *const Host) i32 {
         if (self.usingIntegratedTitlebar()) {
-            return self.scaled(host_titlebar_action_button_size) * 4 + self.scaled(16);
+            return self.scaled(host_titlebar_action_button_size) * 5 + self.scaled(20);
         }
         return self.scaled(host_tab_small_button_width) + // new tab (+)
             self.scaled(host_tab_small_button_width) + // split (◫)
             self.scaled(host_tab_small_button_width) + // split down (⊟)
+            self.scaled(host_tab_small_button_width) + // settings (⚙)
             self.scaled(host_tab_overflow_button_width) + // dropdown chevron (▾)
-            self.scaled(16); // gaps + margins
+            self.scaled(20); // gaps + margins
     }
 
     /// Pixels reserved for the 3 caption buttons (min / max / close)
@@ -14171,6 +14210,22 @@ const Host = struct {
                 ),
             ) or changed.*;
             changed.* = applyChildVisibility(button_hwnd, &self.overflow_placement, true) or changed.*;
+        }
+        button_x -= self.scaled(4);
+        if (self.settings_hwnd) |button_hwnd| {
+            const settings_width = if (titlebar_actions) action_size else self.scaled(host_tab_small_button_width);
+            button_x -= settings_width;
+            changed.* = applyChildRect(
+                button_hwnd,
+                &self.settings_placement,
+                childRect(
+                    button_x,
+                    if (titlebar_actions) action_y else button_y,
+                    settings_width,
+                    if (titlebar_actions) action_size else button_height,
+                ),
+            ) or changed.*;
+            changed.* = applyChildVisibility(button_hwnd, &self.settings_placement, true) or changed.*;
         }
         button_x -= self.scaled(4);
         if (self.split_down_hwnd) |button_hwnd| {
@@ -20951,6 +21006,10 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                         }
                         return 0;
                     },
+                    1909 => {
+                        runUiActionOrLog("settings button failed", v.app.openConfig());
+                        return 0;
+                    },
                     1911 => {
                         v.showOverflowMenu();
                         return 0;
@@ -21071,24 +21130,6 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
 
-        WM_RBUTTONUP => {
-            if (host) |v| {
-                const mx = signedLowWord(lParamBits(lParam));
-                const my = signedHighWord(lParamBits(lParam));
-                // Right-click on a sidebar row: focus that pane first, then
-                // offer the pane menu — it targets the active surface, which
-                // is now the clicked row's pane.
-                if (v.activateSidebarRowAtPoint(mx, my)) {
-                    var pt = POINT{ .x = mx, .y = my };
-                    if (ClientToScreen(hwnd, &pt) != 0) {
-                        v.showContextMenu(pt.x, pt.y);
-                    }
-                    return 0;
-                }
-            }
-            return DefWindowProcW(hwnd, msg, wParam, lParam);
-        },
-
         WM_SETCURSOR => {
             if (host) |v| {
                 if (lowWord(@as(usize, @intCast(lParam))) == HTCLIENT) {
@@ -21192,6 +21233,16 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                         else => v.app.launcher_profile_target,
                     };
                     if (v.openSelectedProfile(open_target)) return 0;
+                    return 0;
+                }
+                // Right-click on a sidebar row: focus that pane first, then
+                // offer the pane menu — it targets the active surface, which
+                // is now the clicked row's pane.
+                if (msg == WM_RBUTTONUP and v.activateSidebarRowAtPoint(point.x, point.y)) {
+                    var pt = point;
+                    if (ClientToScreen(hwnd, &pt) != 0) {
+                        v.showContextMenu(pt.x, pt.y);
+                    }
                     return 0;
                 }
             }
