@@ -583,6 +583,27 @@ const host_tab_label_max_len: usize = default_metrics.tab_label_max_len;
 // paramux M2: docked left metadata sidebar (width + per-row height, unscaled).
 const host_sidebar_width: i32 = 240;
 const host_sidebar_row_height: i32 = 48;
+// paramux UX redesign phase 1 (docs/paramux/ux-redesign.md): the sidebar is
+// a persistent map of EVERY workspace (tab) and pane, so no terminal can
+// ever leave the screen. Workspace headers + a labeled new-workspace row.
+const host_sidebar_header_height: i32 = 32;
+const host_sidebar_new_row_height: i32 = 34;
+const host_sidebar_pane_indent: i32 = 10;
+
+const SidebarRowKind = enum { workspace_header, pane, new_workspace };
+
+/// One visual row of the unified sidebar. Built identically by paint and
+/// hit-testing (same builder), so the two can never disagree.
+const SidebarRow = struct {
+    kind: SidebarRowKind,
+    tab_index: usize = 0,
+    surface: ?*Surface = null,
+    handle: SplitTreeSurface.Node.Handle = .root,
+    y: i32 = 0,
+    h: i32 = 0,
+};
+
+const sidebar_rows_max: usize = 160;
 // paramux FR-4: uniform gutter around/between panes, so a full-perimeter
 // focus/attention ring fits in the surrounding chrome (unscaled px).
 const host_pane_gutter: i32 = 5;
@@ -9185,9 +9206,12 @@ const Host = struct {
     tab_close_prev_hwnd: ?HWND = null,
     hovered_quick_slot: ?usize = null,
     focused_quick_slot: ?usize = null,
-    /// Sidebar row under the mouse; drives the hover fill and the
-    /// per-row close button in `paintSidebar`.
+    /// Sidebar row under the mouse (index into the unified row list);
+    /// drives the hover fill and the per-row close button.
     sidebar_hover_row: ?usize = null,
+    /// Scroll offset (px) of the unified sidebar tree when it outgrows
+    /// the window. Clamped by `clampSidebarScroll`.
+    sidebar_scroll: i32 = 0,
     banner_kind: HostBannerKind = .none,
     banner_text: ?[:0]const u8 = null,
     update_open_rect: RECT = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 },
@@ -10440,39 +10464,12 @@ const Host = struct {
     /// than paint-only status labels. When the tab is zoomed, selecting another
     /// row moves the zoom to that pane instead of focusing a hidden child HWND.
     fn activateSidebarRowAtPoint(self: *Host, x: i32, y: i32) bool {
-        const tab = self.activeTab() orelse return false;
-        const content_rect = self.contentRect() catch return false;
-        const sidebar_rect = RECT{
-            .left = 0,
-            .top = content_rect.top,
-            .right = content_rect.left,
-            .bottom = content_rect.bottom,
-        };
-        const row_index = sidebarRowIndexAtPoint(
-            sidebar_rect,
-            self.scaled(host_sidebar_row_height),
-            x,
-            y,
-            tab.leafCount(),
-        ) orelse return false;
-
-        var selected_surface: ?*Surface = null;
-        var selected_handle: SplitTreeSurface.Node.Handle = .root;
-        var index: usize = 0;
-        var it = tab.tree.iterator();
-        while (it.next()) |entry| : (index += 1) {
-            if (index != row_index) continue;
-            selected_surface = entry.view;
-            selected_handle = entry.handle;
-            break;
-        }
-
-        const surface = selected_surface orelse return false;
-        if (tab.tree.zoomed != null and tab.tree.zoomed.? != selected_handle) {
-            tab.tree.zoom(selected_handle);
-        }
-        self.app.activateSurface(surface);
-        return true;
+        const index = self.sidebarRowIndexAt(x, y) orelse return false;
+        const row = self.sidebarRowByIndex(index) orelse return false;
+        // Right-click callers use this to focus-then-menu; creating a
+        // workspace on a right-click would be a surprise.
+        if (row.kind == .new_workspace) return false;
+        return self.activateSidebarRow(row);
     }
 
     /// Hit-test the pane divider (if any) under host-client point (x, y),
@@ -11136,29 +11133,17 @@ const Host = struct {
     /// Close-button square on a sidebar row, in host-client coordinates.
     /// Shared by `paintSidebar` and the mouse hit-test so the visual and
     /// the click target can't drift apart.
-    fn sidebarRowCloseRect(self: *Host, row: usize) ?RECT {
+    fn sidebarRowCloseRect(self: *Host, row: SidebarRow) ?RECT {
+        if (row.kind == .new_workspace) return null;
         const content = self.contentRect() catch return null;
-        const row_h = self.scaled(host_sidebar_row_height);
-        const top = content.top + @as(i32, @intCast(row)) * row_h;
         const size = self.scaled(20);
         const right = content.left - self.scaled(7);
         return .{
             .left = right - size,
-            .top = top + @divTrunc(row_h - size, 2),
+            .top = row.y + @divTrunc(row.h - size, 2),
             .right = right,
-            .bottom = top + @divTrunc(row_h - size, 2) + size,
+            .bottom = row.y + @divTrunc(row.h - size, 2) + size,
         };
-    }
-
-    /// Close the pane behind sidebar row `row` through the normal
-    /// close_surface action (running-process confirm included).
-    fn closeSidebarRow(self: *Host, row: usize) bool {
-        const surface = self.surfaceAtSidebarRow(row) orelse return false;
-        runUiActionOrLog(
-            "sidebar close pane failed",
-            surface.core_surface.performBindingAction(.{ .close_surface = {} }),
-        );
-        return true;
     }
 
     fn setFocusedQuickSlot(self: *Host, slot: ?usize) void {
@@ -12729,34 +12714,156 @@ const Host = struct {
     }
 
     /// Sidebar row index under host-client point (x, y), if any.
-    fn sidebarRowAtPoint(self: *Host, x: i32, y: i32) ?usize {
-        const tab = self.activeTab() orelse return null;
-        const content = self.contentRect() catch return null;
-        const sidebar_rect = RECT{
-            .left = 0,
-            .top = content.top,
-            .right = content.left,
-            .bottom = content.bottom,
-        };
-        return sidebarRowIndexAtPoint(
-            sidebar_rect,
-            self.scaled(host_sidebar_row_height),
-            x,
-            y,
-            tab.leafCount(),
-        );
+    /// Build the unified sidebar row list: every workspace header, every
+    /// pane, then the labeled new-workspace row, offset by the scroll.
+    /// Paint and hit-testing both consume THIS, so they cannot drift.
+    fn sidebarRows(self: *Host, buf: *[sidebar_rows_max]SidebarRow) []SidebarRow {
+        const content = self.contentRect() catch return buf[0..0];
+        var n: usize = 0;
+        var y: i32 = content.top - self.sidebar_scroll;
+        const header_h = self.scaled(host_sidebar_header_height);
+        const row_h = self.scaled(host_sidebar_row_height);
+        for (self.tabs.items, 0..) |*tab, ti| {
+            if (n >= buf.len) break;
+            buf[n] = .{ .kind = .workspace_header, .tab_index = ti, .y = y, .h = header_h };
+            n += 1;
+            y += header_h;
+            var it = tab.tree.iterator();
+            while (it.next()) |entry| {
+                if (n >= buf.len) break;
+                buf[n] = .{
+                    .kind = .pane,
+                    .tab_index = ti,
+                    .surface = entry.view,
+                    .handle = entry.handle,
+                    .y = y,
+                    .h = row_h,
+                };
+                n += 1;
+                y += row_h;
+            }
+        }
+        if (n < buf.len) {
+            buf[n] = .{
+                .kind = .new_workspace,
+                .y = y + self.scaled(4),
+                .h = self.scaled(host_sidebar_new_row_height),
+            };
+            n += 1;
+        }
+        return buf[0..n];
     }
 
-    /// The pane behind sidebar row `row` (rows follow tree iteration order,
-    /// same as `paintSidebar`).
-    fn surfaceAtSidebarRow(self: *Host, row: usize) ?*Surface {
-        const tab = self.activeTab() orelse return null;
-        var index: usize = 0;
-        var it = tab.tree.iterator();
-        while (it.next()) |entry| : (index += 1) {
-            if (index == row) return entry.view;
+    fn sidebarContentHeight(self: *Host) i32 {
+        var total: i32 = 0;
+        for (self.tabs.items) |*tab| {
+            total += self.scaled(host_sidebar_header_height);
+            total += self.scaled(host_sidebar_row_height) * @as(i32, @intCast(tab.leafCount()));
+        }
+        total += self.scaled(4) + self.scaled(host_sidebar_new_row_height);
+        return total;
+    }
+
+    fn clampSidebarScroll(self: *Host) void {
+        const content = self.contentRect() catch {
+            self.sidebar_scroll = 0;
+            return;
+        };
+        const view_h = content.bottom - content.top;
+        const max_scroll = @max(0, self.sidebarContentHeight() - view_h);
+        self.sidebar_scroll = std.math.clamp(self.sidebar_scroll, 0, max_scroll);
+    }
+
+    /// Index (into `sidebarRows`) of the row under host-client (x, y).
+    fn sidebarRowIndexAt(self: *Host, x: i32, y: i32) ?usize {
+        const content = self.contentRect() catch return null;
+        if (x < 0 or x >= content.left) return null;
+        if (y < content.top or y >= content.bottom) return null;
+        var buf: [sidebar_rows_max]SidebarRow = undefined;
+        const rows = self.sidebarRows(&buf);
+        for (rows, 0..) |row, i| {
+            if (y >= row.y and y < row.y + row.h) return i;
         }
         return null;
+    }
+
+    /// The pane row (only) under (x, y) — drag arming/targeting wants
+    /// panes, never headers.
+    fn sidebarPaneRowAt(self: *Host, x: i32, y: i32) ?SidebarRow {
+        const index = self.sidebarRowIndexAt(x, y) orelse return null;
+        var buf: [sidebar_rows_max]SidebarRow = undefined;
+        const rows = self.sidebarRows(&buf);
+        if (index >= rows.len) return null;
+        const row = rows[index];
+        return if (row.kind == .pane) row else null;
+    }
+
+    /// Row list index → row (rebuilds the list; rows are cheap).
+    fn sidebarRowByIndex(self: *Host, index: usize) ?SidebarRow {
+        var buf: [sidebar_rows_max]SidebarRow = undefined;
+        const rows = self.sidebarRows(&buf);
+        if (index >= rows.len) return null;
+        return rows[index];
+    }
+
+    /// Activate whatever `row` points at: workspace headers and pane rows
+    /// switch/focus, the new-workspace row creates. Returns true if the
+    /// row was actionable.
+    fn activateSidebarRow(self: *Host, row: SidebarRow) bool {
+        switch (row.kind) {
+            .workspace_header => {
+                _ = self.activateTabIndex(row.tab_index);
+                return true;
+            },
+            .pane => {
+                const surface = row.surface orelse return false;
+                if (row.tab_index != self.active_tab) {
+                    _ = self.activateTabIndex(row.tab_index);
+                }
+                const tab = self.activeTab() orelse return false;
+                // Zoom follows selection: picking a hidden row moves the
+                // zoom instead of focusing an invisible HWND.
+                if (tab.tree.zoomed != null and tab.tree.zoomed.? != row.handle) {
+                    tab.tree.zoom(row.handle);
+                    self.layout() catch {};
+                }
+                self.app.activateSurface(surface);
+                self.invalidateSidebar();
+                return true;
+            },
+            .new_workspace => {
+                self.postDeferredNewTab();
+                return true;
+            },
+        }
+    }
+
+    /// Close the thing behind `row`: panes via close_surface (running-
+    /// process confirm included), workspaces via the close-tab action.
+    fn closeSidebarRow(self: *Host, row: SidebarRow) bool {
+        switch (row.kind) {
+            .pane => {
+                const surface = row.surface orelse return false;
+                runUiActionOrLog(
+                    "sidebar close pane failed",
+                    surface.core_surface.performBindingAction(.{ .close_surface = {} }),
+                );
+                return true;
+            },
+            .workspace_header => {
+                if (row.tab_index >= self.tabs.items.len) return false;
+                const tab = &self.tabs.items[row.tab_index];
+                const surface = tab.focusedSurface() orelse blk: {
+                    var it = tab.tree.iterator();
+                    break :blk if (it.next()) |entry| entry.view else null;
+                } orelse return false;
+                _ = self.app.closeTab(.{ .surface = surface.core() }, .this) catch |err| {
+                    log.warn("sidebar close workspace failed err={}", .{err});
+                };
+                return true;
+            },
+            .new_workspace => return false,
+        }
     }
 
     /// The pane whose on-screen rect contains host-client point (x, y),
@@ -12834,20 +12941,23 @@ const Host = struct {
         self.pane_drop_zone = null;
         self.pane_drop_row = null;
 
-        // Dropping on another sidebar row swaps the two panes.
-        if (self.sidebarRowAtPoint(x, y)) |row| {
-            if (row != self.pane_drag.source_row and self.surfaceAtSidebarRow(row) != null) {
-                self.pane_drop_row = row;
-                const content = self.contentRect() catch return;
-                const row_h = self.scaled(host_sidebar_row_height);
-                const top = content.top + @as(i32, @intCast(row)) * row_h;
-                self.positionPaneDropPreview(.{
-                    .left = 0,
-                    .top = top,
-                    .right = content.left,
-                    .bottom = top + row_h,
-                });
-                return;
+        // Dropping on another pane row of the SAME workspace swaps the
+        // two panes (cross-workspace move is a later phase).
+        if (self.sidebarRowIndexAt(x, y)) |row_index| {
+            if (row_index != self.pane_drag.source_row) {
+                if (self.sidebarRowByIndex(row_index)) |row| {
+                    if (row.kind == .pane and row.tab_index == self.active_tab and row.surface != null) {
+                        self.pane_drop_row = row_index;
+                        const content = self.contentRect() catch return;
+                        self.positionPaneDropPreview(.{
+                            .left = 0,
+                            .top = row.y,
+                            .right = content.left,
+                            .bottom = row.y + row.h,
+                        });
+                        return;
+                    }
+                }
             }
             self.hidePaneDropPreview();
             return;
@@ -12887,9 +12997,11 @@ const Host = struct {
     /// Execute the drop recorded by `updatePaneDragAtPoint`.
     fn commitPaneDrag(self: *Host) void {
         const source = self.pane_drag_source orelse return;
-        if (self.pane_drop_row) |row| {
-            if (self.surfaceAtSidebarRow(row)) |target| {
-                self.swapPanesInActiveTab(source, target);
+        if (self.pane_drop_row) |row_index| {
+            if (self.sidebarRowByIndex(row_index)) |row| {
+                if (row.kind == .pane and row.tab_index == self.active_tab) {
+                    if (row.surface) |target| self.swapPanesInActiveTab(source, target);
+                }
             }
             return;
         }
@@ -15247,12 +15359,10 @@ const Host = struct {
             .bottom = rect.bottom,
         }, theme.chrome_border);
 
-        const tab = self.activeTab() orelse return;
         _ = SetBkMode(hdc, TRANSPARENT);
-        const row_h = self.scaled(host_sidebar_row_height);
         const pad = self.scaled(10);
+        const indent = self.scaled(host_sidebar_pane_indent);
         const stripe_w = self.scaled(3);
-        const half = @divTrunc(row_h, 2);
         const text_right = rect.right - border - pad - self.scaled(16);
         const basename = struct {
             fn f(path: []const u8) []const u8 {
@@ -15264,116 +15374,200 @@ const Host = struct {
             }
         }.f;
 
-        const show_drag_grip = tab.leafCount() > 1;
-        const zoomed_handle = tab.tree.zoomed;
-        var y: i32 = rect.top;
-        var row_index: usize = 0;
-        var it = tab.tree.iterator();
-        while (it.next()) |entry| : (row_index += 1) {
-            if (y >= rect.bottom) break;
-            const surface = entry.view;
-            const is_active = entry.handle == tab.focused;
+        // Unified tree: every workspace, every pane, always visible
+        // (docs/paramux/ux-redesign.md phase 1). Same builder as the
+        // hit-tests, so paint and clicks cannot disagree.
+        self.clampSidebarScroll();
+        var rows_buf: [sidebar_rows_max]SidebarRow = undefined;
+        const rows = self.sidebarRows(&rows_buf);
+
+        var total_leafs: usize = 0;
+        for (self.tabs.items) |*t| total_leafs += t.leafCount();
+
+        var tree_bottom: i32 = rect.top;
+        for (rows, 0..) |row, row_index| {
+            tree_bottom = row.y + row.h;
+            if (row.y + row.h <= rect.top or row.y >= rect.bottom) continue;
             const hovered = self.sidebar_hover_row == row_index;
-            // When a pane is zoomed the other panes are hidden — dim
-            // their rows so bright = visible, dim = behind the zoom.
-            const hidden_by_zoom = if (zoomed_handle) |z| entry.handle != z else false;
-            const row_bottom = @min(rect.bottom, y + row_h);
-            if (is_active) {
-                fillSolidRect(hdc, .{ .left = rect.left, .top = y, .right = rect.right - border, .bottom = row_bottom }, theme.button_active_bg);
-                fillSolidRect(hdc, .{ .left = rect.left, .top = y, .right = rect.left + stripe_w, .bottom = row_bottom }, theme.accent);
-            } else if (hovered) {
-                fillSolidRect(hdc, .{ .left = rect.left, .top = y, .right = rect.right - border, .bottom = row_bottom }, blendColorRGB(theme.chrome_bg, theme.text_primary, 0.05));
-            }
-            const label: []const u8 = if (surface.effectiveTitle()) |t| t else "shell";
-            drawPaletteRowText(hdc, label, .{
-                .left = rect.left + pad,
-                .top = y + self.scaled(4),
-                .right = text_right,
-                .bottom = y + half,
-            }, if (hidden_by_zoom) theme.text_disabled else theme.text_primary);
-            // The secondary line explains an active agent state in words and
-            // preserves the latest notification. Idle panes use the usual
-            // "[branch[*]  ]cwd[  :port :port]" metadata instead.
-            {
-                var ports_buf: [128]u8 = undefined;
-                var meta_buf: [384]u8 = undefined;
-                var attention_buf: [512]u8 = undefined;
-                var zoom_buf: [64]u8 = undefined;
-                const secondary: []const u8 = if (surface.attention_state != .none)
-                    formatSidebarAttention(&attention_buf, surface.attention_state, surface.last_notification)
-                else if (hidden_by_zoom)
-                    "hidden by zoom"
-                else if (zoomed_handle != null) zoom_blk: {
-                    // The zoomed pane names its state; its usual metadata
-                    // is mostly redundant while it fills the whole tab.
-                    const cwd = if (surface.pwd) |pwd| basename(pwd) else "";
-                    break :zoom_blk std.fmt.bufPrint(&zoom_buf, "zoomed{s}{s}", .{
-                        if (cwd.len > 0) "  " else "",
-                        cwd,
-                    }) catch "zoomed";
-                } else blk: {
-                    const ports_seg = formatSidebarPorts(&ports_buf, surface.listening_ports);
-                    break :blk if (surface.pwd) |pwd| pwd_blk: {
-                        const cwd = basename(pwd);
-                        break :pwd_blk if (surface.git_branch) |br|
-                            (std.fmt.bufPrint(&meta_buf, "{s}{s}  {s}{s}", .{ br, if (surface.git_dirty) "*" else "", cwd, ports_seg }) catch cwd)
-                        else
-                            (std.fmt.bufPrint(&meta_buf, "{s}{s}", .{ cwd, ports_seg }) catch cwd);
-                    } else std.mem.trimLeft(u8, ports_seg, " ");
-                };
-                if (secondary.len > 0) drawPaletteRowText(hdc, secondary, .{
-                    .left = rect.left + pad,
-                    .top = y + half - self.scaled(2),
-                    .right = text_right,
-                    .bottom = row_bottom - self.scaled(2),
-                }, if (hidden_by_zoom) theme.text_disabled else theme.text_secondary);
-            }
-            // Hovered rows swap the status/grip cluster for a close
-            // button; the attention STATE stays readable through the
-            // secondary-line words while hovering.
-            if (hovered) {
-                if (self.sidebarRowCloseRect(row_index)) |cr| {
-                    fillSolidRect(hdc, cr, blendColorRGB(theme.chrome_bg, theme.text_primary, 0.14));
-                    drawPaletteRowText(hdc, "\u{2715}", .{
-                        .left = cr.left + self.scaled(5),
-                        .top = cr.top + self.scaled(2),
-                        .right = cr.right,
-                        .bottom = cr.bottom,
-                    }, theme.text_primary);
-                }
-            } else {
-                // paramux FR-4: status dot colored by the pane's attention state
-                // (working=blue, waiting=amber, done=green, error=red).
-                if (surface.attention_state != .none) {
-                    const d = self.scaled(9);
-                    const cx = rect.right - border - self.scaled(13);
-                    const cy = y + @divTrunc(row_h, 2);
-                    const dot_rect = RECT{ .left = cx - @divTrunc(d, 2), .top = cy - @divTrunc(d, 2), .right = cx + @divTrunc(d, 2), .bottom = cy + @divTrunc(d, 2) };
-                    const attn = surface.attention_state.color();
-                    drawRoundedRect(hdc, dot_rect, attn, attn, d);
-                }
-                // Drag-grip dots on multi-pane tabs: a quiet cue that rows can
-                // be dragged onto panes/rows to rearrange the layout.
-                if (show_drag_grip) {
-                    const dot = self.scaled(2);
-                    const gx = rect.right - border - self.scaled(7);
-                    var gy = y + @divTrunc(row_h, 2) - self.scaled(7);
-                    var k: usize = 0;
-                    while (k < 4) : (k += 1) {
-                        fillSolidRect(hdc, .{ .left = gx, .top = gy, .right = gx + dot, .bottom = gy + dot }, theme.text_secondary);
-                        gy += self.scaled(4);
+            const row_bottom = row.y + row.h;
+
+            switch (row.kind) {
+                .workspace_header => {
+                    const active_ws = row.tab_index == self.active_tab;
+                    const tab = &self.tabs.items[row.tab_index];
+                    if (active_ws) {
+                        fillSolidRect(hdc, .{ .left = rect.left, .top = row.y, .right = rect.right - border, .bottom = row_bottom }, theme.button_active_bg);
+                        fillSolidRect(hdc, .{ .left = rect.left, .top = row.y, .right = rect.left + stripe_w, .bottom = row_bottom }, theme.accent);
+                    } else if (hovered) {
+                        fillSolidRect(hdc, .{ .left = rect.left, .top = row.y, .right = rect.right - border, .bottom = row_bottom }, blendColorRGB(theme.chrome_bg, theme.text_primary, 0.05));
                     }
-                }
+
+                    // "N · title (panes)" — the ordinal is the workspace's
+                    // stable visible address (ctrl+N jumps to it).
+                    const title: []const u8 = title: {
+                        if (tab.focusedSurface()) |fs| {
+                            if (fs.tab_title_override) |value| break :title value;
+                            if (fs.effectiveTitle()) |value| break :title value;
+                        }
+                        break :title "workspace";
+                    };
+                    var label_buf: [192]u8 = undefined;
+                    const pane_count = tab.leafCount();
+                    const label = if (pane_count > 1)
+                        (std.fmt.bufPrint(&label_buf, "{d} \u{00B7} {s}  ({d})", .{ row.tab_index + 1, title, pane_count }) catch title)
+                    else
+                        (std.fmt.bufPrint(&label_buf, "{d} \u{00B7} {s}", .{ row.tab_index + 1, title }) catch title);
+                    drawPaletteRowText(hdc, label, .{
+                        .left = rect.left + pad,
+                        .top = row.y + self.scaled(8),
+                        .right = text_right,
+                        .bottom = row_bottom - self.scaled(4),
+                    }, if (active_ws) theme.text_primary else theme.text_secondary);
+
+                    if (hovered) {
+                        if (self.sidebarRowCloseRect(row)) |cr| {
+                            fillSolidRect(hdc, cr, blendColorRGB(theme.chrome_bg, theme.text_primary, 0.14));
+                            drawPaletteRowText(hdc, "\u{2715}", .{
+                                .left = cr.left + self.scaled(5),
+                                .top = cr.top + self.scaled(2),
+                                .right = cr.right,
+                                .bottom = cr.bottom,
+                            }, theme.text_primary);
+                        }
+                    } else {
+                        // Aggregated attention for the whole workspace.
+                        var attention: AttentionState = .none;
+                        var it = tab.tree.iterator();
+                        while (it.next()) |entry| {
+                            attention = AttentionState.max(attention, entry.view.attention_state);
+                        }
+                        if (attention != .none) {
+                            const d = self.scaled(9);
+                            const cx = rect.right - border - self.scaled(13);
+                            const cy = row.y + @divTrunc(row.h, 2);
+                            const dot_rect = RECT{ .left = cx - @divTrunc(d, 2), .top = cy - @divTrunc(d, 2), .right = cx + @divTrunc(d, 2), .bottom = cy + @divTrunc(d, 2) };
+                            const attn = attention.color();
+                            drawRoundedRect(hdc, dot_rect, attn, attn, d);
+                        }
+                    }
+                    fillSolidRect(hdc, .{ .left = rect.left, .top = row_bottom - border, .right = rect.right - border, .bottom = row_bottom }, theme.chrome_border);
+                },
+
+                .pane => {
+                    const surface = row.surface orelse continue;
+                    const tab = &self.tabs.items[row.tab_index];
+                    const in_active_ws = row.tab_index == self.active_tab;
+                    const is_focused_pane = in_active_ws and row.handle == tab.focused;
+                    const zoomed_handle = tab.tree.zoomed;
+                    const hidden_by_zoom = if (zoomed_handle) |z| row.handle != z else false;
+                    // Bright = the workspace on screen; dimmed = parked in
+                    // another workspace (still one click away).
+                    const dim = !in_active_ws;
+
+                    if (is_focused_pane) {
+                        fillSolidRect(hdc, .{ .left = rect.left, .top = row.y, .right = rect.right - border, .bottom = row_bottom }, theme.button_active_bg);
+                        fillSolidRect(hdc, .{ .left = rect.left, .top = row.y, .right = rect.left + stripe_w, .bottom = row_bottom }, theme.accent);
+                    } else if (hovered) {
+                        fillSolidRect(hdc, .{ .left = rect.left, .top = row.y, .right = rect.right - border, .bottom = row_bottom }, blendColorRGB(theme.chrome_bg, theme.text_primary, 0.05));
+                    }
+
+                    const half = @divTrunc(row.h, 2);
+                    const label: []const u8 = if (surface.effectiveTitle()) |t| t else "shell";
+                    drawPaletteRowText(hdc, label, .{
+                        .left = rect.left + pad + indent,
+                        .top = row.y + self.scaled(4),
+                        .right = text_right,
+                        .bottom = row.y + half,
+                    }, if (dim or hidden_by_zoom) theme.text_secondary else theme.text_primary);
+
+                    {
+                        var ports_buf: [128]u8 = undefined;
+                        var meta_buf: [384]u8 = undefined;
+                        var attention_buf: [512]u8 = undefined;
+                        var zoom_buf: [64]u8 = undefined;
+                        const secondary: []const u8 = if (surface.attention_state != .none)
+                            formatSidebarAttention(&attention_buf, surface.attention_state, surface.last_notification)
+                        else if (hidden_by_zoom)
+                            "hidden by zoom"
+                        else if (zoomed_handle != null) zoom_blk: {
+                            const cwd = if (surface.pwd) |pwd| basename(pwd) else "";
+                            break :zoom_blk std.fmt.bufPrint(&zoom_buf, "zoomed{s}{s}", .{
+                                if (cwd.len > 0) "  " else "",
+                                cwd,
+                            }) catch "zoomed";
+                        } else blk: {
+                            const ports_seg = formatSidebarPorts(&ports_buf, surface.listening_ports);
+                            break :blk if (surface.pwd) |pwd| pwd_blk: {
+                                const cwd = basename(pwd);
+                                break :pwd_blk if (surface.git_branch) |br|
+                                    (std.fmt.bufPrint(&meta_buf, "{s}{s}  {s}{s}", .{ br, if (surface.git_dirty) "*" else "", cwd, ports_seg }) catch cwd)
+                                else
+                                    (std.fmt.bufPrint(&meta_buf, "{s}{s}", .{ cwd, ports_seg }) catch cwd);
+                            } else std.mem.trimLeft(u8, ports_seg, " ");
+                        };
+                        if (secondary.len > 0) drawPaletteRowText(hdc, secondary, .{
+                            .left = rect.left + pad + indent,
+                            .top = row.y + half - self.scaled(2),
+                            .right = text_right,
+                            .bottom = row_bottom - self.scaled(2),
+                        }, if (dim or hidden_by_zoom) theme.text_disabled else theme.text_secondary);
+                    }
+
+                    if (hovered) {
+                        if (self.sidebarRowCloseRect(row)) |cr| {
+                            fillSolidRect(hdc, cr, blendColorRGB(theme.chrome_bg, theme.text_primary, 0.14));
+                            drawPaletteRowText(hdc, "\u{2715}", .{
+                                .left = cr.left + self.scaled(5),
+                                .top = cr.top + self.scaled(2),
+                                .right = cr.right,
+                                .bottom = cr.bottom,
+                            }, theme.text_primary);
+                        }
+                    } else {
+                        // paramux FR-4: status dot colored by the pane's
+                        // attention state (blue/amber/green/red).
+                        if (surface.attention_state != .none) {
+                            const d = self.scaled(9);
+                            const cx = rect.right - border - self.scaled(13);
+                            const cy = row.y + @divTrunc(row.h, 2);
+                            const dot_rect = RECT{ .left = cx - @divTrunc(d, 2), .top = cy - @divTrunc(d, 2), .right = cx + @divTrunc(d, 2), .bottom = cy + @divTrunc(d, 2) };
+                            const attn = surface.attention_state.color();
+                            drawRoundedRect(hdc, dot_rect, attn, attn, d);
+                        }
+                        // Drag-grip dots: rearranging is scoped to the
+                        // active workspace's rows.
+                        if (in_active_ws and tab.leafCount() > 1) {
+                            const dot = self.scaled(2);
+                            const gx = rect.right - border - self.scaled(7);
+                            var gy = row.y + @divTrunc(row.h, 2) - self.scaled(7);
+                            var k: usize = 0;
+                            while (k < 4) : (k += 1) {
+                                fillSolidRect(hdc, .{ .left = gx, .top = gy, .right = gx + dot, .bottom = gy + dot }, theme.text_secondary);
+                                gy += self.scaled(4);
+                            }
+                        }
+                    }
+                    fillSolidRect(hdc, .{ .left = rect.left, .top = row_bottom - border, .right = rect.right - border, .bottom = row_bottom }, theme.chrome_border);
+                },
+
+                .new_workspace => {
+                    if (hovered) {
+                        fillSolidRect(hdc, .{ .left = rect.left, .top = row.y, .right = rect.right - border, .bottom = row_bottom }, blendColorRGB(theme.chrome_bg, theme.text_primary, 0.05));
+                    }
+                    drawPaletteRowText(hdc, "+  New workspace", .{
+                        .left = rect.left + pad,
+                        .top = row.y + self.scaled(8),
+                        .right = text_right,
+                        .bottom = row_bottom - self.scaled(4),
+                    }, if (hovered) theme.text_primary else theme.text_secondary);
+                },
             }
-            // Subtle 1px separator under each row.
-            fillSolidRect(hdc, .{ .left = rect.left, .top = row_bottom - border, .right = rect.right - border, .bottom = row_bottom }, theme.chrome_border);
-            y += row_h;
         }
 
         // First-launch getting-started block in the empty space under the
-        // rows. Retires once the user splits (its main lesson) and never
+        // tree. Retires once the user splits (its main lesson) and never
         // returns after this session (marker file).
-        if (self.app.first_run_hint_active and tab.leafCount() <= 1) {
+        if (self.app.first_run_hint_active and self.tabs.items.len == 1 and total_leafs <= 1) {
             const hint_lines = [_][]const u8{
                 "Getting started",
                 "Split: toolbar buttons above",
@@ -15381,7 +15575,7 @@ const Host = struct {
                 "Settings: Ctrl+, or the gear",
                 "Right-click panes for more",
             };
-            var hy = y + self.scaled(18);
+            var hy = tree_bottom + self.scaled(18);
             const line_h = self.scaled(18);
             for (hint_lines, 0..) |line, i| {
                 if (hy + line_h > rect.bottom) break;
@@ -21828,25 +22022,29 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
             if (host) |v| {
                 const mx = signedLowWord(lParamBits(lParam));
                 const my = signedHighWord(lParamBits(lParam));
-                if (v.sidebarRowAtPoint(mx, my)) |row| {
+                if (v.sidebarRowIndexAt(mx, my)) |row_index| {
+                    const row = v.sidebarRowByIndex(row_index) orelse return 0;
                     // Click on the row's hover close button closes the
-                    // pane instead of focusing it.
+                    // pane/workspace instead of focusing it.
                     if (v.sidebarRowCloseRect(row)) |cr| {
                         if (mx >= cr.left and mx < cr.right and my >= cr.top and my < cr.bottom) {
                             _ = v.closeSidebarRow(row);
                             return 0;
                         }
                     }
-                    _ = v.activateSidebarRowAtPoint(mx, my);
+                    _ = v.activateSidebarRow(row);
                     // Arm a potential pane drag; a plain click already
                     // activated the row above, so nothing else happens
-                    // until the cursor crosses the drag threshold.
-                    if (v.activeTab()) |tab| {
-                        if (tab.leafCount() > 1) {
-                            v.pane_drag.arm(row, mx, my);
-                            v.pane_drag_source = v.surfaceAtSidebarRow(row);
-                            _ = SetCapture(hwnd);
-                            log.debug("pane drag: armed row={d}", .{row});
+                    // until the cursor crosses the drag threshold. Drag
+                    // stays scoped to the (now-active) workspace's rows.
+                    if (row.kind == .pane) {
+                        if (v.activeTab()) |tab| {
+                            if (tab.leafCount() > 1) {
+                                v.pane_drag.arm(row_index, mx, my);
+                                v.pane_drag_source = row.surface;
+                                _ = SetCapture(hwnd);
+                                log.debug("pane drag: armed row={d}", .{row_index});
+                            }
                         }
                     }
                     return 0;
@@ -21934,7 +22132,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     .y = signedHighWord(lParamBits(lParam)),
                 };
                 v.setHoveredQuickSlot(v.quickSlotProfileIndexAtPoint(point));
-                v.setSidebarHoverRow(v.sidebarRowAtPoint(point.x, point.y));
+                v.setSidebarHoverRow(v.sidebarRowIndexAt(point.x, point.y));
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
@@ -21953,9 +22151,25 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     .x = signedLowWord(lParamBits(lParam)),
                     .y = signedHighWord(lParamBits(lParam)),
                 };
-                if (ScreenToClient(hwnd, &point) != 0 and point.y >= 0 and point.y < v.tabBarHeight()) {
-                    _ = v.activateTabByDirection(tabDirectionFromWheelDelta(signedHighWord(wParam)));
-                    return 0;
+                if (ScreenToClient(hwnd, &point) != 0) {
+                    if (point.y >= 0 and point.y < v.tabBarHeight()) {
+                        _ = v.activateTabByDirection(tabDirectionFromWheelDelta(signedHighWord(wParam)));
+                        return 0;
+                    }
+                    // Wheel over the sidebar scrolls the workspace tree.
+                    if (msg == WM_MOUSEWHEEL) sidebar: {
+                        const content = v.contentRect() catch break :sidebar;
+                        if (point.x >= 0 and point.x < content.left and
+                            point.y >= content.top and point.y < content.bottom)
+                        {
+                            const notches: i32 = @divTrunc(@as(i32, signedHighWord(wParam)), 120);
+                            v.sidebar_scroll -= notches * v.scaled(host_sidebar_row_height);
+                            v.clampSidebarScroll();
+                            v.setSidebarHoverRow(v.sidebarRowIndexAt(point.x, point.y));
+                            v.invalidateSidebar();
+                            return 0;
+                        }
+                    }
                 }
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
@@ -21996,11 +22210,13 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     if (v.openSelectedProfile(open_target)) return 0;
                     return 0;
                 }
-                // Middle-click on a sidebar row closes its pane — same
-                // muscle memory as browser tabs.
+                // Middle-click on a sidebar row closes its pane (or its
+                // workspace, on a header) — browser-tab muscle memory.
                 if (msg == WM_MBUTTONUP) {
-                    if (v.sidebarRowAtPoint(point.x, point.y)) |row| {
-                        if (v.closeSidebarRow(row)) return 0;
+                    if (v.sidebarRowIndexAt(point.x, point.y)) |row_index| {
+                        if (v.sidebarRowByIndex(row_index)) |row| {
+                            if (v.closeSidebarRow(row)) return 0;
+                        }
                     }
                 }
                 // Right-click on a sidebar row: focus that pane first, then
@@ -22270,15 +22486,6 @@ fn isSafeStartupCwd(path: []const u8) bool {
         std.ascii.isAlphabetic(path[0]) and
         path[1] == ':' and
         (path[2] == '\\' or path[2] == '/');
-}
-
-fn sidebarRowIndexAtPoint(rect: RECT, row_height: i32, x: i32, y: i32, row_count: usize) ?usize {
-    if (row_height <= 0 or row_count == 0) return null;
-    if (x < rect.left or x >= rect.right or y < rect.top or y >= rect.bottom) return null;
-
-    const index: usize = @intCast(@divTrunc(y - rect.top, row_height));
-    if (index >= row_count) return null;
-    return index;
 }
 
 fn closeSurfaceMenuLabel(pane_count: usize) [*:0]const u16 {
@@ -36129,20 +36336,6 @@ test "win32 tab overview parser accepts one-based tab numbers" {
     try std.testing.expectEqual(@as(usize, 2), try std.fmt.parseUnsigned(usize, "2", 10));
 }
 
-test "win32 sidebar row hit testing maps clicks to visible panes" {
-    if (builtin.os.tag != .windows) return error.SkipZigTest;
-
-    const rect = RECT{ .left = 0, .top = 48, .right = 240, .bottom = 240 };
-    try std.testing.expectEqual(@as(?usize, 0), sidebarRowIndexAtPoint(rect, 48, 12, 48, 4));
-    try std.testing.expectEqual(@as(?usize, 1), sidebarRowIndexAtPoint(rect, 48, 12, 96, 4));
-    try std.testing.expectEqual(@as(?usize, 3), sidebarRowIndexAtPoint(rect, 48, 239, 239, 4));
-
-    try std.testing.expectEqual(@as(?usize, null), sidebarRowIndexAtPoint(rect, 48, -1, 48, 4));
-    try std.testing.expectEqual(@as(?usize, null), sidebarRowIndexAtPoint(rect, 48, 240, 48, 4));
-    try std.testing.expectEqual(@as(?usize, null), sidebarRowIndexAtPoint(rect, 48, 12, 240, 4));
-    try std.testing.expectEqual(@as(?usize, null), sidebarRowIndexAtPoint(rect, 48, 12, 239, 3));
-    try std.testing.expectEqual(@as(?usize, null), sidebarRowIndexAtPoint(rect, 0, 12, 48, 4));
-}
 
 test "win32 close surface menu names the visible scope" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;

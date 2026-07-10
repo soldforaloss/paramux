@@ -14,13 +14,12 @@ pub fn reportStateInitError(err: anyerror) !void {
     switch (@as(ErrSet, @errorCast(err))) {
         error.MultipleActions => try stderr.print(
             "Error: multiple CLI actions specified. You must specify only one\n" ++
-                "action starting with the `+` character.\n",
+                "action, e.g. `paramux update`.\n",
             .{},
         ),
 
         error.InvalidAction => try stderr.print(
-            "Error: unknown CLI action specified. CLI actions are specified with\n" ++
-                "the '+' character.\n\n" ++
+            "Error: unknown CLI action specified.\n\n" ++
                 "All valid CLI actions can be listed with `paramux help`\n",
             .{},
         ),
@@ -142,7 +141,7 @@ test "cli invalid handle errors get a visible terminal hint" {
     const message = formatCliActionFailureMessage(&buffer, .boo, error.InvalidHandle);
 
     if (builtin.os.tag == .windows) {
-        try std.testing.expect(std.mem.indexOf(u8, message, "+boo") != null);
+        try std.testing.expect(std.mem.indexOf(u8, message, "boo") != null);
         try std.testing.expect(std.mem.indexOf(u8, message, "interactive terminal") != null);
     } else {
         try std.testing.expectEqualStrings(
@@ -157,7 +156,7 @@ test "cli help output failures get a text output hint" {
     const message = formatCliActionFailureMessage(&buffer, .boo, error.ActionHelpOutputUnavailable);
 
     if (builtin.os.tag == .windows) {
-        try std.testing.expect(std.mem.indexOf(u8, message, "+boo") != null);
+        try std.testing.expect(std.mem.indexOf(u8, message, "boo") != null);
         try std.testing.expect(std.mem.indexOf(u8, message, "write help text") != null);
         try std.testing.expect(std.mem.indexOf(u8, message, "interactive terminal") == null);
     } else {
@@ -189,6 +188,6 @@ test "cli generic failures still mention action and error name" {
     var buffer: [256]u8 = undefined;
     const message = formatCliActionFailureMessage(&buffer, .help, error.AccessDenied);
 
-    try std.testing.expect(std.mem.indexOf(u8, message, "+help") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "paramux help failed") != null);
     try std.testing.expect(std.mem.indexOf(u8, message, "AccessDenied") != null);
 }

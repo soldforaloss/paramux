@@ -3131,8 +3131,8 @@ test "win32_settings: keybinding help points to discoverability commands" {
     try std.testing.expect(std.mem.indexOfScalar(u8, text, 0) == null);
     try std.testing.expect(std.mem.indexOf(u8, text, "list-keybinds --default") != null);
     try std.testing.expect(std.mem.indexOf(u8, text, "list-keybinds --docs") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "+list-actions --docs") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "+explain-config --keybind=<action>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "list-actions --docs") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "explain-config --keybind=<action>") != null);
     try std.testing.expect(std.mem.indexOf(u8, text, "keybind = ctrl+a>n=new_window") != null);
     try std.testing.expect(std.mem.indexOf(u8, text, "keybind = chain=goto_split:left") != null);
 }
