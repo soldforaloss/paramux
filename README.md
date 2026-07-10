@@ -50,8 +50,17 @@ lineage and compatibility names; **Paramux is the product and executable.**
 - Native Win32 shell on Windows 10/11 with ConPTY and OpenGL 4.3 rendering.
 - Independent panes, horizontal/vertical splits, tabs, drag-to-resize dividers,
   pane zoom, session restore, and native context menus.
-- Always-visible split button plus clearly labeled split actions in the main
-  menu and terminal context menu.
+- Always-visible split-right, split-down, and settings buttons with hover
+  tooltips, plus zoom, equalize, and merge-panes actions in the menus.
+- Drag-and-drop pane rearrangement: drag a sidebar row onto a pane edge to
+  dock it there, onto a pane center (or another row) to swap, with a live
+  translucent drop preview.
+- Native settings window (Ctrl+, or the gear button) with a searchable theme
+  picker showing live color swatches for every bundled theme, appearance and
+  terminal preferences, and an Explorer-integration toggle — all persisted to
+  the config file with comments preserved and applied live on Save.
+- Optional "Open in Paramux" entry in the Explorer right-click menu for
+  folders and drives (per-user registry, no admin).
 - Clickable pane sidebar with title, working directory, git branch/dirty state,
   listening ports, and a consistent attention color.
 - Four agent states: working, waiting, done, and error. The same color appears
@@ -124,13 +133,17 @@ bundle a software renderer.
 The visible title-bar controls are intentionally enough to get started:
 
 - `+` opens a tab.
-- The split-pane button next to `+` creates a pane on the right.
+- The two split buttons next to `+` create a pane to the right or below
+  (hover any button for its shortcut).
+- The gear opens Settings — pick a theme from the searchable swatch list,
+  and Save applies it live.
 - `▾` opens profiles, split directions, search, the command palette, and other
   workspace actions.
-- Click any row in the left sidebar to focus that pane.
+- Click any row in the left sidebar to focus that pane; drag a row onto a
+  pane to rearrange (edges dock, the middle swaps).
 - Drag the gutter between panes to resize them.
-- Right-click a terminal for copy/paste, search, pane splits, and new-window
-  actions.
+- Right-click a terminal or a sidebar row for copy/paste, search, splits,
+  zoom, merge, and new-window actions.
 
 Useful defaults:
 

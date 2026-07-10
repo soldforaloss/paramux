@@ -3477,6 +3477,13 @@ pub const App = struct {
     palette_list_class_atom: ATOM = 0,
     scrollbar_class_atom: ATOM = 0,
     pane_drop_preview_class_atom: ATOM = 0,
+    /// Guard so the first-run marker file is probed at most once per
+    /// process (the hint itself is once per INSTALL via the marker).
+    first_run_hint_done: bool = false,
+    /// True on the very first launch: `paintSidebar` shows a small
+    /// getting-started block in the sidebar's empty space until the user
+    /// makes their first split.
+    first_run_hint_active: bool = false,
     hosts: std.ArrayListUnmanaged(*Host) = .empty,
     windows: std.ArrayListUnmanaged(*Surface) = .empty,
     /// Internal test seam so action-path tests can drive real
@@ -4665,6 +4672,17 @@ pub const App = struct {
             &buf,
         )) orelse return null;
         return try std.fs.path.join(alloc, &.{ local, "paramux", "paramux-ipc-token" });
+    }
+
+    /// Marker recording that the first-run welcome hint has been shown:
+    /// `<LocalAppData>\paramux\first-run-done`.
+    fn firstRunMarkerPath(alloc: Allocator) !?[]u8 {
+        var buf: [std.fs.max_path_bytes]u8 = undefined;
+        const local = (try internal_os.windows.knownFolderPathUtf8(
+            &internal_os.windows.FOLDERID_LocalAppData,
+            &buf,
+        )) orelse return null;
+        return try std.fs.path.join(alloc, &.{ local, "paramux", "first-run-done" });
     }
 
     fn writeIpcTokenFile(self: *App, token: []const u8) !void {
@@ -6581,7 +6599,37 @@ pub const App = struct {
         _ = ShowWindow(hwnd, if (passive_show) SW_SHOWNOACTIVATE else SW_SHOW);
         _ = UpdateWindow(hwnd);
         self.maybeScheduleAutomaticUpdateCheck();
+        self.maybeShowFirstRunHint(host);
         return host;
+    }
+
+    /// One-time first-launch orientation: arms the getting-started hint
+    /// block that `paintSidebar` renders in the sidebar's empty space.
+    /// First run is tracked by a marker file next to the config; the hint
+    /// stays for this session (until the user splits) and never returns.
+    fn maybeShowFirstRunHint(self: *App, host: *Host) void {
+        _ = host;
+        if (self.first_run_hint_done) return;
+        self.first_run_hint_done = true;
+        if (self.hosts.items.len != 1) return;
+
+        const alloc = self.core_app.alloc;
+        const path = (firstRunMarkerPath(alloc) catch return) orelse return;
+        defer alloc.free(path);
+        if (std.fs.accessAbsolute(path, .{})) |_| {
+            return; // marker exists: not the first run
+        } else |_| {}
+
+        self.first_run_hint_active = true;
+
+        if (std.fs.path.dirname(path)) |dir| {
+            std.fs.makeDirAbsolute(dir) catch |err| switch (err) {
+                error.PathAlreadyExists => {},
+                else => return,
+            };
+        }
+        const file = std.fs.createFileAbsolute(path, .{}) catch return;
+        file.close();
     }
 
     fn findHostById(self: *App, id: u32) ?*Host {
@@ -15077,6 +15125,31 @@ const Host = struct {
             // Subtle 1px separator under each row.
             fillSolidRect(hdc, .{ .left = rect.left, .top = row_bottom - border, .right = rect.right - border, .bottom = row_bottom }, theme.chrome_border);
             y += row_h;
+        }
+
+        // First-launch getting-started block in the empty space under the
+        // rows. Retires once the user splits (its main lesson) and never
+        // returns after this session (marker file).
+        if (self.app.first_run_hint_active and tab.leafCount() <= 1) {
+            const hint_lines = [_][]const u8{
+                "Getting started",
+                "Split: toolbar buttons above",
+                "Rearrange: drag these rows",
+                "Settings: Ctrl+, or the gear",
+                "Right-click panes for more",
+            };
+            var hy = y + self.scaled(18);
+            const line_h = self.scaled(18);
+            for (hint_lines, 0..) |line, i| {
+                if (hy + line_h > rect.bottom) break;
+                drawPaletteRowText(hdc, line, .{
+                    .left = rect.left + pad,
+                    .top = hy,
+                    .right = rect.right - border - pad,
+                    .bottom = hy + line_h,
+                }, if (i == 0) theme.text_primary else theme.text_secondary);
+                hy += line_h + (if (i == 0) self.scaled(4) else 0);
+            }
         }
     }
 
