@@ -81,23 +81,25 @@ path today.
 ## Try the current prerelease
 
 The current test build is
-[`v0.1.0-paramux.5`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.5),
+[`v0.1.0-paramux.6`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.6),
 published 2026-07-10 for Windows x64:
 
-- [`paramux-0.1.0-paramux.5-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.5/paramux-0.1.0-paramux.5-windows-x64-portable.zip)
-- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.5/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.0-paramux.6-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.6/paramux-0.1.0-paramux.6-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.6/SHA256SUMS-windows-x64.txt)
 
-This is the first feature- and branding-complete Paramux artifact: it ships
-the four agent-hook adapters, the `+send`/`+send-key` automation verbs, the
-tmux-prefix config preset, and fully populated Paramux VERSIONINFO. The
-earlier `v0.1.0-paramux.4` build is a superseded legacy test artifact.
+This build adds the UI/UX overhaul on top of the feature- and
+branding-complete `v0.1.0-paramux.5` base: the five-button toolbar with
+tooltips, drag-and-drop pane rearrangement, the settings theme picker,
+merge/zoom/equalize menu actions, first-run hints, and the optional
+Explorer "Open in Paramux" entry. Earlier prereleases are superseded
+(`v0.1.0-paramux.4` remains a legacy test artifact).
 
 1. Download both the portable ZIP and `SHA256SUMS-windows-x64.txt`.
 2. Before extracting or running anything, compare the ZIP's digest with the
    release checksum:
 
 ```powershell
-Get-FileHash .\paramux-0.1.0-paramux.5-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\paramux-0.1.0-paramux.6-windows-x64-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 

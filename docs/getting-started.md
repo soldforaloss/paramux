@@ -7,23 +7,27 @@ uninstall it.
 ## 1. Get the private x64 prerelease
 
 The current build is
-[`v0.1.0-paramux.5`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.5)
+[`v0.1.0-paramux.6`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.6)
 in the private `soldforaloss/paramux` repository. You must be signed in to an
 account with repository access.
 
 Download both assets:
 
-- `paramux-0.1.0-paramux.5-windows-x64-portable.zip`
+- `paramux-0.1.0-paramux.6-windows-x64-portable.zip`
 - `SHA256SUMS-windows-x64.txt`
 
 This is an **unsigned x64 portable prerelease**. There is no current Paramux
 installer, WinGet package, Scoop package, ARM64 release, or public stable
 download.
 
-This build is feature- and branding-complete: it includes the agent-hook
-adapters, the `+send`/`+send-key` commands (section 9), the packaged
-tmux-prefix preset (section 7), and fully populated Paramux VERSIONINFO. The
-earlier `v0.1.0-paramux.4` build is a superseded legacy test artifact.
+This build is feature- and branding-complete and adds the UI/UX overhaul:
+the five-button toolbar with hover tooltips, drag-and-drop pane
+rearrangement from the sidebar, the settings theme picker, merge/zoom/
+equalize actions, first-run hints, and the optional Explorer "Open in
+Paramux" entry — on top of the agent-hook adapters, the `+send`/`+send-key`
+commands (section 9), the packaged tmux-prefix preset (section 7), and
+fully populated Paramux VERSIONINFO. The earlier `v0.1.0-paramux.4` build
+is a superseded legacy test artifact.
 
 Paramux requires Windows 10 or Windows 11 and a GPU/driver that exposes OpenGL
 4.3 or newer through WGL.
@@ -34,7 +38,7 @@ From the folder containing both downloaded files:
 
 ```powershell
 Get-FileHash `
-  .\paramux-0.1.0-paramux.5-windows-x64-portable.zip `
+  .\paramux-0.1.0-paramux.6-windows-x64-portable.zip `
   -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
@@ -247,7 +251,7 @@ helper, and crash actions. New action variants remain disabled until reviewed.
 ## 10. Updates
 
 Do not rely on the built-in stable installer updater for the current release.
-`v0.1.0-paramux.5` is private, marked as a prerelease, portable-only, and
+`v0.1.0-paramux.6` is private, marked as a prerelease, portable-only, and
 unsigned. Update manually by downloading the next private portable ZIP,
 verifying its checksum, and replacing the extracted folder.
 

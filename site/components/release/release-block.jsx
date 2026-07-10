@@ -1,4 +1,4 @@
-const RELEASE_TAG = 'v0.1.0-paramux.5';
+const RELEASE_TAG = 'v0.1.0-paramux.6';
 
 export function ReleaseBlock() {
   return (
