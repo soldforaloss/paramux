@@ -15,7 +15,7 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $libPath = Join-Path $repoRoot 'scripts\interactive-win11-lib.ps1'
 . $libPath
 
-if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_BOO_PERF_BOOTSTRAPPED) {
+if (-not $env:PARAMUX_INTERACTIVE_WIN11_BOO_PERF_BOOTSTRAPPED) {
     $forwardedArgs = @('-TimeoutSeconds', $TimeoutSeconds.ToString())
     if ($Rebuild) { $forwardedArgs += '-Rebuild' }
     if ($ResetState) { $forwardedArgs += '-ResetState' }
@@ -24,7 +24,7 @@ if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_BOO_PERF_BOOTSTRAPPED) {
     Invoke-InteractiveWin11Bootstrap `
         -RepoRoot $repoRoot `
         -LauncherPath $launcherPath `
-        -EnvironmentVariable 'WINGHOSTTY_INTERACTIVE_WIN11_BOO_PERF_BOOTSTRAPPED' `
+        -EnvironmentVariable 'PARAMUX_INTERACTIVE_WIN11_BOO_PERF_BOOTSTRAPPED' `
         -ArgumentList $forwardedArgs `
         -ExitCode ([ref] $bootstrapExitCode)
     exit $bootstrapExitCode
@@ -71,14 +71,14 @@ $booTracePath = Join-Path $layout.Temp 'interactive-win11-boo-performance-boo.js
 @(
     '@echo off'
     "set `"PATH=$exeDir;%PATH%`""
-    'winghostty +boo'
+    'paramux +boo'
 ) | Set-Content -LiteralPath $payloadPath -Encoding ASCII
 
 $traceEnv = [ordered]@{
-    WINGHOSTTY_RENDER_TRACE_FILE = $renderTracePath
-    WINGHOSTTY_TERMIO_TRACE_FILE = $termioTracePath
-    WINGHOSTTY_BOO_STATE_FILE = $booTracePath
-    WINGHOSTTY_BOO_AUTO_EXIT_MS = '5000'
+    PARAMUX_RENDER_TRACE_FILE = $renderTracePath
+    PARAMUX_TERMIO_TRACE_FILE = $termioTracePath
+    PARAMUX_BOO_STATE_FILE = $booTracePath
+    PARAMUX_BOO_AUTO_EXIT_MS = '5000'
 }
 
 $savedEnv = [ordered]@{}
@@ -96,7 +96,7 @@ try {
         -FilePath $exePath `
         -ArgumentList @(
             '--single-instance=false'
-            "--class=winghostty-boo-performance-$($layout.SandboxId)"
+            "--class=paramux-boo-performance-$($layout.SandboxId)"
             '-e'
             'cmd.exe'
             '/d'
@@ -114,13 +114,13 @@ try {
         -SetForeground
 
     if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
-        throw "winghostty +boo timed out after $TimeoutSeconds seconds"
+        throw "paramux +boo timed out after $TimeoutSeconds seconds"
     }
 
     $exitCode = Get-InteractiveWin11ProcessExitCode -Process $process -ProcessHandle $processHandle
     if ($exitCode -ne 0) {
         throw @"
-winghostty +boo exited with code $exitCode
+paramux +boo exited with code $exitCode
 stdout:
 $(Get-InteractiveWin11TextFileTail -Path $stdoutPath)
 

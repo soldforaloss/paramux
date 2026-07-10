@@ -15,7 +15,7 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $libPath = Join-Path $repoRoot 'scripts\interactive-win11-lib.ps1'
 . $libPath
 
-if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_COMMAND_FINISH_BOOTSTRAPPED) {
+if (-not $env:PARAMUX_INTERACTIVE_WIN11_COMMAND_FINISH_BOOTSTRAPPED) {
     $forwardedArgs = @('-TimeoutSeconds', $TimeoutSeconds.ToString())
     if ($Rebuild) { $forwardedArgs += '-Rebuild' }
     if ($ResetState) { $forwardedArgs += '-ResetState' }
@@ -24,7 +24,7 @@ if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_COMMAND_FINISH_BOOTSTRAPPED) {
     Invoke-InteractiveWin11Bootstrap `
         -RepoRoot $repoRoot `
         -LauncherPath $launcherPath `
-        -EnvironmentVariable 'WINGHOSTTY_INTERACTIVE_WIN11_COMMAND_FINISH_BOOTSTRAPPED' `
+        -EnvironmentVariable 'PARAMUX_INTERACTIVE_WIN11_COMMAND_FINISH_BOOTSTRAPPED' `
         -ArgumentList $forwardedArgs `
         -ExitCode ([ref] $bootstrapExitCode)
     exit $bootstrapExitCode
@@ -72,7 +72,7 @@ Start-Sleep -Seconds 4
 "@ | Set-Content -LiteralPath $payloadPath -Encoding UTF8
 
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
-$aumid = 'com.ghostty.winghostty'
+$aumid = 'io.github.soldforaloss.paramux'
 $toastMgr = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType=WindowsRuntime]
 $notifier = $toastMgr::CreateToastNotifier($aumid)
 $settingValue = [int] $notifier.Setting
@@ -83,7 +83,7 @@ Remove-Item -LiteralPath $stdoutPath, $stderrPath -ErrorAction SilentlyContinue
 
 $launchArgs = @(
     '--single-instance=false'
-    "--class=winghostty-command-finish-$($layout.SandboxId)"
+    "--class=paramux-command-finish-$($layout.SandboxId)"
     "--config-file=$configPath"
     '-e'
     'powershell.exe'
@@ -132,7 +132,7 @@ try {
             $exitCode = Get-InteractiveWin11ProcessExitCode -Process $process -ProcessHandle $processHandle
 
             if ($launchStopwatch.ElapsedMilliseconds -lt $minimumRuntimeMs) {
-                $failureReason = "winghostty exited too early for command-finish validation (exit code $exitCode, runtime $($launchStopwatch.ElapsedMilliseconds)ms)"
+                $failureReason = "paramux exited too early for command-finish validation (exit code $exitCode, runtime $($launchStopwatch.ElapsedMilliseconds)ms)"
             } elseif ($notificationsEnabled) {
                 $validated = $true
             } elseif ($notifierDisabledFallback) {

@@ -24,7 +24,7 @@ if ([string]::IsNullOrWhiteSpace($CliAction)) {
 }
 
 $typedCommandText = if ([string]::IsNullOrWhiteSpace($CommandText)) {
-    "winghostty $CliAction"
+    "paramux $CliAction"
 }
 else {
     $CommandText
@@ -35,7 +35,7 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $libPath = Join-Path $repoRoot 'scripts\interactive-win11-lib.ps1'
 . $libPath
 
-if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_SHELL_COMMAND_LIVE_BOOTSTRAPPED) {
+if (-not $env:PARAMUX_INTERACTIVE_WIN11_SHELL_COMMAND_LIVE_BOOTSTRAPPED) {
     $forwardedArgs = @('-CliAction', $CliAction, '-SeedTabs', $SeedTabs.ToString(), '-TimeoutSeconds', $TimeoutSeconds.ToString())
     if (-not [string]::IsNullOrWhiteSpace($CommandText)) {
         $forwardedArgs += @('-CommandText', $CommandText)
@@ -51,7 +51,7 @@ if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_SHELL_COMMAND_LIVE_BOOTSTRAPPED) {
     Invoke-InteractiveWin11Bootstrap `
         -RepoRoot $repoRoot `
         -LauncherPath $launcherPath `
-        -EnvironmentVariable 'WINGHOSTTY_INTERACTIVE_WIN11_SHELL_COMMAND_LIVE_BOOTSTRAPPED' `
+        -EnvironmentVariable 'PARAMUX_INTERACTIVE_WIN11_SHELL_COMMAND_LIVE_BOOTSTRAPPED' `
         -ArgumentList $forwardedArgs `
         -ExitCode ([ref] $bootstrapExitCode)
     exit $bootstrapExitCode
@@ -189,7 +189,7 @@ function Find-HostWindow {
             return $true
         }
 
-        if ((Get-WindowClassName -Hwnd $hwnd) -eq 'winghostty.win32.host') {
+        if ((Get-WindowClassName -Hwnd $hwnd) -eq 'paramux.win32.host') {
             $script:Win11ShellCommandLiveHost = $hwnd
             return $false
         }
@@ -210,7 +210,7 @@ function Find-SurfaceWindow {
     $callback = [Win11ShellCommandLiveNative+EnumWindowsProc] {
         param([IntPtr] $hwnd, [IntPtr] $lParam)
 
-        if ((Get-WindowClassName -Hwnd $hwnd) -ne 'winghostty.win32') {
+        if ((Get-WindowClassName -Hwnd $hwnd) -ne 'paramux.win32') {
             return $true
         }
 
@@ -363,7 +363,7 @@ function Wait-Until {
 
     while ([DateTime]::UtcNow -lt $Deadline) {
         if ($null -ne $Process -and $Process.HasExited) {
-            throw "winghostty exited while waiting for ${Description} (exit code $($Process.ExitCode))"
+            throw "paramux exited while waiting for ${Description} (exit code $($Process.ExitCode))"
         }
 
         if (& $Condition) {
@@ -642,9 +642,9 @@ Remove-Item -LiteralPath $stdoutPath, $stderrPath, $payloadPath, $readyPath, $co
 @(
     '@echo off'
     "cd /d `"$($layout.Temp)`""
-    if ($RunBooFirst) { "set WINGHOSTTY_BOO_AUTO_EXIT_MS=$BOO_AUTO_EXIT_MS" }
-    if ($RunBooFirst) { 'winghostty +boo' }
-    if ($RunBooFirst) { 'set WINGHOSTTY_BOO_AUTO_EXIT_MS=' }
+    if ($RunBooFirst) { "set PARAMUX_BOO_AUTO_EXIT_MS=$BOO_AUTO_EXIT_MS" }
+    if ($RunBooFirst) { 'paramux +boo' }
+    if ($RunBooFirst) { 'set PARAMUX_BOO_AUTO_EXIT_MS=' }
     'echo READY>interactive-win11-shell-command-live-ready.txt'
 ) | Set-Content -LiteralPath $payloadPath -Encoding ASCII
 
@@ -706,7 +706,7 @@ try {
     }
     Start-Sleep -Milliseconds $CAPTURE_SETTLE_MS
 
-    Send-Line -Hwnd $surfaceHwnd -Text 'where winghostty>interactive-win11-shell-command-live-resolved.txt'
+    Send-Line -Hwnd $surfaceHwnd -Text 'where paramux>interactive-win11-shell-command-live-resolved.txt'
     Wait-Until -Deadline $deadline -Description 'command resolution file' -Process $process -Condition {
         Test-Path -LiteralPath $resolvedPath
     }
@@ -721,9 +721,9 @@ try {
     }
     if (
         (-not $resolvedFirstDir.Equals($expectedCommandDir, [System.StringComparison]::OrdinalIgnoreCase)) -or
-        ($resolvedFirstName -notin @('winghostty.com', 'winghostty.exe'))
+        ($resolvedFirstName -notin @('paramux.com', 'paramux.exe'))
     ) {
-        throw "live shell resolved unexpected first winghostty command: $($resolved[0]) (expected same install dir as $exePath)"
+        throw "live shell resolved unexpected first paramux command: $($resolved[0]) (expected same install dir as $exePath)"
     }
 
     Send-Line -Hwnd $surfaceHwnd -Text ("{0} & echo POST>interactive-win11-shell-command-live-post.txt" -f $typedCommandText)
@@ -741,7 +741,7 @@ try {
 
     $stderr = Get-InteractiveWin11TextFile -Path $stderrPath
     if ($stderr -match 'error starting IO thread:|panic: reached unreachable code') {
-        throw 'winghostty live shell command run reported a runtime failure'
+        throw 'paramux live shell command run reported a runtime failure'
     }
 
     Write-Host ("interactive-win11 shell command live validation: PASS (command={0}, action={1}, run_boo_first={2}, seed_tabs={3}, changed={4}, sampled={5}, stdout={6}, stderr={7}, ready={8}, control={9}, resolved={10}, post={11}, before={12}, after={13})" -f $typedCommandText, $CliAction, $RunBooFirst, $SeedTabs, $imageDelta.ChangedPixels, $imageDelta.SampledPixels, $stdoutPath, $stderrPath, $readyPath, $controlPath, $resolvedPath, $postPath, $beforeCapturePath, $afterCapturePath)

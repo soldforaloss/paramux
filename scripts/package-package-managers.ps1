@@ -17,13 +17,14 @@ param(
 
     [int]$FirstForkPatch = 0,
 
-    [string]$WingetPackageIdentifier = "AmanThanvi.paramux",
+    [string]$WingetPackageIdentifier = "",
 
     [string]$ScoopPackageName = "paramux"
 )
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "windows-architecture.ps1")
+. (Join-Path $PSScriptRoot "path-safety.ps1")
 
 $Architectures = @($Architectures | ForEach-Object { (Get-WindowsPackageArchitecture -Architecture $_).Name })
 
@@ -42,6 +43,9 @@ $outputRootPath = if ($OutputRoot) {
     [System.IO.Path]::GetFullPath((Join-Path $repoRoot $OutputRoot))
 } else {
     [System.IO.Path]::GetFullPath((Join-Path $primaryArtifactRootPath "package-managers"))
+}
+if (-not (Test-PathIsStrictDescendant -Candidate $outputRootPath -Parent $repoRoot)) {
+    throw "OutputRoot must resolve below the repository root: $outputRootPath"
 }
 
 $iconName = "paramux-icon.svg"
@@ -183,7 +187,9 @@ $scoopManifest = [ordered]@{
     license      = "MIT"
     architecture = [ordered]@{}
     extract_dir  = "paramux"
-    bin          = "paramux.exe"
+    # Shell invocations must use the console-subsystem launcher so stdout,
+    # stderr, and exit codes remain attached to the calling terminal.
+    bin          = "paramux.com"
 }
 foreach ($arch in $Architectures) {
     $scoopArch = (Get-WindowsPackageArchitecture -Architecture $arch).ScoopArchitecture

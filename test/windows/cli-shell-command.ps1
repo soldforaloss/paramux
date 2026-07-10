@@ -87,8 +87,8 @@ function Format-PowerShellLiteral {
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $binDir = if ($BinDir) { $BinDir } else { Join-Path $repoRoot 'zig-out\bin' }
-$guiExe = Join-Path $binDir 'winghostty.exe'
-$commandExe = Join-Path $binDir 'winghostty.com'
+$guiExe = Join-Path $binDir 'paramux.exe'
+$commandExe = Join-Path $binDir 'paramux.com'
 
 if (-not (Test-Path $guiExe)) {
     throw "Missing built executable: $guiExe. Run `zig build -Demit-exe=true` first."
@@ -102,18 +102,18 @@ $argsDisplay = [string]::Join(' ', $Arguments)
 
 switch ($Shell) {
     'cmd' {
-        $resolved = & cmd /d /c "set ""PATH=$envPath""&& where winghostty"
+        $resolved = & cmd /d /c "set ""PATH=$envPath""&& where paramux"
         if ($LASTEXITCODE -ne 0) {
-            throw "cmd could not resolve winghostty from PATH."
+            throw "cmd could not resolve paramux from PATH."
         }
-        if (-not ($resolved | Select-Object -First 1 | ForEach-Object { $_.ToLowerInvariant().EndsWith('winghostty.com') })) {
-            throw "cmd resolved winghostty to the wrong artifact: $($resolved | Select-Object -First 1)"
+        if (-not ($resolved | Select-Object -First 1 | ForEach-Object { $_.ToLowerInvariant().EndsWith('paramux.com') })) {
+            throw "cmd resolved paramux to the wrong artifact: $($resolved | Select-Object -First 1)"
         }
 
-        $payloadPath = Join-Path ([System.IO.Path]::GetTempPath()) ("winghostty-cli-shell-" + [System.Guid]::NewGuid().ToString("N") + ".cmd")
+        $payloadPath = Join-Path ([System.IO.Path]::GetTempPath()) ("paramux-cli-shell-" + [System.Guid]::NewGuid().ToString("N") + ".cmd")
         try {
             $cmdArgs = [string]::Join(' ', ($Arguments | ForEach-Object { Format-CmdArgument $_ }))
-            $cmdCommand = if ([string]::IsNullOrEmpty($cmdArgs)) { 'winghostty' } else { "winghostty $cmdArgs" }
+            $cmdCommand = if ([string]::IsNullOrEmpty($cmdArgs)) { 'paramux' } else { "paramux $cmdArgs" }
             @(
                 '@echo off'
                 "set `"PATH=$envPath`""
@@ -132,22 +132,22 @@ switch ($Shell) {
         $oldPath = $env:PATH
         $env:PATH = $envPath
         try {
-            $resolved = & powershell.exe -NoProfile -Command "(Get-Command winghostty).Source"
+            $resolved = & powershell.exe -NoProfile -Command "(Get-Command paramux).Source"
             if ($LASTEXITCODE -ne 0) {
-                throw "PowerShell could not resolve winghostty from PATH."
+                throw "PowerShell could not resolve paramux from PATH."
             }
-            if (-not $resolved.ToLowerInvariant().EndsWith('winghostty.com')) {
-                throw "PowerShell resolved winghostty to the wrong artifact: $resolved"
+            if (-not $resolved.ToLowerInvariant().EndsWith('paramux.com')) {
+                throw "PowerShell resolved paramux to the wrong artifact: $resolved"
             }
 
-            $stdoutPath = Join-Path ([System.IO.Path]::GetTempPath()) ("winghostty-cli-shell-" + [System.Guid]::NewGuid().ToString("N") + "-stdout.txt")
-            $stderrPath = Join-Path ([System.IO.Path]::GetTempPath()) ("winghostty-cli-shell-" + [System.Guid]::NewGuid().ToString("N") + "-stderr.txt")
-            $payloadPath = Join-Path ([System.IO.Path]::GetTempPath()) ("winghostty-cli-shell-" + [System.Guid]::NewGuid().ToString("N") + ".ps1")
+            $stdoutPath = Join-Path ([System.IO.Path]::GetTempPath()) ("paramux-cli-shell-" + [System.Guid]::NewGuid().ToString("N") + "-stdout.txt")
+            $stderrPath = Join-Path ([System.IO.Path]::GetTempPath()) ("paramux-cli-shell-" + [System.Guid]::NewGuid().ToString("N") + "-stderr.txt")
+            $payloadPath = Join-Path ([System.IO.Path]::GetTempPath()) ("paramux-cli-shell-" + [System.Guid]::NewGuid().ToString("N") + ".ps1")
             try {
                 $argLiterals = [string]::Join(', ', ($Arguments | ForEach-Object { Format-PowerShellLiteral $_ }))
                 @(
                     '$argsList = @(' + $argLiterals + ')'
-                    '$output = & winghostty @argsList | Out-String'
+                    '$output = & paramux @argsList | Out-String'
                     '$exitCode = $LASTEXITCODE'
                     '[Console]::Out.Write($output)'
                     'exit $exitCode'

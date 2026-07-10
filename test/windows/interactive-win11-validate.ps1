@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$suiteLogDir = Join-Path $env:TEMP ("winghostty-interactive-win11-suite-{0}" -f $PID)
+$suiteLogDir = Join-Path $env:TEMP ("paramux-interactive-win11-suite-{0}" -f $PID)
 New-Item -ItemType Directory -Force -Path $suiteLogDir | Out-Null
 $libPath = Join-Path $repoRoot 'scripts\interactive-win11-lib.ps1'
 . $libPath
@@ -205,11 +205,11 @@ Invoke-HarnessWithPassSentinel -ScriptName 'interactive-win11-configured-size.ps
 Invoke-Harness -ScriptName 'interactive-win11-boo-performance.ps1' -TimeoutSeconds 25
 Invoke-HarnessWithPassSentinel -ScriptName 'interactive-win11-boo-multitab.ps1' -TimeoutSeconds 25
 Invoke-HarnessWithPassSentinel -ScriptName 'interactive-win11-shell-command.ps1' -TimeoutSeconds 20
-if ($env:WINGHOSTTY_INTERACTIVE_RUN_FOREGROUND_HARNESS -eq '1') {
+if ($env:PARAMUX_INTERACTIVE_RUN_FOREGROUND_HARNESS -eq '1') {
     Invoke-HarnessWithPassSentinel -ScriptName 'interactive-win11-shell-command-live.ps1' -TimeoutSeconds 25
 }
 else {
-    Write-Host 'interactive-win11 shell command live validation: SKIP (set WINGHOSTTY_INTERACTIVE_RUN_FOREGROUND_HARNESS=1 to require the foreground-sensitive harness in the composite suite)'
+    Write-Host 'interactive-win11 shell command live validation: SKIP (set PARAMUX_INTERACTIVE_RUN_FOREGROUND_HARNESS=1 to require the foreground-sensitive harness in the composite suite)'
 }
 Invoke-HarnessWithPassSentinel -ScriptName 'interactive-win11-key-input.ps1' -TimeoutSeconds 20
 Invoke-HarnessWithPassSentinel -ScriptName 'interactive-win11-ime-candidate.ps1' -TimeoutSeconds 20

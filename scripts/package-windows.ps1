@@ -9,6 +9,8 @@ param(
 
     [switch]$SkipBuild,
 
+    [switch]$SkipInstaller,
+
     [switch]$RequireInstaller,
 
     [switch]$RequireSigning
@@ -17,12 +19,20 @@ param(
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 . (Join-Path $PSScriptRoot "windows-architecture.ps1")
+. (Join-Path $PSScriptRoot "path-safety.ps1")
+
+if ($SkipInstaller -and $RequireInstaller) {
+    throw "-SkipInstaller and -RequireInstaller cannot be used together."
+}
 
 $archInfo = Get-WindowsPackageArchitecture -Architecture $(if ($Architecture) { $Architecture } else { Get-DefaultWindowsPackageArchitecture })
 $Architecture = $archInfo.Name
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $outputRootPath = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $OutputRoot))
+if (-not (Test-PathIsStrictDescendant -Candidate $outputRootPath -Parent $repoRoot)) {
+    throw "OutputRoot must resolve below the repository root: $outputRootPath"
+}
 $userHome = if ($env:USERPROFILE) {
     $env:USERPROFILE
 } elseif ($env:HOMEDRIVE -and $env:HOMEPATH) {
@@ -51,7 +61,11 @@ $runtimeFiles = @(
     "ghostty-vt.dll"
 )
 $licensePath = Join-Path $repoRoot "LICENSE"
-$readmePath = Join-Path $repoRoot "README.md"
+$readmePath = Join-Path $repoRoot "dist/windows/README-portable.md"
+$agentHooksPath = Join-Path $repoRoot "contrib/paramux/hooks"
+$codexHookLauncherPath = Join-Path $repoRoot "dist/windows/paramux-codex-hook.cmd"
+$hookConfiguratorPath = Join-Path $repoRoot "dist/windows/configure-paramux-hooks.ps1"
+$configPresetsPath = Join-Path $repoRoot "src/config/presets"
 $configTemplatePath = Join-Path $repoRoot "src/config/config-template"
 $innoScriptPath = Join-Path $repoRoot "dist/windows/paramux.iss"
 $iconPath = Join-Path $repoRoot "dist/windows/paramux.ico"
@@ -115,7 +129,7 @@ function Remove-TreeIfPresent {
     }
 
     $resolved = [System.IO.Path]::GetFullPath($PathToRemove)
-    if (-not $resolved.StartsWith($repoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    if (-not (Test-PathIsStrictDescendant -Candidate $resolved -Parent $repoRoot)) {
         throw "Refusing to remove path outside repo root: $resolved"
     }
 
@@ -178,6 +192,63 @@ function Assert-PeMachine {
     $actualMachine = Get-PeMachine -PathToCheck $PathToCheck
     if ($actualMachine -ne $expectedMachine) {
         throw ("Expected {0} to be {1} PE machine 0x{2:X4}, got 0x{3:X4}." -f $PathToCheck, $ExpectedArchitecture, $expectedMachine, $actualMachine)
+    }
+}
+
+function Assert-ParamuxVersionInfo {
+    param(
+        [string]$PathToCheck,
+        [string]$ExpectedVersion,
+        [string]$ExpectedOriginalFilename
+    )
+
+    $versionMatch = [regex]::Match(
+        $ExpectedVersion,
+        '^(?<major>0|[1-9]\d*)\.(?<minor>0|[1-9]\d*)\.(?<patch>0|[1-9]\d*)(?:-paramux\.(?<revision>0|[1-9]\d*))?$'
+    )
+    if (-not $versionMatch.Success) {
+        throw "Expected a stable or Paramux prerelease semantic version, got: $ExpectedVersion"
+    }
+
+    $versionInfo = (Get-Item -LiteralPath $PathToCheck).VersionInfo
+    $expectedFields = @{
+        CompanyName = "Paramux Contributors"
+        FileDescription = "Paramux terminal workspace"
+        LegalCopyright = "Copyright (c) Paramux contributors"
+        OriginalFilename = $ExpectedOriginalFilename
+        ProductName = "Paramux"
+        FileVersion = $ExpectedVersion
+        ProductVersion = $ExpectedVersion
+    }
+
+    foreach ($field in $expectedFields.Keys) {
+        if ($versionInfo.$field -ne $expectedFields[$field]) {
+            throw "Expected $field '$($expectedFields[$field])' in $PathToCheck, got '$($versionInfo.$field)'."
+        }
+    }
+
+    $expectedNumericFields = @{
+        FileMajorPart = [int]$versionMatch.Groups["major"].Value
+        FileMinorPart = [int]$versionMatch.Groups["minor"].Value
+        FileBuildPart = [int]$versionMatch.Groups["patch"].Value
+        FilePrivatePart = if ($versionMatch.Groups["revision"].Success) {
+            [int]$versionMatch.Groups["revision"].Value
+        } else {
+            0
+        }
+        ProductMajorPart = [int]$versionMatch.Groups["major"].Value
+        ProductMinorPart = [int]$versionMatch.Groups["minor"].Value
+        ProductBuildPart = [int]$versionMatch.Groups["patch"].Value
+        ProductPrivatePart = if ($versionMatch.Groups["revision"].Success) {
+            [int]$versionMatch.Groups["revision"].Value
+        } else {
+            0
+        }
+    }
+    foreach ($field in $expectedNumericFields.Keys) {
+        if ($versionInfo.$field -ne $expectedNumericFields[$field]) {
+            throw "Expected $field '$($expectedNumericFields[$field])' in $PathToCheck, got '$($versionInfo.$field)'."
+        }
     }
 }
 
@@ -416,6 +487,9 @@ try {
         Push-Location $repoRoot
         try {
             & zig build -Demit-exe=true -Demit-lib-vt=true -Doptimize=ReleaseFast "-Dtarget=$zigTarget" -Dcpu=baseline "-Dversion-string=$Version"
+            if ($LASTEXITCODE -ne 0) {
+                throw "zig build failed with exit code $LASTEXITCODE."
+            }
         }
         finally {
             Pop-Location
@@ -434,6 +508,14 @@ try {
         }
         Assert-PeMachine -PathToCheck $runtimePath -ExpectedArchitecture $Architecture
     }
+    Assert-ParamuxVersionInfo `
+        -PathToCheck (Join-Path $zigOutBin "paramux.exe") `
+        -ExpectedVersion $Version `
+        -ExpectedOriginalFilename "paramux.exe"
+    Assert-ParamuxVersionInfo `
+        -PathToCheck (Join-Path $zigOutBin "paramux.com") `
+        -ExpectedVersion $Version `
+        -ExpectedOriginalFilename "paramux.com"
     if ($Architecture -eq "x64") {
         & (Join-Path $repoRoot "scripts/check-windows-x64-baseline.ps1") -Path $exePath
     }
@@ -465,9 +547,97 @@ try {
     # PATH installer so `paramux` works as a command (run install-paramux.cmd).
     Copy-Item -LiteralPath (Join-Path $repoRoot "dist/windows/install-paramux.ps1") -Destination (Join-Path $portableRoot "install-paramux.ps1") -Force
     Copy-Item -LiteralPath (Join-Path $repoRoot "dist/windows/install-paramux.cmd") -Destination (Join-Path $portableRoot "install-paramux.cmd") -Force
+    Copy-Item -LiteralPath $codexHookLauncherPath -Destination (Join-Path $portableRoot "paramux-codex-hook.cmd") -Force
+    Copy-Item -LiteralPath $hookConfiguratorPath -Destination (Join-Path $portableRoot "configure-paramux-hooks.ps1") -Force
+
+    $agentHooksDestination = Join-Path $portableRoot "agent-hooks"
+    New-Item -ItemType Directory -Path $agentHooksDestination -Force | Out-Null
+    foreach ($item in Get-ChildItem -LiteralPath $agentHooksPath -Force) {
+        Copy-Item -LiteralPath $item.FullName -Destination $agentHooksDestination -Recurse -Force
+    }
+    foreach ($requiredHookFile in @(
+        "README.md",
+        "claude-code.settings.json",
+        "codex/hooks.json",
+        "codex/paramux-hook.cjs",
+        "gemini-paramux/gemini-extension.json",
+        "gemini-paramux/hooks/hooks.json",
+        "gemini-paramux/scripts/notify.cjs",
+        "gemini-paramux/scripts/notify.cmd",
+        "opencode/paramux.js"
+    )) {
+        $hookPath = Join-Path $agentHooksDestination $requiredHookFile
+        if (-not (Test-Path -LiteralPath $hookPath)) {
+            throw "Expected packaged agent hook file was not staged: $hookPath"
+        }
+    }
+
+    $configPresetsDestination = Join-Path $portableRoot "config-presets"
+    New-Item -ItemType Directory -Path $configPresetsDestination -Force | Out-Null
+    foreach ($item in Get-ChildItem -LiteralPath $configPresetsPath -File -Force) {
+        Copy-Item -LiteralPath $item.FullName -Destination $configPresetsDestination -Force
+    }
+    $tmuxPrefixPresetPath = Join-Path $configPresetsDestination "tmux-prefix.ghostty"
+    if (-not (Test-Path -LiteralPath $tmuxPrefixPresetPath)) {
+        throw "Expected tmux-prefix config preset was not staged: $tmuxPrefixPresetPath"
+    }
+    # The packaged binary can only run when the host can execute it: ARM64
+    # Windows emulates x64, but x64 hosts cannot run ARM64 PEs. release.yml
+    # packages arm64 on an x64 runner, and windows-arm64.yml still exercises
+    # this validation natively.
+    $hostArchitecture = Get-DefaultWindowsPackageArchitecture
+    $canExecutePackagedBinary = ($Architecture -eq $hostArchitecture) -or ($Architecture -eq "x64" -and $hostArchitecture -eq "arm64")
+    if ($canExecutePackagedBinary) {
+        & (Join-Path $portableRoot "paramux.com") "+validate-config" "--config-file=$tmuxPrefixPresetPath"
+        if ($LASTEXITCODE -ne 0) {
+            throw "Packaged tmux-prefix preset failed config validation with exit code $LASTEXITCODE."
+        }
+    } else {
+        Write-Host "Skipping tmux-prefix preset runtime validation: $Architecture binary cannot execute on $hostArchitecture host."
+    }
 
     if (Test-Path -LiteralPath $zigOutShare) {
         Copy-Tree -Source $zigOutShare -Destination $portableRoot
+
+        # Incremental build trees can retain completion files installed under
+        # the predecessor command name. They are compatibility-irrelevant and
+        # must not leak into a Paramux package.
+        $legacyCompletionPaths = @(
+            "share\bash-completion\completions\ghostty.bash",
+            "share\fish\vendor_completions.d\ghostty.fish",
+            "share\zsh\site-functions\_ghostty"
+        )
+        foreach ($relativePath in $legacyCompletionPaths) {
+            $legacyPath = Join-Path $portableRoot $relativePath
+            if (Test-Path -LiteralPath $legacyPath) {
+                Write-Host "Excluding legacy completion: $relativePath"
+                Remove-Item -LiteralPath $legacyPath -Force
+            }
+        }
+
+        $paramuxCompletionPaths = @(
+            "share\bash-completion\completions\paramux.bash",
+            "share\fish\vendor_completions.d\paramux.fish",
+            "share\zsh\site-functions\_paramux"
+        )
+        foreach ($relativePath in $paramuxCompletionPaths) {
+            $completionPath = Join-Path $portableRoot $relativePath
+            if (-not (Test-Path -LiteralPath $completionPath)) {
+                throw "Expected Paramux completion was not staged: $completionPath"
+            }
+        }
+    }
+
+    $portableReadmePath = Join-Path $portableRoot "README.md"
+    $portableReadme = Get-Content -LiteralPath $portableReadmePath -Raw
+    if ($portableReadme -notmatch '(?m)^# Paramux Portable for Windows$') {
+        throw "Portable README is missing its Paramux identity: $portableReadmePath"
+    }
+    if ($portableReadme -match '(?i)winghostty') {
+        throw "Portable README contains predecessor product branding: $portableReadmePath"
+    }
+    if ($portableReadme -match '\]\((?!https://|mailto:|#)[^)]+\)') {
+        throw "Portable README contains a relative Markdown link that will break after extraction: $portableReadmePath"
     }
 
     Write-Host "Packaging phase: create portable zip"
@@ -481,9 +651,50 @@ try {
         $true
     )
 
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+    try {
+        $entryNames = @($archive.Entries | ForEach-Object { $_.FullName.Replace("\", "/") })
+        foreach ($requiredEntry in @(
+            "paramux/README.md",
+            "paramux/paramux.exe",
+            "paramux/paramux.com",
+            "paramux/paramux-codex-hook.cmd",
+            "paramux/configure-paramux-hooks.ps1",
+            "paramux/agent-hooks/README.md",
+            "paramux/agent-hooks/claude-code.settings.json",
+            "paramux/agent-hooks/codex/hooks.json",
+            "paramux/agent-hooks/codex/paramux-hook.cjs",
+            "paramux/agent-hooks/gemini-paramux/gemini-extension.json",
+            "paramux/agent-hooks/gemini-paramux/hooks/hooks.json",
+            "paramux/agent-hooks/gemini-paramux/scripts/notify.cjs",
+            "paramux/agent-hooks/gemini-paramux/scripts/notify.cmd",
+            "paramux/agent-hooks/opencode/paramux.js",
+            "paramux/config-presets/tmux-prefix.ghostty",
+            "paramux/share/bash-completion/completions/paramux.bash",
+            "paramux/share/fish/vendor_completions.d/paramux.fish",
+            "paramux/share/zsh/site-functions/_paramux"
+        )) {
+            if ($entryNames -notcontains $requiredEntry) {
+                throw "Portable ZIP is missing required entry: $requiredEntry"
+            }
+        }
+        foreach ($legacyEntry in @(
+            "paramux/share/bash-completion/completions/ghostty.bash",
+            "paramux/share/fish/vendor_completions.d/ghostty.fish",
+            "paramux/share/zsh/site-functions/_ghostty"
+        )) {
+            if ($entryNames -contains $legacyEntry) {
+                throw "Portable ZIP contains a legacy command completion: $legacyEntry"
+            }
+        }
+    }
+    finally {
+        $archive.Dispose()
+    }
+
     Write-Host "Packaging phase: build installer"
-    $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
-    if (-not $iscc) {
+    $iscc = if ($SkipInstaller) { $null } else { Get-Command ISCC.exe -ErrorAction SilentlyContinue }
+    if (-not $SkipInstaller -and -not $iscc) {
         $candidates = @(
             (Join-Path $localAppData "Programs\Inno Setup 6\ISCC.exe"),
             "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
@@ -497,7 +708,10 @@ try {
         }
     }
 
-    if ($iscc) {
+    if ($SkipInstaller) {
+        Write-Host "Installer build: skipped by request"
+    }
+    elseif ($iscc) {
         & $iscc.Source `
             "/DMyAppVersion=$Version" `
             "/DPackageArch=$Architecture" `

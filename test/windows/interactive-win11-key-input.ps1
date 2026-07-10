@@ -18,7 +18,7 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $libPath = Join-Path $repoRoot 'scripts\interactive-win11-lib.ps1'
 . $libPath
 
-if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_KEY_INPUT_BOOTSTRAPPED) {
+if (-not $env:PARAMUX_INTERACTIVE_WIN11_KEY_INPUT_BOOTSTRAPPED) {
     $forwardedArgs = @('-Key', $Key, '-Route', $Route, '-TimeoutSeconds', $TimeoutSeconds.ToString())
     if ($RunBooFirst) { $forwardedArgs += '-RunBooFirst' }
     if ($Rebuild) { $forwardedArgs += '-Rebuild' }
@@ -28,7 +28,7 @@ if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_KEY_INPUT_BOOTSTRAPPED) {
     Invoke-InteractiveWin11Bootstrap `
         -RepoRoot $repoRoot `
         -LauncherPath $launcherPath `
-        -EnvironmentVariable 'WINGHOSTTY_INTERACTIVE_WIN11_KEY_INPUT_BOOTSTRAPPED' `
+        -EnvironmentVariable 'PARAMUX_INTERACTIVE_WIN11_KEY_INPUT_BOOTSTRAPPED' `
         -ArgumentList $forwardedArgs `
         -ExitCode ([ref] $bootstrapExitCode)
     exit $bootstrapExitCode
@@ -158,7 +158,7 @@ function Find-HostWindow {
             return $true
         }
 
-        if ((Get-WindowClassName -Hwnd $hwnd) -eq 'winghostty.win32.host') {
+        if ((Get-WindowClassName -Hwnd $hwnd) -eq 'paramux.win32.host') {
             $script:Win11KeyInputFoundHost = $hwnd
             return $false
         }
@@ -179,7 +179,7 @@ function Find-SurfaceWindow {
     $callback = [Win11KeyInputNative+EnumWindowsProc] {
         param([IntPtr] $hwnd, [IntPtr] $lParam)
 
-        if ((Get-WindowClassName -Hwnd $hwnd) -eq 'winghostty.win32') {
+        if ((Get-WindowClassName -Hwnd $hwnd) -eq 'paramux.win32') {
             $script:Win11KeyInputFoundSurface = $hwnd
             return $false
         }
@@ -201,7 +201,7 @@ function Wait-Until {
 
     while ([DateTime]::UtcNow -lt $Deadline) {
         if ($null -ne $Process -and $Process.HasExited) {
-            throw "winghostty exited while waiting for ${Description} (exit code $($Process.ExitCode))"
+            throw "paramux exited while waiting for ${Description} (exit code $($Process.ExitCode))"
         }
 
         if (& $Condition) {
@@ -371,25 +371,25 @@ $commandPrelude = ''
 if ($RunBooFirst) {
     Remove-Item -LiteralPath $preReadKeyReadyPath, $preReadKeyStatePath, $preReadKeyTracePath -ErrorAction SilentlyContinue
     $commandPrelude = @'
-$winghosttyCommand = Get-Command winghostty -ErrorAction Stop
+$paramuxCommand = Get-Command paramux -ErrorAction Stop
 [ordered]@{
     phase = 'before-boo'
-    commandSource = $winghosttyCommand.Source
+    commandSource = $paramuxCommand.Source
 } | ConvertTo-Json -Compress | Set-Content -LiteralPath '__STATE_PATH__' -Encoding ASCII
 $booStart = Get-Date
 try {
-    $env:WINGHOSTTY_BOO_AUTO_EXIT_MS = '1000'
-    $env:WINGHOSTTY_BOO_STATE_FILE = '__TRACE_PATH__'
-    & winghostty +boo
+    $env:PARAMUX_BOO_AUTO_EXIT_MS = '1000'
+    $env:PARAMUX_BOO_STATE_FILE = '__TRACE_PATH__'
+    & paramux +boo
     $booExitCode = $LASTEXITCODE
 }
 finally {
-    Remove-Item Env:WINGHOSTTY_BOO_AUTO_EXIT_MS -ErrorAction SilentlyContinue
-    Remove-Item Env:WINGHOSTTY_BOO_STATE_FILE -ErrorAction SilentlyContinue
+    Remove-Item Env:PARAMUX_BOO_AUTO_EXIT_MS -ErrorAction SilentlyContinue
+    Remove-Item Env:PARAMUX_BOO_STATE_FILE -ErrorAction SilentlyContinue
 }
 [ordered]@{
     phase = 'after-boo'
-    commandSource = $winghosttyCommand.Source
+    commandSource = $paramuxCommand.Source
     exitCode = $booExitCode
     elapsedMs = [int]((Get-Date) - $booStart).TotalMilliseconds
 } | ConvertTo-Json -Compress | Set-Content -LiteralPath '__STATE_PATH__' -Encoding ASCII
@@ -481,12 +481,12 @@ try {
 
         $preReadKeyState = Get-Content -LiteralPath $preReadKeyStatePath -Raw | ConvertFrom-Json
         if ($preReadKeyState.exitCode -ne 0) {
-            throw "winghostty +boo exited with code $($preReadKeyState.exitCode) from $($preReadKeyState.commandSource)"
+            throw "paramux +boo exited with code $($preReadKeyState.exitCode) from $($preReadKeyState.commandSource)"
         }
         $expectedCommandDir = [System.IO.Path]::GetFullPath((Split-Path -Parent $exePath))
         $actualCommandDir = [System.IO.Path]::GetFullPath((Split-Path -Parent ([string] $preReadKeyState.commandSource)))
         if (-not [System.StringComparer]::OrdinalIgnoreCase.Equals($actualCommandDir, $expectedCommandDir)) {
-            throw "winghostty +boo resolved from unexpected location '$($preReadKeyState.commandSource)' (expected dir '$expectedCommandDir', got '$actualCommandDir')"
+            throw "paramux +boo resolved from unexpected location '$($preReadKeyState.commandSource)' (expected dir '$expectedCommandDir', got '$actualCommandDir')"
         }
 
         Start-Sleep -Milliseconds 300

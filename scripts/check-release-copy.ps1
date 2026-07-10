@@ -1,5 +1,7 @@
 [CmdletBinding()]
 param(
+    # Kept for compatibility with existing local invocations. This verifies the
+    # explicitly documented prerelease rather than GitHub's public "latest".
     [switch]$CheckRemoteLatest
 )
 
@@ -16,9 +18,10 @@ $copyPaths = @(
     "docs/windows.md",
     "docs/windows-capability-matrix.md",
     "site/README.md",
-    "site/components/terminal.jsx",
-    "site/components/hero/version-chip-color.jsx",
-    "site/components/why/why-fork.jsx",
+    "site/components/hero/release-chip.jsx",
+    "site/components/heroes.jsx",
+    "site/components/release/release-block.jsx",
+    "site/components/why/product-facts.jsx",
     "site/bundle.js"
 )
 
@@ -30,11 +33,6 @@ function Add-Failure {
     $script:failures.Add($Message) | Out-Null
 }
 
-function Get-RepoPath {
-    param([string]$RelativePath)
-    return [System.IO.Path]::GetFullPath((Join-Path $repoRoot $RelativePath))
-}
-
 function Get-Text {
     param([string]$RelativePath)
 
@@ -42,7 +40,7 @@ function Get-Text {
         return $script:textCache[$RelativePath]
     }
 
-    $path = Get-RepoPath -RelativePath $RelativePath
+    $path = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $RelativePath))
     if (-not (Test-Path -LiteralPath $path)) {
         Add-Failure "Missing checked copy file: $RelativePath"
         $script:textCache[$RelativePath] = $null
@@ -54,15 +52,6 @@ function Get-Text {
     return $text
 }
 
-function Test-ContainsOrdinalIgnoreCase {
-    param(
-        [string]$Text,
-        [string]$Needle
-    )
-
-    return $Text.IndexOf($Needle, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
-}
-
 function Require-Contains {
     param(
         [string]$RelativePath,
@@ -71,33 +60,12 @@ function Require-Contains {
     )
 
     $text = Get-Text -RelativePath $RelativePath
-    if ($null -eq $text) {
-        return
-    }
-
-    if (-not (Test-ContainsOrdinalIgnoreCase -Text $text -Needle $Needle)) {
+    if ($null -ne $text -and $text.IndexOf($Needle, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
         Add-Failure "${RelativePath}: missing required text `"$Needle`" - $Reason"
     }
 }
 
-function Require-Regex {
-    param(
-        [string]$RelativePath,
-        [string]$Pattern,
-        [string]$Reason
-    )
-
-    $text = Get-Text -RelativePath $RelativePath
-    if ($null -eq $text) {
-        return
-    }
-
-    if (-not [regex]::IsMatch($text, $Pattern)) {
-        Add-Failure "${RelativePath}: missing required pattern /$Pattern/ - $Reason"
-    }
-}
-
-function Forbid-CopyText {
+function Forbid-Contains {
     param(
         [string]$Needle,
         [string]$Reason
@@ -105,139 +73,235 @@ function Forbid-CopyText {
 
     foreach ($relativePath in $copyPaths) {
         $text = Get-Text -RelativePath $relativePath
-        if ($null -eq $text) {
-            continue
-        }
-
-        if (Test-ContainsOrdinalIgnoreCase -Text $text -Needle $Needle) {
+        if ($null -ne $text -and $text.IndexOf($Needle, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
             Add-Failure "${relativePath}: forbidden text `"$Needle`" - $Reason"
         }
     }
 }
 
-$readme = Get-Text -RelativePath "README.md"
-$latestVersion = $null
-if ($null -eq $readme) {
-    # Get-Text already recorded the missing-file failure.
-} elseif ($readme -match 'paramux\s+([0-9]+\.[0-9]+\.[0-9]+)\]\(https://github\.com/soldforaloss/paramux/releases/tag/v\1\)') {
-    $latestVersion = $Matches[1]
-} else {
-    Add-Failure "README.md: could not find a self-consistent latest stable release link."
-}
+function Test-RemoteReleasePayload {
+    param(
+        [string]$Tag,
+        [string]$Version,
+        [string]$PortableName,
+        [string]$ChecksumsName,
+        [switch]$KnownLegacyPayload
+    )
 
-$forbiddenRules = @(
-    @{ Text = "1.3.111"; Reason = "README/docs/site release copy should not point at the stale May 12 release." },
-    @{ Text = "1.3.113"; Reason = "README/docs/site release copy should not point at the stale May 24 release." },
-    @{ Text = "ARM64 builds are added by the next release"; Reason = "Current releases already publish ARM64 assets." },
-    @{ Text = "paramux publishes two Windows artifacts"; Reason = "Current releases publish installer, portable, and checksum assets for both x64 and ARM64." },
-    @{ Text = "Releases are currently unsigned"; Reason = "Public releases require signed installers and signed Windows binaries." },
-    @{ Text = "Current releases are unsigned"; Reason = "Public releases require signed installers and signed Windows binaries." },
-    @{ Text = "Unsigned releases are expected"; Reason = "Public releases require signed installers and signed Windows binaries." },
-    @{ Text = "code signing lands"; Reason = "Release signing is already part of the public release track." }
-)
+    $tempBase = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
+    $tempRoot = [System.IO.Path]::Combine($tempBase, "paramux-release-copy-$([guid]::NewGuid().ToString('N'))")
+    if (-not $tempRoot.StartsWith($tempBase, [System.StringComparison]::OrdinalIgnoreCase)) {
+        Add-Failure "Refusing unsafe remote-release temporary path: $tempRoot"
+        return
+    }
 
-foreach ($rule in $forbiddenRules) {
-    Forbid-CopyText -Needle $rule.Text -Reason $rule.Reason
-}
+    New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
+    try {
+        # Under $ErrorActionPreference = "Stop", Windows PowerShell 5.1 turns
+        # any gh stderr line into a terminating NativeCommandError when stderr
+        # is redirected, bypassing the $LASTEXITCODE handling below. Relax the
+        # preference around the native call only.
+        $previousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            $downloadOutput = & gh release download $Tag `
+                --repo soldforaloss/paramux `
+                --dir $tempRoot `
+                --pattern $PortableName `
+                --pattern $ChecksumsName 2>&1
+        } finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
+        if ($LASTEXITCODE -ne 0) {
+            $downloadText = @($downloadOutput | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
+            Add-Failure "Failed to download $Tag payload: $downloadText"
+            return
+        }
 
-$architectures = Get-WindowsPackageArchitectures
-$placeholderVersion = "<version>"
+        $portablePath = Join-Path $tempRoot $PortableName
+        $checksumsPath = Join-Path $tempRoot $ChecksumsName
+        $checksumPattern = '^([0-9a-fA-F]{64}) \*' + [regex]::Escape($PortableName) + '$'
+        $checksumLine = @(Get-Content -LiteralPath $checksumsPath | Where-Object { $_ -match $checksumPattern }) | Select-Object -First 1
+        if (-not $checksumLine) {
+            Add-Failure "$Tag checksum payload has no entry for $PortableName."
+            return
+        }
+        [void]($checksumLine -match $checksumPattern)
+        $expectedHash = $Matches[1].ToLowerInvariant()
+        $actualHash = (Get-FileHash -LiteralPath $portablePath -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actualHash -ne $expectedHash) {
+            Add-Failure "$Tag portable ZIP checksum mismatch."
+            return
+        }
 
-foreach ($arch in $architectures) {
-    foreach ($kind in @("setup", "portable", "checksums")) {
-        $placeholderName = New-WindowsPackageArtifactName -Version $placeholderVersion -Architecture $arch -Kind $kind
-        Require-Contains -RelativePath "PACKAGING.md" -Needle $placeholderName -Reason "Packaging docs must match scripts/windows-architecture.ps1 artifact naming."
+        $extractRoot = Join-Path $tempRoot "expanded"
+        Expand-Archive -LiteralPath $portablePath -DestinationPath $extractRoot
+        $portableRoot = Join-Path $extractRoot "paramux"
+        if ($KnownLegacyPayload) {
+            # The pinned prerelease is a documented legacy test artifact whose
+            # payload predates the package-level Paramux rebrand. Its checksum,
+            # asset list, and prerelease status are still enforced above; only
+            # the new-branding invariants are skipped, and this carve-out
+            # expires automatically when the pinned version changes.
+            Write-Host "Skipping portable README branding check: $Tag is a documented legacy payload."
+            Write-Host "Skipping predecessor-text scan: $Tag is a documented legacy payload."
+            Write-Host "Skipping VERSIONINFO check: $Tag is a documented legacy payload."
+            Write-Host "Skipping legacy-completion check: $Tag is a documented legacy payload."
+        } else {
+            $portableReadmePath = Join-Path $portableRoot "README.md"
+            $portableReadme = Get-Content -LiteralPath $portableReadmePath -Raw
+            if ($portableReadme -notmatch '(?m)^# Paramux Portable for Windows$') {
+                Add-Failure "$Tag ships a README without the portable Paramux identity."
+            }
+            if ($portableReadme -match '(?i)winghostty') {
+                Add-Failure "$Tag ships predecessor product branding in its portable README."
+            }
+
+            foreach ($name in @("paramux.exe", "paramux.com")) {
+                $versionInfo = (Get-Item -LiteralPath (Join-Path $portableRoot $name)).VersionInfo
+                if ($versionInfo.ProductName -ne "Paramux" -or
+                    $versionInfo.OriginalFilename -ne $name -or
+                    $versionInfo.FileVersion -ne $Version -or
+                    $versionInfo.ProductVersion -ne $Version) {
+                    Add-Failure "$Tag ships incomplete Paramux VERSIONINFO in $name."
+                }
+            }
+
+            foreach ($relativePath in @(
+                "share\bash-completion\completions\ghostty.bash",
+                "share\fish\vendor_completions.d\ghostty.fish",
+                "share\zsh\site-functions\_ghostty"
+            )) {
+                if (Test-Path -LiteralPath (Join-Path $portableRoot $relativePath)) {
+                    Add-Failure "$Tag ships a predecessor command completion: $relativePath"
+                }
+            }
+        }
+    } catch {
+        Add-Failure "Failed to inspect $Tag payload: $($_.Exception.Message)"
+    } finally {
+        if (Test-Path -LiteralPath $tempRoot) {
+            Remove-Item -LiteralPath $tempRoot -Recurse -Force
+        }
     }
 }
 
-Require-Contains -RelativePath "PACKAGING.md" -Needle "legacy alias for existing x64 auto-update clients" -Reason "Packaging docs must preserve the x64 compatibility checksum alias."
-Require-Contains -RelativePath "PACKAGING.md" -Needle "Release workflow requires signing" -Reason "Packaging docs must distinguish local unsigned smoke packaging from public signed releases."
-
-foreach ($docsPath in @("docs/getting-started.md", "docs/windows.md")) {
-    Require-Contains -RelativePath $docsPath -Needle "paramux-<version>-windows-<arch>-setup.exe" -Reason "Install docs should describe both x64 and ARM64 setup artifacts."
-    Require-Contains -RelativePath $docsPath -Needle "paramux-<version>-windows-<arch>-portable.zip" -Reason "Install docs should describe both x64 and ARM64 portable artifacts."
-    Require-Contains -RelativePath $docsPath -Needle "SHA256SUMS-windows-<arch>.txt" -Reason "Checksum guidance should use architecture-specific checksum files."
-    Require-Regex -RelativePath $docsPath -Pattern "(?i)\bx64\b" -Reason "Install docs should name the supported release architectures."
-    Require-Regex -RelativePath $docsPath -Pattern "(?i)\barm64\b" -Reason "Install docs should name the supported release architectures."
+$readme = Get-Text -RelativePath "README.md"
+$version = $null
+if ($null -ne $readme -and $readme -match 'releases/tag/v([0-9]+\.[0-9]+\.[0-9]+-[A-Za-z0-9.-]+)') {
+    $version = $Matches[1]
+} else {
+    Add-Failure "README.md: could not find an explicitly tagged semantic prerelease."
 }
 
-Require-Contains -RelativePath "docs/status.md" -Needle "x64 and ARM64" -Reason "Status docs should match the supported public release architectures."
-Require-Contains -RelativePath "docs/status.md" -Needle "checksum metadata" -Reason "Updater docs should mention checksum-gated release metadata."
+Forbid-Contains -Needle "releases/latest" -Reason "The private prerelease must use an explicit, reviewable tag."
+Forbid-Contains -Needle "winget install" -Reason "Paramux has no published WinGet package."
+Forbid-Contains -Needle "scoop install" -Reason "Paramux has no published Scoop package."
 
-foreach ($sitePath in @("site/components/terminal.jsx", "site/bundle.js")) {
-    Require-Contains -RelativePath $sitePath -Needle 'PROCESSOR_ARCHITEW6432' -Reason "The public site terminal copy should detect the native OS architecture from WOW64 shells."
-    Require-Contains -RelativePath $sitePath -Needle 'windows-$arch-setup.exe' -Reason "The public site terminal copy should not hard-code x64 download URLs."
-    Require-Contains -RelativePath $sitePath -Needle 'windows-$arch-portable.zip' -Reason "The public site terminal copy should not hard-code x64 download URLs."
-    Require-Contains -RelativePath $sitePath -Needle "x64 and ARM64" -Reason "The public site should describe both public release architectures."
-}
+if ($version) {
+    $tag = "v$version"
+    $portableName = New-WindowsPackageArtifactName -Version $version -Architecture "x64" -Kind "portable"
+    $checksumsName = New-WindowsPackageArtifactName -Version $version -Architecture "x64" -Kind "checksums"
+    $unpublishedArtifacts = @(
+        (New-WindowsPackageArtifactName -Version $version -Architecture "x64" -Kind "setup"),
+        (New-WindowsPackageArtifactName -Version $version -Architecture "arm64" -Kind "portable"),
+        (New-WindowsPackageArtifactName -Version $version -Architecture "arm64" -Kind "setup"),
+        (New-WindowsPackageArtifactName -Version $version -Architecture "arm64" -Kind "checksums")
+    )
 
-if ($latestVersion) {
-    foreach ($arch in $architectures) {
-        foreach ($kind in @("setup", "portable", "checksums")) {
-            $artifactName = New-WindowsPackageArtifactName -Version $latestVersion -Architecture $arch -Kind $kind
-            Require-Contains -RelativePath "README.md" -Needle $artifactName -Reason "README latest-release table should list every current public artifact."
+    foreach ($path in @("README.md", "PACKAGING.md", "docs/getting-started.md", "docs/status.md", "docs/windows.md")) {
+        Require-Contains -RelativePath $path -Needle $tag -Reason "Current release copy must agree on the pinned prerelease."
+        Require-Contains -RelativePath $path -Needle $portableName -Reason "Current release copy must name the only executable artifact."
+        Require-Contains -RelativePath $path -Needle $checksumsName -Reason "Current release copy must name its checksum asset."
+        Require-Contains -RelativePath $path -Needle "unsigned" -Reason "The current executable has no Authenticode signature."
+    }
+
+    Require-Contains -RelativePath "README.md" -Needle "install-paramux.cmd" -Reason "The documented install path is the portable PATH helper."
+    Require-Contains -RelativePath "PACKAGING.md" -Needle "publishes exactly these two assets" -Reason "Packaging copy must separate current artifacts from future channels."
+    Require-Contains -RelativePath "docs/status.md" -Needle "x64 only" -Reason "Status must not imply a verified ARM64 release."
+    Require-Contains -RelativePath "site/components/hero/release-chip.jsx" -Needle $version -Reason "The site badge must match the README prerelease."
+    Require-Contains -RelativePath "site/components/heroes.jsx" -Needle "releases/tag/$tag" -Reason "The site CTA must point at the pinned private release."
+    Require-Contains -RelativePath "site/components/release/release-block.jsx" -Needle $tag -Reason "The site release facts must match the README prerelease."
+    Require-Contains -RelativePath "site/components/why/product-facts.jsx" -Needle $tag -Reason "The site product facts must match the README prerelease."
+    Require-Contains -RelativePath "site/bundle.js" -Needle $tag -Reason "The generated site bundle must be rebuilt after release-copy changes."
+
+    if ($version -eq "0.1.0-paramux.4") {
+        foreach ($path in @(
+            "README.md",
+            "PACKAGING.md",
+            "docs/getting-started.md",
+            "docs/status.md",
+            "site/components/release/release-block.jsx",
+            "site/components/why/product-facts.jsx",
+            "site/bundle.js"
+        )) {
+            Require-Contains -RelativePath $path -Needle "legacy test artifact" -Reason "v4 has a verified legacy-branded payload and must carry an explicit warning."
         }
     }
 
-    $legacyName = New-WindowsPackageArtifactName -Version $latestVersion -Architecture "x64" -Kind "legacy-checksums"
-    Require-Contains -RelativePath "README.md" -Needle $legacyName -Reason "README should document the legacy x64 checksum alias."
+    foreach ($artifact in $unpublishedArtifacts) {
+        Forbid-Contains -Needle $artifact -Reason "The pinned prerelease did not publish this artifact."
+    }
 
-    $escapedVersion = [regex]::Escape($latestVersion)
-    Require-Regex -RelativePath "site/components/hero/version-chip-color.jsx" -Pattern "DEFAULT_WG_VERSION\s*=\s*'$escapedVersion'" -Reason "Site source default release version should match README."
-    Require-Regex -RelativePath "site/components/terminal.jsx" -Pattern "WG_VERSION\s*=\s*window\.WG_VERSION\s*\|\|\s*'$escapedVersion'" -Reason "Site terminal default release version should match README."
-    Require-Regex -RelativePath "site/bundle.js" -Pattern "(?<![\d.])$escapedVersion(?![\d.])" -Reason "Generated site bundle should contain the current README release version."
-}
-
-if ($CheckRemoteLatest) {
-    if (-not $latestVersion) {
-        Add-Failure "Cannot check remote latest release because README latest version could not be parsed."
-    } elseif (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-        Add-Failure "Cannot check remote latest release because gh is not installed."
-    } else {
-        $ghOutput = & gh release view --repo soldforaloss/paramux --json tagName,publishedAt,assets
-        if ($LASTEXITCODE -ne 0) {
-            Add-Failure "gh release view failed: $ghOutput"
+    if ($CheckRemoteLatest) {
+        if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+            Add-Failure "Cannot verify the remote prerelease because gh is not installed."
         } else {
+            # See Test-RemoteReleasePayload: relax EAP=Stop around the native
+            # gh call so a stderr line cannot bypass $LASTEXITCODE handling in
+            # Windows PowerShell 5.1.
+            $previousErrorActionPreference = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
             try {
-                $release = $ghOutput | ConvertFrom-Json
-            } catch {
-                Add-Failure "Failed to parse gh release JSON: $($_.Exception.Message)"
-                $release = $null
+                $ghOutput = & gh release view $tag --repo soldforaloss/paramux --json tagName,publishedAt,assets,isPrerelease,isDraft 2>&1
+            } finally {
+                $ErrorActionPreference = $previousErrorActionPreference
             }
-
-            if ($release) {
-                $publishedDate = $null
+            if ($LASTEXITCODE -ne 0) {
+                $ghText = @($ghOutput | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
+                Add-Failure "gh release view failed for ${tag}: $ghText"
+            } else {
                 try {
-                    $publishedDate = [DateTimeOffset]::Parse([string]$release.publishedAt).UtcDateTime.ToString(
-                        "yyyy-MM-dd",
-                        [System.Globalization.CultureInfo]::InvariantCulture
-                    )
+                    # Keep stderr records (e.g. gh update nags) out of the JSON.
+                    $jsonText = @($ghOutput | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }) -join "`n"
+                    $release = $jsonText | ConvertFrom-Json
                 } catch {
-                    Add-Failure "Could not parse GitHub latest-release publishedAt date: $($release.publishedAt)"
+                    Add-Failure "Failed to parse gh release JSON: $($_.Exception.Message)"
+                    $release = $null
                 }
 
-                $expectedTag = "v$latestVersion"
-                if ($release.tagName -ne $expectedTag) {
-                    Add-Failure "README latest release is $expectedTag, but GitHub latest release is $($release.tagName)."
-                }
-
-                if ($publishedDate) {
-                    Require-Contains -RelativePath "README.md" -Needle "published $publishedDate" -Reason "README latest-release date should match GitHub."
-                }
-
-                $assetNames = @($release.assets | ForEach-Object { [string]$_.name })
-                foreach ($arch in $architectures) {
-                    foreach ($kind in @("setup", "portable", "checksums")) {
-                        $artifactName = New-WindowsPackageArtifactName -Version $latestVersion -Architecture $arch -Kind $kind
-                        if ($assetNames -notcontains $artifactName) {
-                            Add-Failure "GitHub latest release $expectedTag is missing expected asset $artifactName."
-                        }
+                if ($release) {
+                    if ($release.tagName -ne $tag) {
+                        Add-Failure "README release is $tag, but GitHub returned $($release.tagName)."
                     }
-                }
+                    if (-not $release.isPrerelease -or $release.isDraft) {
+                        Add-Failure "$tag must remain a published prerelease, not a stable release or draft."
+                    }
 
-                $legacyName = New-WindowsPackageArtifactName -Version $latestVersion -Architecture "x64" -Kind "legacy-checksums"
-                if ($assetNames -notcontains $legacyName) {
-                    Add-Failure "GitHub latest release $expectedTag is missing expected asset $legacyName."
+                    $assetNames = @($release.assets | ForEach-Object { [string]$_.name })
+                    $expectedAssets = @($portableName, $checksumsName)
+                    $unexpectedAssets = @($assetNames | Where-Object { $_ -notin $expectedAssets })
+                    $missingAssets = @($expectedAssets | Where-Object { $_ -notin $assetNames })
+                    if ($unexpectedAssets.Count -gt 0) {
+                        Add-Failure "$tag has undocumented assets: $($unexpectedAssets -join ', ')."
+                    }
+                    if ($missingAssets.Count -gt 0) {
+                        Add-Failure "$tag is missing documented assets: $($missingAssets -join ', ')."
+                    }
+
+                    try {
+                        $publishedDate = [DateTimeOffset]::Parse([string]$release.publishedAt).UtcDateTime.ToString("yyyy-MM-dd")
+                        Require-Contains -RelativePath "README.md" -Needle "published $publishedDate" -Reason "README release date must match GitHub."
+                    } catch {
+                        Add-Failure "Could not parse GitHub publishedAt date: $($release.publishedAt)"
+                    }
+
+                    Test-RemoteReleasePayload `
+                        -Tag $tag `
+                        -Version $version `
+                        -PortableName $portableName `
+                        -ChecksumsName $checksumsName `
+                        -KnownLegacyPayload:($version -eq "0.1.0-paramux.4")
                 }
             }
         }

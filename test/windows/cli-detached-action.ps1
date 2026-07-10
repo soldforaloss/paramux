@@ -13,8 +13,8 @@ if ($TimeoutSeconds -le 0) {
 }
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$exePath = if ($ExePath) { $ExePath } else { Join-Path $repoRoot 'zig-out\bin\winghostty.exe' }
-$expectedTitle = 'winghostty CLI action failed'
+$exePath = if ($ExePath) { $ExePath } else { Join-Path $repoRoot 'zig-out\bin\paramux.exe' }
+$expectedTitle = 'paramux CLI action failed'
 
 if (-not (Test-Path $exePath)) {
     throw "Missing built executable: $exePath. Run `zig build -Demit-exe=true` first."
@@ -27,7 +27,7 @@ function Find-DetachedCliResourcesDir {
     }
 
     return Get-ChildItem $artifactsDir -Directory |
-        ForEach-Object { Join-Path $_.FullName 'winghostty\share\ghostty' } |
+        ForEach-Object { Join-Path $_.FullName 'paramux\share\ghostty' } |
         Where-Object { Test-Path (Join-Path $_ 'themes') } |
         Select-Object -First 1
 }

@@ -15,7 +15,7 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $libPath = Join-Path $repoRoot 'scripts\interactive-win11-lib.ps1'
 . $libPath
 
-if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_SMOKE_BOOTSTRAPPED) {
+if (-not $env:PARAMUX_INTERACTIVE_WIN11_SMOKE_BOOTSTRAPPED) {
     $forwardedArgs = @('-TimeoutSeconds', $TimeoutSeconds.ToString())
     if ($Rebuild) { $forwardedArgs += '-Rebuild' }
     if ($ResetState) { $forwardedArgs += '-ResetState' }
@@ -24,7 +24,7 @@ if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_SMOKE_BOOTSTRAPPED) {
     Invoke-InteractiveWin11Bootstrap `
         -RepoRoot $repoRoot `
         -LauncherPath $launcherPath `
-        -EnvironmentVariable 'WINGHOSTTY_INTERACTIVE_WIN11_SMOKE_BOOTSTRAPPED' `
+        -EnvironmentVariable 'PARAMUX_INTERACTIVE_WIN11_SMOKE_BOOTSTRAPPED' `
         -ArgumentList $forwardedArgs `
         -ExitCode ([ref] $bootstrapExitCode)
     exit $bootstrapExitCode
@@ -93,7 +93,7 @@ try {
         }
 
         if ($process.HasExited) {
-            $failureReason = "winghostty exited before shell startup was observed (exit code $($process.ExitCode))"
+            $failureReason = "paramux exited before shell startup was observed (exit code $($process.ExitCode))"
             break
         }
     }
@@ -105,7 +105,7 @@ try {
         while ([DateTime]::UtcNow -lt $closeDeadline) {
             $process.Refresh()
             if ($process.HasExited) {
-                $failureReason = "winghostty exited before exposing a main window handle for WM_CLOSE validation (exit code $($process.ExitCode))"
+                $failureReason = "paramux exited before exposing a main window handle for WM_CLOSE validation (exit code $($process.ExitCode))"
                 break
             }
             if ($process.MainWindowHandle -ne [IntPtr]::Zero) {
@@ -115,7 +115,7 @@ try {
         }
 
         if (-not $failureReason -and $process.MainWindowHandle -eq [IntPtr]::Zero) {
-            $failureReason = 'winghostty never exposed a main window handle for WM_CLOSE validation'
+            $failureReason = 'paramux never exposed a main window handle for WM_CLOSE validation'
         }
         elseif (-not $failureReason) {
             $processHandle = $process.Handle
@@ -125,10 +125,10 @@ try {
                 [UIntPtr]::Zero,
                 [IntPtr]::Zero
             )) {
-                $failureReason = "winghostty could not be sent WM_CLOSE: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
+                $failureReason = "paramux could not be sent WM_CLOSE: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"
             }
             elseif (-not $process.WaitForExit($closeTimeoutMs)) {
-                $failureReason = 'winghostty did not exit cleanly after WM_CLOSE'
+                $failureReason = 'paramux did not exit cleanly after WM_CLOSE'
             }
             else {
                 $process.Refresh()
@@ -140,12 +140,12 @@ try {
                         $exitCode = Get-InteractiveWin11ProcessExitCode -Process $process -ProcessHandle $processHandle
                     }
                     catch {
-                        $failureReason = "winghostty exited after WM_CLOSE but exit code could not be read: $($_.Exception.Message)"
+                        $failureReason = "paramux exited after WM_CLOSE but exit code could not be read: $($_.Exception.Message)"
                     }
                 }
 
                 if (-not $failureReason -and $exitCode -ne 0) {
-                    $failureReason = "winghostty exited after WM_CLOSE with exit code $exitCode"
+                    $failureReason = "paramux exited after WM_CLOSE with exit code $exitCode"
                 }
                 elseif (-not $failureReason) {
                     $closePassed = $true

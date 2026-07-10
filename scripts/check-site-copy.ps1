@@ -2,69 +2,97 @@ param()
 
 $ErrorActionPreference = "Stop"
 
-$siteRoot = Join-Path $PSScriptRoot "..\\site"
-$siteRoot = [System.IO.Path]::GetFullPath($siteRoot)
-
-if (-not (Test-Path $siteRoot)) {
+$siteRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\site"))
+if (-not (Test-Path -LiteralPath $siteRoot)) {
     throw "Site root not found: $siteRoot"
 }
 
-$textFiles = Get-ChildItem -Path $siteRoot -Recurse -File | Where-Object {
-    $_.Extension -in @(".html", ".css", ".js", ".jsx", ".md", ".txt", ".svg") -or
-    $_.Name -in @("_redirects")
+$nodeModulesRoot = [System.IO.Path]::GetFullPath((Join-Path $siteRoot "node_modules"))
+$siteItems = @(Get-ChildItem -LiteralPath $siteRoot -Recurse -Force | Where-Object {
+    -not $_.FullName.StartsWith($nodeModulesRoot, [System.StringComparison]::OrdinalIgnoreCase)
+})
+$textFiles = @($siteItems | Where-Object {
+    -not $_.PSIsContainer -and
+    $_.Extension -in @(".html", ".css", ".js", ".jsx", ".md", ".txt", ".svg")
+})
+$failures = New-Object System.Collections.Generic.List[string]
+
+function Add-Failure {
+    param([string]$Message)
+    $script:failures.Add($Message) | Out-Null
+}
+
+function Require-FileText {
+    param(
+        [string]$RelativePath,
+        [string]$Needle,
+        [string]$Reason
+    )
+
+    $path = Join-Path $siteRoot $RelativePath
+    if (-not (Test-Path -LiteralPath $path)) {
+        Add-Failure "Missing required file: $RelativePath"
+        return
+    }
+
+    $text = Get-Content -LiteralPath $path -Raw
+    if ($text.IndexOf($Needle, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+        Add-Failure "${RelativePath}: missing `"$Needle`" - $Reason"
+    }
 }
 
 $forbiddenRules = @(
-    @{ Pattern = "(?i)\bscoop install paramux\b(?!/)"; Regex = $true; Reason = "Official Scoop installs should use the bucket-qualified command: scoop install paramux/paramux." },
-    @{ Pattern = "winget install paramux"; Reason = "Official WinGet installs should use the package id: winget install AmanThanvi.paramux." },
-    @{ Pattern = "D3D11"; Reason = "The shipping Windows renderer is OpenGL 4.3 via WGL." },
-    @{ Pattern = "DirectX 11"; Reason = "The shipping Windows renderer is OpenGL 4.3 via WGL." },
-    @{ Pattern = "%APPDATA%\paramux\config"; Reason = "Windows docs use %LOCALAPPDATA%\\paramux\\config.ghostty." },
-    @{ Pattern = "%APPDATA%/paramux/config"; Reason = "Windows docs use %LOCALAPPDATA%\\paramux\\config.ghostty." },
-    @{ Pattern = "replaces binaries silently"; Reason = "Updater apply must stay user-initiated." },
-    @{ Pattern = "downloads updates automatically"; Reason = "Avoid implying automatic install/apply." },
-    @{ Pattern = "silent auto-update"; Reason = "Updater apply must stay user-initiated." },
-    @{ Pattern = "releases are unsigned"; Reason = "Release copy should reflect the signed-release track." },
-    @{ Pattern = "currently unsigned"; Reason = "Release copy should reflect the signed-release track." },
-    @{ Pattern = "full parity"; Reason = "Avoid overclaiming protocol or platform parity." },
-    @{ Pattern = "shared Ghostty terminal core · auto-detected: PowerShell, cmd, Git Bash'"; Reason = "Current profile-picker messaging should include opt-in WSL." },
-    @{ Pattern = "src/terminal, src/font, src/renderer, src/input, src/config, and libghostty-vt are shared"; Reason = "The shared upstream surface is broader today and includes termio/crash/shell-integration/inspector." },
-    @{ Pattern = "Built on libghostty by Mitchell Hashimoto"; Reason = "Prefer the repo-accurate Ghostty terminal-core wording." }
+    @{ Pattern = "winget install"; Reason = "Paramux has no public WinGet package." },
+    @{ Pattern = "scoop install"; Reason = "Paramux has no public Scoop package." },
+    @{ Pattern = "releases/latest"; Reason = "The private prerelease CTA must use an explicit tag." },
+    @{ Pattern = "D3D11"; Reason = "The shipping renderer is OpenGL 4.3 through WGL." },
+    @{ Pattern = "DirectX 11"; Reason = "The shipping renderer is OpenGL 4.3 through WGL." },
+    @{ Pattern = "%APPDATA%\paramux\config"; Reason = "The real config root is under LOCALAPPDATA." },
+    @{ Pattern = "downloads updates automatically"; Reason = "The current portable prerelease is updated manually." },
+    @{ Pattern = "silent auto-update"; Reason = "The current portable prerelease is updated manually." },
+    @{ Pattern = "full parity"; Reason = "Capability parity is still in progress." }
 )
-
-$requiredRules = @(
-    @{ Path = Join-Path $siteRoot "bundle.js"; Pattern = "https://github.com/soldforaloss/paramux/releases/latest"; Reason = "Primary download CTA should point to latest release." },
-    @{ Path = Join-Path $siteRoot "bundle.js"; Pattern = "%LOCALAPPDATA%\\paramux\\config.ghostty"; Reason = "Landing page should mention the real Windows config path." },
-    @{ Path = Join-Path $siteRoot "bundle.js"; Pattern = "https://github.com/soldforaloss/paramux"; Reason = "Landing page should keep a repo link." },
-    @{ Path = Join-Path $siteRoot "bundle.js"; Pattern = "winget install AmanThanvi.paramux"; Reason = "Hero copy should surface the official WinGet install command." },
-    @{ Path = Join-Path $siteRoot "bundle.js"; Pattern = "scoop install paramux/paramux"; Reason = "Copied install text should include the official Scoop install command." },
-    @{ Path = Join-Path $siteRoot "bundle.js"; Pattern = "https://github.com/amanthanvi/scoop-paramux"; Reason = "Copied Scoop install text should include the official bucket source." }
-)
-
-$failures = New-Object System.Collections.Generic.List[string]
 
 foreach ($rule in $forbiddenRules) {
-    $matches = if ($rule.Regex) {
-        Select-String -Path $textFiles.FullName -Pattern $rule.Pattern
-    } else {
-        Select-String -Path $textFiles.FullName -Pattern $rule.Pattern -SimpleMatch
-    }
-    foreach ($match in $matches) {
-        $failures.Add(('{0}:{1}: forbidden pattern "{2}" - {3}' -f $match.Path, $match.LineNumber, $rule.Pattern, $rule.Reason))
+    foreach ($match in @(Select-String -LiteralPath $textFiles.FullName -SimpleMatch -Pattern $rule.Pattern)) {
+        Add-Failure ("{0}:{1}: forbidden text `"{2}`" - {3}" -f $match.Path, $match.LineNumber, $rule.Pattern, $rule.Reason)
     }
 }
 
-foreach ($rule in $requiredRules) {
-    if (-not (Test-Path $rule.Path)) {
-        $failures.Add(('missing required file "{0}"' -f $rule.Path))
-        continue
-    }
+$staleNames = @($siteItems | Where-Object { $_.Name -like "*winghostty*" })
+foreach ($item in $staleNames) {
+    Add-Failure "Stale predecessor-branded site path: $($item.FullName)"
+}
 
-    $match = Select-String -Path $rule.Path -Pattern $rule.Pattern -SimpleMatch
-    if (-not $match) {
-        $failures.Add(('{0}: missing required pattern "{1}" - {2}' -f $rule.Path, $rule.Pattern, $rule.Reason))
+$versionSource = Join-Path $siteRoot "components\hero\release-chip.jsx"
+$version = $null
+if (Test-Path -LiteralPath $versionSource) {
+    $versionText = Get-Content -LiteralPath $versionSource -Raw
+    if ($versionText -match "PARAMUX_VERSION\s*=\s*'([^']+)'") {
+        $version = $Matches[1]
     }
 }
+if (-not $version) {
+    Add-Failure "components/hero/release-chip.jsx: could not parse PARAMUX_VERSION."
+} else {
+    $tag = "v$version"
+    Require-FileText -RelativePath "components\heroes.jsx" -Needle "releases/tag/$tag" -Reason "The primary CTA must point at the pinned private prerelease."
+    Require-FileText -RelativePath "components\release\release-block.jsx" -Needle $tag -Reason "Release facts must agree with the hero badge."
+    Require-FileText -RelativePath "components\why\product-facts.jsx" -Needle $tag -Reason "Product facts must agree with the hero badge."
+    Require-FileText -RelativePath "bundle.js" -Needle $tag -Reason "The generated bundle must be current."
+}
+
+Require-FileText -RelativePath "index.html" -Needle "Paramux" -Reason "Document metadata must use the product brand."
+Require-FileText -RelativePath "bundle.js" -Needle "private prerelease" -Reason "The current release is access-controlled."
+Require-FileText -RelativePath "bundle.js" -Needle "Windows x64" -Reason "The only verified release architecture is x64."
+Require-FileText -RelativePath "bundle.js" -Needle "unsigned" -Reason "The current binary is not Authenticode signed."
+Require-FileText -RelativePath "bundle.js" -Needle "LOCALAPPDATA" -Reason "Automation copy must use the real local state root."
+Require-FileText -RelativePath "bundle.js" -Needle "paramux.windows.v2" -Reason "The automation demo must use the current discovery schema."
+Require-FileText -RelativePath "bundle.js" -Needle "working" -Reason "The mission-control demo must show agent attention states."
+Require-FileText -RelativePath "bundle.js" -Needle "waiting" -Reason "The mission-control demo must show agent attention states."
+Require-FileText -RelativePath "bundle.js" -Needle "done" -Reason "The mission-control demo must show agent attention states."
+Require-FileText -RelativePath "bundle.js" -Needle "error" -Reason "The mission-control demo must show agent attention states."
+Require-FileText -RelativePath "bundle.js" -Needle "https://github.com/soldforaloss/paramux" -Reason "The site must retain a repository link."
 
 if ($failures.Count -gt 0) {
     Write-Host "Site copy checks failed:" -ForegroundColor Red

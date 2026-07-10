@@ -1,18 +1,21 @@
 <#
 .SYNOPSIS
-    Add this paramux folder to your PATH so `paramux` works from any terminal.
+    Configure this portable Paramux install for terminals and agent hooks.
 
 .DESCRIPTION
     Run this once from the extracted paramux folder (the one containing
     paramux.exe and paramux.com). It:
       * strips the "downloaded from the internet" mark from the folder (so
         Windows SmartScreen won't prompt), and
-      * adds the folder to your per-user PATH (idempotent; no admin needed).
+      * adds the folder to your per-user PATH (idempotent; no admin needed),
+      * sets the per-user PARAMUX_HOME variable, and
+      * writes absolute installed paths into the Claude and Codex hook files.
 
     Then open a NEW terminal and run `paramux`.
 
 .PARAMETER Remove
-    Remove this folder from your PATH instead of adding it.
+    Remove this folder from your PATH and clear PARAMUX_HOME only when it still
+    points at this folder.
 #>
 [CmdletBinding()]
 param(
@@ -38,6 +41,18 @@ if ($Remove) {
     $parts = Get-UserPathParts | Where-Object { $_ -ne $dir }
     [Environment]::SetEnvironmentVariable("Path", ($parts -join ';'), "User")
     Write-Host "Removed from your PATH: $dir" -ForegroundColor Yellow
+
+    $installedHome = [Environment]::GetEnvironmentVariable("PARAMUX_HOME", "User")
+    if ([string]::Equals($installedHome, $dir, [StringComparison]::OrdinalIgnoreCase)) {
+        [Environment]::SetEnvironmentVariable("PARAMUX_HOME", $null, "User")
+        if ([string]::Equals($env:PARAMUX_HOME, $dir, [StringComparison]::OrdinalIgnoreCase)) {
+            Remove-Item Env:PARAMUX_HOME -ErrorAction SilentlyContinue
+        }
+        Write-Host "Cleared PARAMUX_HOME for this install." -ForegroundColor Yellow
+    } elseif (-not [string]::IsNullOrEmpty($installedHome)) {
+        Write-Host "Preserved PARAMUX_HOME because it points elsewhere: $installedHome" -ForegroundColor Yellow
+    }
+
     Write-Host "Open a new terminal for the change to take effect."
     return
 }
@@ -46,6 +61,12 @@ if ($Remove) {
 try {
     Get-ChildItem -LiteralPath $dir -Recurse -File -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue
 } catch {}
+
+$hookConfigurator = Join-Path $dir 'configure-paramux-hooks.ps1'
+if (-not (Test-Path -LiteralPath $hookConfigurator -PathType Leaf)) {
+    throw "Missing agent hook configurator: $hookConfigurator"
+}
+& $hookConfigurator
 
 # Add to the per-user PATH (idempotent; uses the .NET API, not setx, so it
 # won't truncate a long PATH).
@@ -56,6 +77,10 @@ if ($parts -contains $dir) {
     [Environment]::SetEnvironmentVariable("Path", ((@($parts) + $dir) -join ';'), "User")
     Write-Host "Added to your PATH: $dir" -ForegroundColor Green
 }
+
+[Environment]::SetEnvironmentVariable("PARAMUX_HOME", $dir, "User")
+$env:PARAMUX_HOME = $dir
+Write-Host "Set PARAMUX_HOME: $dir" -ForegroundColor Green
 
 Write-Host ""
 Write-Host "Done. Open a NEW terminal, then try:" -ForegroundColor Cyan

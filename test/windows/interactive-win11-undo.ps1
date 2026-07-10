@@ -15,7 +15,7 @@ if ($TimeoutSeconds -le 0) {
     throw 'TimeoutSeconds must be greater than 0.'
 }
 
-if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_UNDO_BOOTSTRAPPED) {
+if (-not $env:PARAMUX_INTERACTIVE_WIN11_UNDO_BOOTSTRAPPED) {
     $forwardedArgs = @('-TimeoutSeconds', $TimeoutSeconds.ToString())
     if ($Rebuild) { $forwardedArgs += '-Rebuild' }
     if ($ResetState) { $forwardedArgs += '-ResetState' }
@@ -24,7 +24,7 @@ if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_UNDO_BOOTSTRAPPED) {
     Invoke-InteractiveWin11Bootstrap `
         -RepoRoot $repoRoot `
         -LauncherPath $launcherPath `
-        -EnvironmentVariable 'WINGHOSTTY_INTERACTIVE_WIN11_UNDO_BOOTSTRAPPED' `
+        -EnvironmentVariable 'PARAMUX_INTERACTIVE_WIN11_UNDO_BOOTSTRAPPED' `
         -ArgumentList $forwardedArgs `
         -ExitCode ([ref] $bootstrapExitCode)
     exit $bootstrapExitCode
@@ -145,7 +145,7 @@ function Find-HostWindow {
             return $true
         }
 
-        if ((Get-WindowClassName -Hwnd $hwnd) -eq 'winghostty.win32.host') {
+        if ((Get-WindowClassName -Hwnd $hwnd) -eq 'paramux.win32.host') {
             $script:Win11UndoFoundHost = $hwnd
             return $false
         }
@@ -216,7 +216,7 @@ function Get-VisibleSurfaceCount {
     )
 
     return @(Get-VisibleChildControls -Parent $Parent |
-        Where-Object { (Get-WindowClassName -Hwnd $_.Hwnd) -eq 'winghostty.win32' }).Count
+        Where-Object { (Get-WindowClassName -Hwnd $_.Hwnd) -eq 'paramux.win32' }).Count
 }
 
 function Get-LogPatternCount {
@@ -247,7 +247,7 @@ function Wait-Until {
 
     while ([DateTime]::UtcNow -lt $Deadline) {
         if ($null -ne $Process -and $Process.HasExited) {
-            throw "winghostty exited while waiting for ${Description} (exit code $($Process.ExitCode))"
+            throw "paramux exited while waiting for ${Description} (exit code $($Process.ExitCode))"
         }
 
         if (& $Condition) {
@@ -329,7 +329,7 @@ function Invoke-CloseSecondTab {
 $harness = Initialize-InteractiveWin11Sandbox -RepoRoot $repoRoot -SandboxName 'undo' -ResetState:$ResetState
 $repoRoot = $harness.RepoRoot
 $layout = $harness.Layout
-$configDir = Join-Path $layout.LocalAppData 'winghostty'
+$configDir = Join-Path $layout.LocalAppData 'paramux'
 $configPath = Join-Path $configDir 'config.ghostty'
 New-Item -ItemType Directory -Force -Path $configDir | Out-Null
 [System.IO.File]::WriteAllText(
@@ -368,7 +368,7 @@ $hostHwnd = [IntPtr]::Zero
 try {
     Wait-Until -Deadline $deadline -Description 'host window' -Process $process -Condition {
         if ($process.HasExited) {
-            throw "winghostty exited before host creation (exit code $($process.ExitCode))"
+            throw "paramux exited before host creation (exit code $($process.ExitCode))"
         }
 
         $script:Win11UndoHostHwnd = Find-HostWindow -ProcessId $process.Id
@@ -452,7 +452,7 @@ try {
 
     Start-Sleep -Milliseconds 500
     if ($process.HasExited) {
-        throw 'winghostty exited after last-tab close'
+        throw 'paramux exited after last-tab close'
     }
 }
 catch {

@@ -15,7 +15,7 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $libPath = Join-Path $repoRoot 'scripts\interactive-win11-lib.ps1'
 . $libPath
 
-if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_IME_CANDIDATE_BOOTSTRAPPED) {
+if (-not $env:PARAMUX_INTERACTIVE_WIN11_IME_CANDIDATE_BOOTSTRAPPED) {
     $forwardedArgs = @('-TimeoutSeconds', $TimeoutSeconds.ToString())
     if ($Rebuild) { $forwardedArgs += '-Rebuild' }
     if ($ResetState) { $forwardedArgs += '-ResetState' }
@@ -24,7 +24,7 @@ if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_IME_CANDIDATE_BOOTSTRAPPED) {
     Invoke-InteractiveWin11Bootstrap `
         -RepoRoot $repoRoot `
         -LauncherPath $launcherPath `
-        -EnvironmentVariable 'WINGHOSTTY_INTERACTIVE_WIN11_IME_CANDIDATE_BOOTSTRAPPED' `
+        -EnvironmentVariable 'PARAMUX_INTERACTIVE_WIN11_IME_CANDIDATE_BOOTSTRAPPED' `
         -ArgumentList $forwardedArgs `
         -ExitCode ([ref] $bootstrapExitCode)
     exit $bootstrapExitCode
@@ -83,8 +83,8 @@ $SW_RESTORE = 9
 $WM_MOUSEMOVE = 0x0200
 $WM_IME_STARTCOMPOSITION = 0x010D
 $WM_IME_ENDCOMPOSITION = 0x010E
-$surfaceClassName = 'winghostty.win32'
-$hostClassName = 'winghostty.win32.host'
+$surfaceClassName = 'paramux.win32'
+$hostClassName = 'paramux.win32.host'
 $poisonX = 7
 $poisonY = 11
 
@@ -308,7 +308,7 @@ $payloadPath = Join-Path $layout.Temp 'interactive-win11-ime-candidate-payload.p
 $readyPath = Join-Path $layout.Temp 'interactive-win11-ime-candidate-ready.txt'
 $tracePath = Join-Path $layout.Temp 'interactive-win11-ime-candidate-trace.json'
 $resultPath = Join-Path $layout.Temp 'interactive-win11-ime-candidate-result.json'
-$instanceClass = "winghostty-ime-candidate-$($layout.SandboxId)"
+$instanceClass = "paramux-ime-candidate-$($layout.SandboxId)"
 
 if ($launchAction -eq 'build') {
     Invoke-InteractiveWin11Build -RepoRoot $repoRoot
@@ -351,8 +351,8 @@ $launchArgs = @(
     $payloadPath
 )
 
-$previousImeTraceFile = $env:WINGHOSTTY_WIN32_IME_FORM_TRACE_FILE
-$env:WINGHOSTTY_WIN32_IME_FORM_TRACE_FILE = $tracePath
+$previousImeTraceFile = $env:PARAMUX_WIN32_IME_FORM_TRACE_FILE
+$env:PARAMUX_WIN32_IME_FORM_TRACE_FILE = $tracePath
 
 $process = Start-Process `
     -FilePath $exePath `
@@ -491,10 +491,10 @@ finally {
 
     Stop-InteractiveWin11Process -Process $process
     if ($null -eq $previousImeTraceFile) {
-        Remove-Item Env:WINGHOSTTY_WIN32_IME_FORM_TRACE_FILE -ErrorAction SilentlyContinue
+        Remove-Item Env:PARAMUX_WIN32_IME_FORM_TRACE_FILE -ErrorAction SilentlyContinue
     }
     else {
-        $env:WINGHOSTTY_WIN32_IME_FORM_TRACE_FILE = $previousImeTraceFile
+        $env:PARAMUX_WIN32_IME_FORM_TRACE_FILE = $previousImeTraceFile
     }
 }
 

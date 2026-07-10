@@ -15,7 +15,7 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $libPath = Join-Path $repoRoot 'scripts\interactive-win11-lib.ps1'
 . $libPath
 
-if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_RESIZE_BOOTSTRAPPED) {
+if (-not $env:PARAMUX_INTERACTIVE_WIN11_RESIZE_BOOTSTRAPPED) {
     $forwardedArgs = @('-TimeoutSeconds', $TimeoutSeconds.ToString())
     if ($Rebuild) { $forwardedArgs += '-Rebuild' }
     if ($ResetState) { $forwardedArgs += '-ResetState' }
@@ -24,7 +24,7 @@ if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_RESIZE_BOOTSTRAPPED) {
     Invoke-InteractiveWin11Bootstrap `
         -RepoRoot $repoRoot `
         -LauncherPath $launcherPath `
-        -EnvironmentVariable 'WINGHOSTTY_INTERACTIVE_WIN11_RESIZE_BOOTSTRAPPED' `
+        -EnvironmentVariable 'PARAMUX_INTERACTIVE_WIN11_RESIZE_BOOTSTRAPPED' `
         -ArgumentList $forwardedArgs `
         -ExitCode ([ref] $bootstrapExitCode)
     exit $bootstrapExitCode
@@ -37,7 +37,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 
-public static class WinghosttyResizeWin32 {
+public static class ParamuxResizeWin32 {
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
     [StructLayout(LayoutKind.Sequential)]
@@ -94,7 +94,7 @@ $paletteEditControlId = 2002
 $paletteConfirmCommandId = 2003
 $tabControlIdMin = 1000
 $tabControlIdMaxExclusive = 1900
-$surfaceWindowClassName = 'winghostty.win32'
+$surfaceWindowClassName = 'paramux.win32'
 
 function Assert-Win32CallSucceeded {
     param(
@@ -113,8 +113,8 @@ function Get-WindowRectObject {
         [Parameter(Mandatory)] [IntPtr] $Hwnd
     )
 
-    $rect = New-Object WinghosttyResizeWin32+RECT
-    if (-not [WinghosttyResizeWin32]::GetWindowRect($Hwnd, [ref] $rect)) {
+    $rect = New-Object ParamuxResizeWin32+RECT
+    if (-not [ParamuxResizeWin32]::GetWindowRect($Hwnd, [ref] $rect)) {
         throw "GetWindowRect failed for hwnd=$Hwnd"
     }
 
@@ -134,7 +134,7 @@ function Get-WindowClassName {
     )
 
     $builder = [System.Text.StringBuilder]::new(256)
-    [void] [WinghosttyResizeWin32]::GetClassNameW($Hwnd, $builder, $builder.Capacity)
+    [void] [ParamuxResizeWin32]::GetClassNameW($Hwnd, $builder, $builder.Capacity)
     return $builder.ToString()
 }
 
@@ -144,13 +144,13 @@ function Get-VisibleChildWindows {
     )
 
     $children = [System.Collections.Generic.List[object]]::new()
-    $callback = [WinghosttyResizeWin32+EnumWindowsProc] {
+    $callback = [ParamuxResizeWin32+EnumWindowsProc] {
         param([IntPtr] $hwnd, [IntPtr] $lParam)
 
-        if ([WinghosttyResizeWin32]::IsWindowVisible($hwnd)) {
+        if ([ParamuxResizeWin32]::IsWindowVisible($hwnd)) {
             [void] $children.Add([pscustomobject]@{
                 Hwnd = $hwnd
-                Id = [WinghosttyResizeWin32]::GetDlgCtrlID($hwnd)
+                Id = [ParamuxResizeWin32]::GetDlgCtrlID($hwnd)
                 ClassName = Get-WindowClassName -Hwnd $hwnd
             })
         }
@@ -158,7 +158,7 @@ function Get-VisibleChildWindows {
         return $true
     }
 
-    [void] [WinghosttyResizeWin32]::EnumChildWindows($Parent, $callback, [IntPtr]::Zero)
+    [void] [ParamuxResizeWin32]::EnumChildWindows($Parent, $callback, [IntPtr]::Zero)
     return $children.ToArray()
 }
 
@@ -226,7 +226,7 @@ function Invoke-HostCommand {
         [Parameter(Mandatory)] [int] $CommandId
     )
 
-    [void] [WinghosttyResizeWin32]::SendMessageW($HostHwnd, $wmCommand, (New-WParam -Low $CommandId), [IntPtr]::Zero)
+    [void] [ParamuxResizeWin32]::SendMessageW($HostHwnd, $wmCommand, (New-WParam -Low $CommandId), [IntPtr]::Zero)
 }
 
 function Invoke-CommandPaletteAction {
@@ -244,7 +244,7 @@ function Invoke-CommandPaletteAction {
 
     $edit = Get-VisibleChildById -Parent $HostHwnd -Id $paletteEditControlId
     foreach ($ch in $Action.ToCharArray()) {
-        [void] [WinghosttyResizeWin32]::SendMessageW(
+        [void] [ParamuxResizeWin32]::SendMessageW(
             $edit.Hwnd,
             $wmChar,
             ([UIntPtr]([uint64]([int][char]$ch))),
@@ -260,8 +260,8 @@ function Show-ResizeHarnessWindow {
         [Parameter(Mandatory)] [IntPtr] $Hwnd
     )
 
-    [void] [WinghosttyResizeWin32]::ShowWindow($Hwnd, $showWindowRestore)
-    [void] [WinghosttyResizeWin32]::SetForegroundWindow($Hwnd)
+    [void] [ParamuxResizeWin32]::ShowWindow($Hwnd, $showWindowRestore)
+    [void] [ParamuxResizeWin32]::SetForegroundWindow($Hwnd)
 }
 
 function Capture-WindowImage {
@@ -470,7 +470,7 @@ $payloadPath = Join-Path $layout.Temp 'interactive-win11-resize-payload.ps1'
 $screenshotPath = Join-Path $layout.Logs 'interactive-win11-resize-grown.png'
 $surfaceScreenshotPath = Join-Path $layout.Logs 'interactive-win11-resize-grown-surface.png'
 $liveScreenshotPath = Join-Path $layout.Logs 'interactive-win11-resize-live-grown.png'
-$instanceClass = "winghostty-resize-$($layout.SandboxId)"
+$instanceClass = "paramux-resize-$($layout.SandboxId)"
 
 if ($launchAction -eq 'build') {
     Invoke-InteractiveWin11Build -RepoRoot $repoRoot
@@ -533,14 +533,14 @@ try {
         }
 
         if ($process.HasExited) {
-            throw "winghostty exited before resize validation could start (exit code $($process.ExitCode))"
+            throw "paramux exited before resize validation could start (exit code $($process.ExitCode))"
         }
 
         Start-Sleep -Milliseconds 100
     }
 
     if ($process.MainWindowHandle -eq 0) {
-        throw 'winghostty main window handle was not ready before timeout.'
+        throw 'paramux main window handle was not ready before timeout.'
     }
 
     $workingArea = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
@@ -553,7 +553,7 @@ try {
 
     Show-ResizeHarnessWindow -Hwnd $process.MainWindowHandle
     Assert-Win32CallSucceeded `
-        -Succeeded ([WinghosttyResizeWin32]::MoveWindow($process.MainWindowHandle, $x, $y, $initialWidth, $initialHeight, $true)) `
+        -Succeeded ([ParamuxResizeWin32]::MoveWindow($process.MainWindowHandle, $x, $y, $initialWidth, $initialHeight, $true)) `
         -Operation "initial MoveWindow(hwnd=$($process.MainWindowHandle))"
     Start-Sleep -Milliseconds 600
 
@@ -568,27 +568,27 @@ try {
     }
     $initialUnion = Assert-VisibleSurfaceUnionFillsHostContent -HostHwnd $process.MainWindowHandle -ExpectedSurfaceCount 2 -Label 'initial split layout'
 
-    [void] [WinghosttyResizeWin32]::SendMessageW($process.MainWindowHandle, $wmEnterSizeMove, [UIntPtr]::Zero, [IntPtr]::Zero)
+    [void] [ParamuxResizeWin32]::SendMessageW($process.MainWindowHandle, $wmEnterSizeMove, [UIntPtr]::Zero, [IntPtr]::Zero)
     $enteredSizeMove = $true
     Assert-Win32CallSucceeded `
-        -Succeeded ([WinghosttyResizeWin32]::MoveWindow($process.MainWindowHandle, $x, $y, $grownWidth, $grownHeight, $true)) `
+        -Succeeded ([ParamuxResizeWin32]::MoveWindow($process.MainWindowHandle, $x, $y, $grownWidth, $grownHeight, $true)) `
         -Operation "grown MoveWindow(hwnd=$($process.MainWindowHandle))"
     Show-ResizeHarnessWindow -Hwnd $process.MainWindowHandle
-    [void] [WinghosttyResizeWin32]::UpdateWindow($process.MainWindowHandle)
+    [void] [ParamuxResizeWin32]::UpdateWindow($process.MainWindowHandle)
     Start-Sleep -Milliseconds 150
     Capture-WindowImage -Hwnd $process.MainWindowHandle -Path $liveScreenshotPath
     $liveRatios = Assert-ResizeImageHasNoUnpaintedExpansionBands -Path $liveScreenshotPath
-    [void] [WinghosttyResizeWin32]::UpdateWindow($process.MainWindowHandle)
+    [void] [ParamuxResizeWin32]::UpdateWindow($process.MainWindowHandle)
     Start-Sleep -Milliseconds 700
 
-    [void] [WinghosttyResizeWin32]::SendMessageW($process.MainWindowHandle, $wmExitSizeMove, [UIntPtr]::Zero, [IntPtr]::Zero)
+    [void] [ParamuxResizeWin32]::SendMessageW($process.MainWindowHandle, $wmExitSizeMove, [UIntPtr]::Zero, [IntPtr]::Zero)
     $enteredSizeMove = $false
-    [void] [WinghosttyResizeWin32]::UpdateWindow($process.MainWindowHandle)
+    [void] [ParamuxResizeWin32]::UpdateWindow($process.MainWindowHandle)
     Start-Sleep -Milliseconds 700
 
-    $surfaceHwnd = [WinghosttyResizeWin32]::FindWindowExW($process.MainWindowHandle, [IntPtr]::Zero, $surfaceWindowClassName, $null)
+    $surfaceHwnd = [ParamuxResizeWin32]::FindWindowExW($process.MainWindowHandle, [IntPtr]::Zero, $surfaceWindowClassName, $null)
     if ($surfaceHwnd -eq [IntPtr]::Zero) {
-        throw 'failed to locate winghostty surface child HWND after resize'
+        throw 'failed to locate paramux surface child HWND after resize'
     }
     $hostRect = Get-WindowRectObject -Hwnd $process.MainWindowHandle
     $surfaceRect = Get-WindowRectObject -Hwnd $surfaceHwnd
@@ -605,7 +605,7 @@ try {
 }
 finally {
     if ($enteredSizeMove -and $process.MainWindowHandle -ne 0) {
-        [void] [WinghosttyResizeWin32]::SendMessageW($process.MainWindowHandle, $wmExitSizeMove, [UIntPtr]::Zero, [IntPtr]::Zero)
+        [void] [ParamuxResizeWin32]::SendMessageW($process.MainWindowHandle, $wmExitSizeMove, [UIntPtr]::Zero, [IntPtr]::Zero)
     }
     Stop-InteractiveWin11Process -Process $process
 }

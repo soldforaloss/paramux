@@ -25,7 +25,7 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $libPath = Join-Path $repoRoot 'scripts\interactive-win11-lib.ps1'
 . $libPath
 
-if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_BOO_MULTITAB_BOOTSTRAPPED) {
+if (-not $env:PARAMUX_INTERACTIVE_WIN11_BOO_MULTITAB_BOOTSTRAPPED) {
     $forwardedArgs = @(
         '-SeedTabs', $SeedTabs.ToString(),
         '-EscapeAfterMs', $EscapeAfterMs.ToString(),
@@ -38,7 +38,7 @@ if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_BOO_MULTITAB_BOOTSTRAPPED) {
     Invoke-InteractiveWin11Bootstrap `
         -RepoRoot $repoRoot `
         -LauncherPath $launcherPath `
-        -EnvironmentVariable 'WINGHOSTTY_INTERACTIVE_WIN11_BOO_MULTITAB_BOOTSTRAPPED' `
+        -EnvironmentVariable 'PARAMUX_INTERACTIVE_WIN11_BOO_MULTITAB_BOOTSTRAPPED' `
         -ArgumentList $forwardedArgs `
         -ExitCode ([ref] $bootstrapExitCode)
     exit $bootstrapExitCode
@@ -164,7 +164,7 @@ function Find-HostWindow {
             return $true
         }
 
-        if ((Get-WindowClassName -Hwnd $hwnd) -eq 'winghostty.win32.host') {
+        if ((Get-WindowClassName -Hwnd $hwnd) -eq 'paramux.win32.host') {
             $script:InteractiveWin11BooMultiTabFoundHost = $hwnd
             return $false
         }
@@ -185,7 +185,7 @@ function Find-SurfaceWindow {
     $callback = [InteractiveWin11BooMultiTabNative+EnumWindowsProc] {
         param([IntPtr] $hwnd, [IntPtr] $lParam)
 
-        if ((Get-WindowClassName -Hwnd $hwnd) -eq 'winghostty.win32') {
+        if ((Get-WindowClassName -Hwnd $hwnd) -eq 'paramux.win32') {
             $script:InteractiveWin11BooMultiTabFoundSurface = $hwnd
             return $false
         }
@@ -362,19 +362,19 @@ try {
         phase = 'after-go'
     } | ConvertTo-Json -Compress | Set-Content -LiteralPath '__STATE_PATH__' -Encoding ASCII
 
-    $winghosttyCommand = Get-Command winghostty -ErrorAction Stop
-    $commandSource = $winghosttyCommand.Source
+    $paramuxCommand = Get-Command paramux -ErrorAction Stop
+    $commandSource = $paramuxCommand.Source
     [ordered]@{
         phase = 'before-boo'
         commandSource = $commandSource
     } | ConvertTo-Json -Compress | Set-Content -LiteralPath '__STATE_PATH__' -Encoding ASCII
     $booStart = Get-Date
-    & winghostty +boo
+    & paramux +boo
     $booExitCode = $LASTEXITCODE
 
     [ordered]@{
         phase = 'after-boo'
-        commandSource = $winghosttyCommand.Source
+        commandSource = $paramuxCommand.Source
         exitCode = $booExitCode
         elapsedMs = [int]((Get-Date) - $booStart).TotalMilliseconds
     } | ConvertTo-Json -Compress | Set-Content -LiteralPath '__STATE_PATH__' -Encoding ASCII
@@ -402,10 +402,10 @@ $payload = $payload.
 $payload | Set-Content -LiteralPath $payloadPath -Encoding UTF8
 
 $traceEnv = [ordered]@{
-    WINGHOSTTY_RENDER_TRACE_FILE = $renderTracePath
-    WINGHOSTTY_TERMIO_TRACE_FILE = $termioTracePath
-    WINGHOSTTY_BOO_STATE_FILE = $booTracePath
-    WINGHOSTTY_BOO_AUTO_EXIT_MS = $booAutoExitMs.ToString()
+    PARAMUX_RENDER_TRACE_FILE = $renderTracePath
+    PARAMUX_TERMIO_TRACE_FILE = $termioTracePath
+    PARAMUX_BOO_STATE_FILE = $booTracePath
+    PARAMUX_BOO_AUTO_EXIT_MS = $booAutoExitMs.ToString()
 }
 
 $savedEnv = [ordered]@{}
@@ -487,7 +487,7 @@ try {
     $state = Get-InteractiveWin11RequiredJsonFile -Path $statePath
     if ($state.exitCode -ne 0) {
         throw @"
-winghostty +boo exited with code $($state.exitCode)
+paramux +boo exited with code $($state.exitCode)
 stdout:
 $(Get-InteractiveWin11TextFileTail -Path $stdoutPath)
 
