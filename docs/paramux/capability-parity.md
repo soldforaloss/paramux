@@ -1,6 +1,6 @@
 # Paramux capability parity
 
-**Snapshot:** 2026-07-09  
+**Snapshot:** 2026-07-10  
 **Compared with:** cmux, tmux, amirlehmam/wmux, openwong2kim/wmux  
 **Status legend:** Implemented · Partial · Missing · Deliberately deferred · Unverified
 
@@ -18,18 +18,18 @@ and has evidence in the current repo or runtime.
 | --- | --- | --- |
 | Native terminal architecture | Implemented | Win32 + ConPTY + WGL/OpenGL 4.3 on the shared Ghostty core. |
 | Tabs, splits, focus, resize, and zoom | Implemented | Independent panes, tab workspaces, split directions, drag resize, focus navigation, and pane zoom. |
-| Mouse-first pane navigation | Implemented in current worktree | Sidebar rows focus their panes; zoomed tabs move zoom to the selected row. |
-| All-workspace navigation | Implemented in current worktree | The `▾` and terminal context menus expose `Tabs / Workspaces...`; its overview lists every tab, pane count, active tab, and strongest attention state for direct numeric selection. |
-| Live pane metadata | Implemented in current worktree | cwd, git branch/dirty state, ports, textual attention state, and the latest bounded notification render in each active-tab sidebar row. |
-| Per-pane agent attention | Implemented in current worktree | Working/waiting/done/error drive pane rings, tab stripes, sidebar dots, toasts, and taskbar flash. Alerts survive focus/navigation and clear with deliberate terminal input. |
+| Mouse-first pane navigation | Implemented | Sidebar rows focus their panes; zoomed tabs move zoom to the selected row. |
+| All-workspace navigation | Implemented | The `▾` and terminal context menus expose `Tabs / Workspaces...`; its overview lists every tab, pane count, active tab, and strongest attention state for direct numeric selection. |
+| Live pane metadata | Implemented | cwd, git branch/dirty state, ports, textual attention state, and the latest bounded notification render in each active-tab sidebar row. |
+| Per-pane agent attention | Implemented | Working/waiting/done/error drive pane rings, tab stripes, sidebar dots, toasts, and taskbar flash. Alerts survive focus/navigation and clear with deliberate terminal input. |
 | Notification history / inbox | Missing | There is no in-app history or unread-jump workflow. |
-| Agent hook adapters | Implemented in current worktree | The portable package includes concrete, protocol-aware Claude Code, Codex CLI, Gemini CLI, and OpenCode adapters plus bounded contract tests. |
+| Agent hook adapters | Implemented | The portable package includes concrete, protocol-aware Claude Code, Codex CLI, Gemini CLI, and OpenCode adapters plus bounded contract tests. |
 | Hookless agent detection | Missing | Paramux does not infer agent state from process/output heuristics when a CLI has no usable hook API or is not configured. |
 | Local automation | Partial | List windows, safe actions, notify, read-pane, bounded send, and terminal-mode-aware send-key work end to end. Workspace naming, a complete process-launch contract, and versioned JSON-RPC compatibility remain incomplete. |
 | IPC authentication | Partial | Sensitive methods are token-gated, but `new_window` is currently unauthenticated. |
-| Configuration, themes, keybindings | Implemented in current worktree | Ghostty-compatible config, theme import, key tables, direct native shortcuts, and a packaged/validated optional `Ctrl+B` tmux-prefix preset work. |
+| Configuration, themes, keybindings | Implemented | Ghostty-compatible config, theme import, key tables, direct native shortcuts, and a packaged/validated optional `Ctrl+B` tmux-prefix preset work. |
 | Session continuity | Partial | Window/tab/split/profile/cwd layout restores; terminal processes, contents, scrollback, and agent resume state do not. |
-| Native distribution | Partial | The local portable path now guards its Paramux README, exact launcher VERSIONINFO, hooks, completion names, archive entries, checksum, and x64 baseline. Live v4 predates those gates; signed installer, public WinGet/Scoop, verified ARM64, and a replacement prerelease are not shipped. |
+| Native distribution | Partial | The local portable path guards its Paramux README, exact launcher VERSIONINFO, hooks, completion names, archive entries, checksum, and x64 baseline, and the live `v0.1.0-paramux.5` prerelease ships that guarded payload. Signed installer, public WinGet/Scoop, and verified ARM64 are not shipped. |
 | Browser / CDP | Deliberately deferred | Explicit PRD non-goal for MVP, despite also appearing in the P1 list. |
 | Managed SSH / remote workspaces | Deliberately deferred | Explicit PRD non-goal. Ordinary SSH inside a terminal remains available. |
 | A2A channels / delegation | Deliberately deferred | Explicit PRD non-goal. |

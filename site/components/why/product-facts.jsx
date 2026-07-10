@@ -17,7 +17,7 @@ const PRODUCT_FACTS = [
   },
   {
     q: 'What can I download today?',
-    a: 'A private, unsigned Windows x64 legacy test artifact: v0.1.0-paramux.4. Its embedded README, completion aliases, and VERSIONINFO predate the current package rebrand.',
+    a: 'A private, unsigned Windows x64 portable prerelease: v0.1.0-paramux.5. It ships the agent-hook adapters, the +send/+send-key automation verbs, and the fully Paramux-branded package.',
   },
   {
     q: 'What is not published yet?',

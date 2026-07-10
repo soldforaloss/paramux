@@ -4,9 +4,8 @@ This page describes what currently works in Paramux, what remains partial, and
 what is not part of the current release. When release copy disagrees with this
 page, prefer the checked artifact and repository state.
 
-Last reviewed: 2026-07-09, against the repository worktree pending the next
-prerelease. The shipped private `v0.1.0-paramux.4` ZIP predates several items
-below; they are marked where that matters.
+Last reviewed: 2026-07-10, against the private `v0.1.0-paramux.5`
+prerelease.
 
 Paramux is derived from Winghostty, which in turn carries the Ghostty terminal
 core into a native Windows runtime. Ghostty names remain where they identify an
@@ -23,12 +22,12 @@ Ghostty documentation to current Paramux behavior.
 
 - **Windows 10 and Windows 11 on x64** are the current prerelease target.
 - The renderer requires OpenGL 4.3 or newer through WGL.
-- `v0.1.0-paramux.4` is private, portable, prerelease-only, and unsigned.
-- Its live ZIP is a legacy test artifact with predecessor README/completion copy
-  and blank launcher VERSIONINFO; it also ships no agent-hooks payload, and its
-  binary lacks the `+send`/`+send-key` verbs. The worktree fixes all of this
-  for the next build.
-- The release contains `paramux-0.1.0-paramux.4-windows-x64-portable.zip` and
+- `v0.1.0-paramux.5` is private, portable, prerelease-only, and unsigned.
+- Its ZIP is feature- and branding-complete: Paramux README, completions, and
+  VERSIONINFO, plus the agent-hooks payload, config presets, and the
+  `+send`/`+send-key` verbs. The earlier `v0.1.0-paramux.4` build is a
+  superseded legacy test artifact.
+- The release contains `paramux-0.1.0-paramux.5-windows-x64-portable.zip` and
   `SHA256SUMS-windows-x64.txt`.
 - `install-paramux.cmd` is a PATH helper inside the ZIP, not a system
   installer.
@@ -63,8 +62,6 @@ Ghostty documentation to current Paramux behavior.
 - `paramux +read-pane` returns the current viewport text for a target pane.
 - `paramux +send` writes one bounded UTF-8 payload to a focused or explicitly
   selected pane, and `paramux +send-key` sends one key from a closed key set.
-  Both verbs are in the next build; the `v0.1.0-paramux.4` binary predates
-  them.
 - Sensitive methods use a per-instance token supplied through `PARAMUX_TOKEN`
   inside panes or the token file under `%LOCALAPPDATA%\paramux` for external
   Paramux CLI clients.
@@ -122,18 +119,17 @@ is periodic and scoped to the pane's child process tree.
 
 ### Agent integrations
 
-The Paramux attention protocol and `+notify` command are complete. The next
-build's portable package includes concrete Claude Code settings, Codex hooks, a
-Gemini CLI extension, and an OpenCode plugin; the `v0.1.0-paramux.4` ZIP ships
-none of these. Their lifecycle events differ, so each adapter maps only events
-its agent exposes. Run `install-paramux.cmd` first, then install the relevant
-adapter and restart that agent.
+The Paramux attention protocol and `+notify` command are complete. The
+portable package includes concrete Claude Code settings, Codex hooks, a Gemini
+CLI extension, and an OpenCode plugin. Their lifecycle events differ, so each
+adapter maps only events its agent exposes. Run `install-paramux.cmd` first,
+then install the relevant adapter and restart that agent.
 
 ### Stable updater path
 
 The codebase contains a checksum- and Authenticode-gated installer updater for
 a future stable signed release. It is not a current update path: the private
-`v0.1.0-paramux.4` release is a prerelease with only an unsigned portable ZIP.
+`v0.1.0-paramux.5` release is a prerelease with only an unsigned portable ZIP.
 Current users update manually.
 
 ### Win32 runtime extraction

@@ -1,4 +1,4 @@
-const RELEASE_TAG = 'v0.1.0-paramux.4';
+const RELEASE_TAG = 'v0.1.0-paramux.5';
 
 export function ReleaseBlock() {
   return (
@@ -16,8 +16,8 @@ export function ReleaseBlock() {
         <span>OpenGL 4.3+</span>
       </div>
       <p>
-        Authorized GitHub access required. The live v4 ZIP predates the package-level README,
-        completion, and VERSIONINFO rebrand; use it only as a legacy test artifact.
+        Authorized GitHub access required. Verify the SHA-256 checksum before first run;
+        the packaged install-paramux.cmd adds the folder to PATH and wires the agent hooks.
       </p>
     </div>
   );

@@ -33,7 +33,7 @@ reviews:
         Google Fonts and manual bundle/style query-string cache busting are intentional for the static Cloudflare Pages deploy. Flag them only when the referenced assets or cache-bust values are stale or broken.
     - path: "site/components/release/**"
       instructions: |
-        Review install copy against the current Paramux distribution contract: private unsigned x64 portable prerelease v0.1.0-paramux.4 with install-paramux.cmd. Flag any claim that a signed installer, WinGet, Scoop, ARM64, or a public stable channel is already available.
+        Review install copy against the current Paramux distribution contract: the private unsigned x64 portable prerelease pinned in README.md, installed via install-paramux.cmd. Flag any claim that a signed installer, WinGet, Scoop, ARM64, or a public stable channel is already available.
     - path: "site/components/hero/release-chip.jsx"
       instructions: |
         The Paramux repository and current release are private. Never suggest embedding GitHub tokens in browser code, and flag claims that an unauthenticated client-side request can discover the private prerelease.

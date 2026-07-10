@@ -7,25 +7,23 @@ uninstall it.
 ## 1. Get the private x64 prerelease
 
 The current build is
-[`v0.1.0-paramux.4`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.4)
+[`v0.1.0-paramux.5`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.5)
 in the private `soldforaloss/paramux` repository. You must be signed in to an
 account with repository access.
 
 Download both assets:
 
-- `paramux-0.1.0-paramux.4-windows-x64-portable.zip`
+- `paramux-0.1.0-paramux.5-windows-x64-portable.zip`
 - `SHA256SUMS-windows-x64.txt`
 
 This is an **unsigned x64 portable prerelease**. There is no current Paramux
 installer, WinGet package, Scoop package, ARM64 release, or public stable
 download.
 
-The live v4 ZIP is a legacy test artifact: its embedded README/completion aliases
-and launcher VERSIONINFO predate the package-level Paramux rebrand. It also
-predates some features in this guide — the packaged tmux-prefix preset
-(section 7) and the `+send`/`+send-key` commands (section 9) ship in builds
-newer than v4. The current source fixes these gaps, but a replacement
-prerelease has not been published.
+This build is feature- and branding-complete: it includes the agent-hook
+adapters, the `+send`/`+send-key` commands (section 9), the packaged
+tmux-prefix preset (section 7), and fully populated Paramux VERSIONINFO. The
+earlier `v0.1.0-paramux.4` build is a superseded legacy test artifact.
 
 Paramux requires Windows 10 or Windows 11 and a GPU/driver that exposes OpenGL
 4.3 or newer through WGL.
@@ -36,7 +34,7 @@ From the folder containing both downloaded files:
 
 ```powershell
 Get-FileHash `
-  .\paramux-0.1.0-paramux.4-windows-x64-portable.zip `
+  .\paramux-0.1.0-paramux.5-windows-x64-portable.zip `
   -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
@@ -172,11 +170,10 @@ keybind = ctrl+shift+r=reload_config
 
 ### Optional tmux-style `Ctrl+B` prefix
 
-Portable packages newer than `v0.1.0-paramux.4` (or a source build per
-[HACKING.md](../HACKING.md)) include `config-presets\tmux-prefix.ghostty`. It
-uses the same built-in sequence engine as every other keybinding; no tmux
-process or WSL session is required. Add the extracted preset to your config
-with an absolute path:
+The portable package includes `config-presets\tmux-prefix.ghostty`. It uses
+the same built-in sequence engine as every other keybinding; no tmux process
+or WSL session is required. Add the extracted preset to your config with an
+absolute path:
 
 ```ini
 config-file = "C:\\Tools\\paramux\\config-presets\\tmux-prefix.ghostty"
@@ -228,8 +225,7 @@ Read a pane's current viewport text:
 paramux +read-pane --surface-id=<surface_id>
 ```
 
-Send exact UTF-8 text and a named terminal key to that pane (`+send` and
-`+send-key` are newer than the `v0.1.0-paramux.4` binary):
+Send exact UTF-8 text and a named terminal key to that pane:
 
 ```powershell
 paramux +send --surface-id=<surface_id> "npm test"
@@ -251,7 +247,7 @@ helper, and crash actions. New action variants remain disabled until reviewed.
 ## 10. Updates
 
 Do not rely on the built-in stable installer updater for the current release.
-`v0.1.0-paramux.4` is private, marked as a prerelease, portable-only, and
+`v0.1.0-paramux.5` is private, marked as a prerelease, portable-only, and
 unsigned. Update manually by downloading the next private portable ZIP,
 verifying its checksum, and replacing the extracted folder.
 

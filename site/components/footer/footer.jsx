@@ -9,7 +9,7 @@ export function Footer() {
         <ParamuxWordmark size={20} />
         <div className="wg-footer__links">
           <a href={REPO_URL} target="_blank" rel="noopener noreferrer">Repository</a>
-          <a href={`${REPO_URL}/releases/tag/v0.1.0-paramux.4`} target="_blank" rel="noopener noreferrer">Private release</a>
+          <a href={`${REPO_URL}/releases/tag/v0.1.0-paramux.5`} target="_blank" rel="noopener noreferrer">Private release</a>
           <a href={`${REPO_URL}/blob/paramux/docs/paramux/capability-parity.md`} target="_blank" rel="noopener noreferrer">Capability status</a>
           <a href="https://ghostty.org" target="_blank" rel="noopener noreferrer">Ghostty ↗</a>
         </div>

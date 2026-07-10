@@ -6,19 +6,19 @@ separate from the current user path.
 
 ## Current distribution contract
 
-As of 2026-07-09, the current build is the private prerelease
-[`v0.1.0-paramux.4`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.4).
+As of 2026-07-10, the current build is the private prerelease
+[`v0.1.0-paramux.5`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.5).
 The release is visible only to people who can access `soldforaloss/paramux`.
 
 It publishes exactly these two assets:
 
-- `paramux-0.1.0-paramux.4-windows-x64-portable.zip`
+- `paramux-0.1.0-paramux.5-windows-x64-portable.zip`
 - `SHA256SUMS-windows-x64.txt`
 
-The live v4 legacy test artifact predates the package-level Paramux rebrand: its embedded README
-and command-completion aliases still use the predecessor name, and its launcher
-VERSIONINFO is blank. The current packaging source rejects all three defects.
-A new prerelease is required before distributing a branding-complete artifact.
+This artifact is branding-complete: its embedded README, command completions,
+and launcher VERSIONINFO all carry the Paramux identity, and the packaging
+source enforces each of those properties. The earlier `v0.1.0-paramux.4`
+build remains available only as a superseded legacy test artifact.
 
 The executable is **unsigned**. The ZIP is a portable build, and
 `install-paramux.cmd` inside it is a convenience script that unblocks the
@@ -78,7 +78,7 @@ The app binaries are written to `zig-out\bin\paramux.exe` and
 Use the Windows packaging script with an explicit architecture:
 
 ```powershell
-$version = "0.1.0-paramux.4"
+$version = "0.1.0-paramux.5"
 powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1 `
   -Version $version `
   -Architecture x64 `
@@ -88,7 +88,7 @@ powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1 `
 The portable output is staged beneath:
 
 ```text
-dist\artifacts\paramux-0.1.0-paramux.4-windows-x64\
+dist\artifacts\paramux-0.1.0-paramux.5-windows-x64\
 ```
 
 The packaging script performs its own package smoke checks and emits the
@@ -111,7 +111,7 @@ powershell -ExecutionPolicy Bypass -File scripts/check-windows-x64-baseline.ps1 
   -Path zig-out\bin\paramux.exe
 
 Get-FileHash `
-  .\dist\artifacts\paramux-0.1.0-paramux.4-windows-x64\paramux-0.1.0-paramux.4-windows-x64-portable.zip `
+  .\dist\artifacts\paramux-0.1.0-paramux.5-windows-x64\paramux-0.1.0-paramux.5-windows-x64-portable.zip `
   -Algorithm SHA256
 ```
 
@@ -123,7 +123,7 @@ temporary directory and verify:
 Get-AuthenticodeSignature .\paramux\paramux.exe | Select-Object Status, StatusMessage
 ```
 
-For `v0.1.0-paramux.4`, `NotSigned` is the expected signature status. A future
+For `v0.1.0-paramux.5`, `NotSigned` is the expected signature status. A future
 signed channel must instead fail closed unless the expected Authenticode signer
 and checksum both validate.
 

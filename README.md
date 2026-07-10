@@ -72,27 +72,23 @@ path today.
 ## Try the current prerelease
 
 The current test build is
-[`v0.1.0-paramux.4`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.4),
-published 2026-07-09 for Windows x64:
+[`v0.1.0-paramux.5`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.5),
+published 2026-07-10 for Windows x64:
 
-- [`paramux-0.1.0-paramux.4-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.4/paramux-0.1.0-paramux.4-windows-x64-portable.zip)
-- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.4/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.0-paramux.5-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.5/paramux-0.1.0-paramux.5-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.5/SHA256SUMS-windows-x64.txt)
 
-> **Known v4 legacy test artifact:** the checksum-valid ZIP predates both the
-> package-level Paramux rebrand and the newest worktree features. It lacks the
-> `+send`/`+send-key` commands documented under Local automation and ships only
-> the Claude Code hook adapter (the Codex CLI, Gemini CLI, and OpenCode
-> adapters are newer than the tag). Its embedded README and command-completion
-> aliases still say Winghostty, and both launchers have blank VERSIONINFO.
-> The current worktree fixes all of these; publish a new prerelease before
-> treating an artifact as feature- or branding-complete.
+This is the first feature- and branding-complete Paramux artifact: it ships
+the four agent-hook adapters, the `+send`/`+send-key` automation verbs, the
+tmux-prefix config preset, and fully populated Paramux VERSIONINFO. The
+earlier `v0.1.0-paramux.4` build is a superseded legacy test artifact.
 
 1. Download both the portable ZIP and `SHA256SUMS-windows-x64.txt`.
 2. Before extracting or running anything, compare the ZIP's digest with the
    release checksum:
 
 ```powershell
-Get-FileHash .\paramux-0.1.0-paramux.4-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\paramux-0.1.0-paramux.5-windows-x64-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 
