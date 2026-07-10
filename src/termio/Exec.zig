@@ -692,7 +692,7 @@ const Subprocess = struct {
 
         // If we have a resources dir then set our env var
         if (cfg.resources_dir) |dir| {
-            log.info("found Ghostty resources dir: {s}", .{dir});
+            log.info("found Paramux resources dir: {s}", .{dir});
             try env.put("GHOSTTY_RESOURCES_DIR", dir);
         }
 
@@ -735,12 +735,12 @@ const Subprocess = struct {
 
             var exe_buf: [std.fs.max_path_bytes]u8 = undefined;
             const exe_bin_path = std.fs.selfExePath(&exe_buf) catch |err| {
-                log.warn("failed to get ghostty exe path err={}", .{err});
+                log.warn("failed to get paramux exe path err={}", .{err});
                 break :ghostty_path;
             };
             const exe_dir = std.fs.path.dirname(exe_bin_path) orelse break :ghostty_path;
             log.debug(
-                "{s} ghostty bin on path dir={s}",
+                "{s} paramux bin on path dir={s}",
                 .{ if (builtin.os.tag == .windows) "prepending" else "appending", exe_dir },
             );
             try addGhosttyBinToPath(alloc, &env, exe_dir);
@@ -787,7 +787,7 @@ const Subprocess = struct {
 
         // Set environment variables used by some programs (such as neovim) to detect
         // which terminal emulator and version they're running under.
-        try env.put("TERM_PROGRAM", "ghostty");
+        try env.put("TERM_PROGRAM", "paramux");
         try env.put("TERM_PROGRAM_VERSION", build_config.version_string);
 
         // VTE_VERSION is set by gnome-terminal and other VTE-based terminals.
@@ -814,7 +814,7 @@ const Subprocess = struct {
             const force: ?shell_integration.Shell = switch (cfg.shell_integration) {
                 .none => {
                     // This is a source of confusion for users despite being
-                    // opt-in since it results in some Ghostty features not
+                    // opt-in since it results in some Paramux features not
                     // working. We always want to log it.
                     log.info("shell integration disabled by configuration", .{});
                     break :shell default_shell_command;
@@ -879,7 +879,7 @@ const Subprocess = struct {
         ) catch |err| switch (err) {
             // If we fail to allocate space for the command we want to
             // execute, we'd still like to try to run something so
-            // Ghostty can launch (and maybe the user can debug this further).
+            // Paramux can launch (and maybe the user can debug this further).
             // Realistically, if you're getting OOM, I think other stuff is
             // about to crash, but we can try.
             error.OutOfMemory => oom: {
@@ -1159,7 +1159,7 @@ const Subprocess = struct {
 
     /// This should be called after fork but before exec in the child process.
     /// To repeat: this function RUNS IN THE FORKED CHILD PROCESS before
-    /// exec is called; it does NOT run in the main Ghostty process.
+    /// exec is called; it does NOT run in the main Paramux process.
     fn childPreExec(self: *Subprocess) !void {
         // Setup our pty
         try self.pty.?.childPreExec();

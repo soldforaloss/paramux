@@ -114,6 +114,74 @@ pub const AutomationActionTarget = union(enum) {
     surface_id: u64,
 };
 
+/// Maximum exact-text payload accepted by the dedicated terminal-input IPC
+/// contract. The client and server both enforce this bound.
+pub const automation_input_max_len: usize = 16 * 1024;
+
+/// Named keys accepted by `paramux +send-key`.
+pub const AutomationKey = enum(u8) {
+    enter = 1,
+    tab,
+    escape,
+    backspace,
+    delete,
+    arrow_up,
+    arrow_down,
+    arrow_left,
+    arrow_right,
+    home,
+    end,
+    page_up,
+    page_down,
+
+    pub fn parse(value: []const u8) ?AutomationKey {
+        if (std.mem.eql(u8, value, "enter")) return .enter;
+        if (std.mem.eql(u8, value, "tab")) return .tab;
+        if (std.mem.eql(u8, value, "escape")) return .escape;
+        if (std.mem.eql(u8, value, "backspace")) return .backspace;
+        if (std.mem.eql(u8, value, "delete")) return .delete;
+        if (std.mem.eql(u8, value, "up") or std.mem.eql(u8, value, "arrow-up")) return .arrow_up;
+        if (std.mem.eql(u8, value, "down") or std.mem.eql(u8, value, "arrow-down")) return .arrow_down;
+        if (std.mem.eql(u8, value, "left") or std.mem.eql(u8, value, "arrow-left")) return .arrow_left;
+        if (std.mem.eql(u8, value, "right") or std.mem.eql(u8, value, "arrow-right")) return .arrow_right;
+        if (std.mem.eql(u8, value, "home")) return .home;
+        if (std.mem.eql(u8, value, "end")) return .end;
+        if (std.mem.eql(u8, value, "page-up")) return .page_up;
+        if (std.mem.eql(u8, value, "page-down")) return .page_down;
+        return null;
+    }
+};
+
+pub const AutomationInput = union(enum) {
+    text: []const u8,
+    key: AutomationKey,
+};
+
+test "automation-input-key parses the supported control vocabulary" {
+    inline for (.{
+        .{ "enter", AutomationKey.enter },
+        .{ "tab", AutomationKey.tab },
+        .{ "escape", AutomationKey.escape },
+        .{ "backspace", AutomationKey.backspace },
+        .{ "delete", AutomationKey.delete },
+        .{ "up", AutomationKey.arrow_up },
+        .{ "arrow-up", AutomationKey.arrow_up },
+        .{ "down", AutomationKey.arrow_down },
+        .{ "arrow-down", AutomationKey.arrow_down },
+        .{ "left", AutomationKey.arrow_left },
+        .{ "arrow-left", AutomationKey.arrow_left },
+        .{ "right", AutomationKey.arrow_right },
+        .{ "arrow-right", AutomationKey.arrow_right },
+        .{ "home", AutomationKey.home },
+        .{ "end", AutomationKey.end },
+        .{ "page-up", AutomationKey.page_up },
+        .{ "page-down", AutomationKey.page_down },
+    }) |case| {
+        try std.testing.expectEqual(case[1], AutomationKey.parse(case[0]).?);
+    }
+    try std.testing.expectEqual(@as(?AutomationKey, null), AutomationKey.parse("space"));
+}
+
 pub const Action = union(enum) {
     // A GUIDE TO ADDING NEW ACTIONS:
     //

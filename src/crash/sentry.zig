@@ -11,6 +11,13 @@ const state = &@import("../global.zig").state;
 const Surface = @import("../Surface.zig");
 
 const log = std.log.scoped(.sentry);
+const sentry_cache_subdir = build_config.data_dir_name ++ "/sentry";
+const crash_report_extension = ".paramuxcrash";
+
+fn crashReportFilename(alloc: Allocator, id: []const u8) Allocator.Error![]u8 {
+    return std.fmt.allocPrint(alloc, "{s}" ++ crash_report_extension, .{id});
+}
+
 const darwin = if (builtin.os.tag.isDarwin()) struct {
     fn setThreadName(name: [*:0]const u8) void {
         internal_os.macos.pthread_setname_np(name);
@@ -57,7 +64,7 @@ pub threadlocal var thread_state: ?ThreadState = null;
 /// This should only be called from one thread, and deinit should be called
 /// from the same thread that calls init to avoid data races.
 ///
-/// PRIVACY NOTE: I want to make it very clear that Ghostty by default does
+/// PRIVACY NOTE: I want to make it very clear that Paramux by default does
 /// NOT send any data over the network. We use the Sentry native SDK to collect
 /// crash reports and logs, but we only store them locally (see Transport).
 /// It is up to the user to grab the logs and manually send them to us
@@ -142,7 +149,7 @@ fn initThread(gpa: Allocator) !void {
 
         break :cache_dir try internal_os.xdg.cache(
             alloc,
-            .{ .subdir = "ghostty/sentry" },
+            .{ .subdir = sentry_cache_subdir },
         );
     };
     sentry.c.sentry_options_set_database_path_n(
@@ -309,7 +316,7 @@ pub const Transport = struct {
         // Build our final path and write to it.
         const path = try std.fs.path.join(alloc, &.{
             dir.path,
-            try std.fmt.allocPrint(alloc, "{s}.ghosttycrash", .{uuid.string()}),
+            try crashReportFilename(alloc, uuid.string()),
         });
         const file = try std.fs.cwd().createFile(path, .{});
         defer file.close();
@@ -330,3 +337,14 @@ pub const Transport = struct {
         return true;
     }
 };
+
+test "branding crash artifacts use Paramux names" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    try testing.expectEqualStrings("paramux/sentry", sentry_cache_subdir);
+
+    const filename = try crashReportFilename(alloc, "example-id");
+    defer alloc.free(filename);
+    try testing.expectEqualStrings("example-id.paramuxcrash", filename);
+}

@@ -1,10 +1,10 @@
-# Ghostty shell integration
+# Paramux shell integration
 export module ghostty {
   def has_feature [feature: string] {
     $feature in ($env.GHOSTTY_SHELL_FEATURES | default "" | split row ',')
   }
 
-  # Wrap `ssh` with Ghostty TERMINFO support
+  # Wrap `ssh` with Paramux TERMINFO support
   export def --wrapped ssh [...args] {
     mut ssh_env = {}
     mut ssh_opts = []
@@ -46,7 +46,7 @@ export module ghostty {
           print $"Setting up xterm-ghostty terminfo on ($ssh_cfg.hostname)..."
 
           let ctrl_path = (
-            mktemp -td $"ghostty-ssh-($ssh_cfg.user).XXXXXX"
+            mktemp -td $"paramux-ssh-($ssh_cfg.user).XXXXXX"
             | path join "socket"
           )
 
@@ -79,7 +79,7 @@ export module ghostty {
     }
   }
 
-  # Wrap `sudo` to preserve Ghostty's TERMINFO environment variable
+  # Wrap `sudo` to preserve Paramux's TERMINFO environment variable
   export def --wrapped sudo [...args] {
     mut sudo_args = $args
 

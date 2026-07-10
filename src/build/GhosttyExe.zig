@@ -42,10 +42,29 @@ pub fn init(b: *std.Build, cfg: *const Config, deps: *const SharedDeps) !Ghostty
     // OS-specific
     switch (cfg.target.result.os.tag) {
         .windows => {
+            const version_major = b.fmt("/DPARAMUX_VERSION_MAJOR={d}", .{cfg.version.major});
+            const version_minor = b.fmt("/DPARAMUX_VERSION_MINOR={d}", .{cfg.version.minor});
+            const version_patch = b.fmt("/DPARAMUX_VERSION_PATCH={d}", .{cfg.version.patch});
+            const version_revision = b.fmt(
+                "/DPARAMUX_VERSION_REVISION={d}",
+                .{win32VersionRevision(cfg.version)},
+            );
+            const version_string = b.fmt(
+                "/DPARAMUX_VERSION_STRING=\"{f}\"",
+                .{cfg.version},
+            );
+
             exe.subsystem = .Windows;
             exe.addWin32ResourceFile(.{
                 .file = b.path("dist/windows/paramux.rc"),
-                .flags = &.{try win32IconResourceStamp(b)},
+                .flags = &.{
+                    try win32IconResourceStamp(b),
+                    version_major,
+                    version_minor,
+                    version_patch,
+                    version_revision,
+                    version_string,
+                },
             });
 
             const command = b.addExecutable(.{
@@ -61,6 +80,17 @@ pub fn init(b: *std.Build, cfg: *const Config, deps: *const SharedDeps) !Ghostty
                 .use_llvm = true,
             });
             command.subsystem = .Console;
+            command.addWin32ResourceFile(.{
+                .file = b.path("dist/windows/paramux.rc"),
+                .flags = &.{
+                    "/DPARAMUX_COMMAND_LAUNCHER",
+                    version_major,
+                    version_minor,
+                    version_patch,
+                    version_revision,
+                    version_string,
+                },
+            });
             _ = try deps.add(command);
             command_exe = command;
             command_install_step = b.addInstallBinFile(command.getEmittedBin(), "paramux.com");
@@ -75,6 +105,13 @@ pub fn init(b: *std.Build, cfg: *const Config, deps: *const SharedDeps) !Ghostty
         .command_exe = command_exe,
         .command_install_step = command_install_step,
     };
+}
+
+fn win32VersionRevision(version: std.SemanticVersion) u32 {
+    const prerelease = version.pre orelse return 0;
+    const prefix = "paramux.";
+    if (!std.mem.startsWith(u8, prerelease, prefix)) return 0;
+    return std.fmt.parseInt(u32, prerelease[prefix.len..], 10) catch 0;
 }
 
 /// Add the paramux exe to the install target.

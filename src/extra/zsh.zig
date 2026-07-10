@@ -26,16 +26,16 @@ fn comptimeGenerateZshCompletions() []const u8 {
 
 fn writeZshCompletions(writer: *std.Io.Writer) !void {
     try writer.writeAll(
-        \\#compdef ghostty
+        \\#compdef paramux
         \\
         \\_fonts () {
-        \\  local font_list=$(ghostty +list-fonts | grep -Z '^[A-Z]')
+        \\  local font_list=$(paramux +list-fonts | grep -Z '^[A-Z]')
         \\  local fonts=(${(f)font_list})
         \\  _describe -t fonts 'fonts' fonts
         \\}
         \\
         \\_themes() {
-        \\  local theme_list=$(ghostty +list-themes | sed -E 's/^(.*) \(.*$/\1/')
+        \\  local theme_list=$(paramux +list-themes | sed -E 's/^(.*) \(.*$/\1/')
         \\  local themes=(${(f)theme_list})
         \\  _describe -t themes 'themes' themes
         \\}
@@ -111,7 +111,7 @@ fn writeZshCompletions(writer: *std.Io.Writer) !void {
     try writer.writeAll("\n}\n\n");
 
     try writer.writeAll(
-        \\_ghostty() {
+        \\_paramux() {
         \\  typeset -A opt_args
         \\  local context state line
         \\  local opt=('-e' '--help' '--version')
@@ -226,7 +226,15 @@ fn writeZshCompletions(writer: *std.Io.Writer) !void {
         \\  esac
         \\}
         \\
-        \\_ghostty "$@"
+        \\_paramux "$@"
         \\
     );
+}
+
+test "zsh completion targets paramux command" {
+    const testing = std.testing;
+
+    try testing.expect(std.mem.startsWith(u8, completions, "#compdef paramux\n"));
+    try testing.expect(std.mem.indexOf(u8, completions, "_paramux \"$@\"") != null);
+    try testing.expect(std.mem.indexOf(u8, completions, "ghostty +list-") == null);
 }

@@ -46,7 +46,7 @@ status --is-interactive || ghostty_exit
 # We do the full setup on the first prompt render. We do this so that other
 # shell integrations that setup the prompt and modify things are able to run
 # first. We want to run _last_.
-function __ghostty_setup --on-event fish_prompt -d "Setup ghostty integration"
+function __ghostty_setup --on-event fish_prompt -d "Setup Paramux integration"
     functions -e __ghostty_setup
 
     set --local features (string split , $GHOSTTY_SHELL_FEATURES)
@@ -89,7 +89,7 @@ function __ghostty_setup --on-event fish_prompt -d "Setup ghostty integration"
         end
     end
 
-    # Add Ghostty binary to PATH if the path feature is enabled
+    # Add Paramux binary to PATH if the path feature is enabled
     if contains path $features; and test -n "$GHOSTTY_BIN_DIR"
         fish_add_path --global --path --append "$GHOSTTY_BIN_DIR"
     end
@@ -97,7 +97,7 @@ function __ghostty_setup --on-event fish_prompt -d "Setup ghostty integration"
     # When using sudo shell integration feature, ensure $TERMINFO is set
     # and `sudo` is not already a function or alias
     if contains sudo $features; and test -n "$TERMINFO"; and test file = (type -t sudo 2> /dev/null; or echo "x")
-        # Wrap `sudo` command to ensure Ghostty terminfo is preserved
+        # Wrap `sudo` command to ensure Paramux terminfo is preserved
         function sudo -d "Wrap sudo to preserve terminfo"
             set --function sudo_has_sudoedit_flags no
             for arg in $argv
@@ -122,7 +122,7 @@ function __ghostty_setup --on-event fish_prompt -d "Setup ghostty integration"
     # SSH Integration
     set -l features (string split ',' -- "$GHOSTTY_SHELL_FEATURES")
     if contains ssh-env $features; or contains ssh-terminfo $features
-        function ssh --wraps=ssh --description "SSH wrapper with Ghostty integration"
+        function ssh --wraps=ssh --description "SSH wrapper with Paramux integration"
             set -l features (string split ',' -- "$GHOSTTY_SHELL_FEATURES")
             set -l ssh_term xterm-256color
             set -l ssh_opts
@@ -168,7 +168,7 @@ function __ghostty_setup --on-event fish_prompt -d "Setup ghostty integration"
                         if test -n "$ssh_terminfo"
                             echo "Setting up xterm-ghostty terminfo on $ssh_hostname..." >&2
 
-                            set ssh_cpath_dir (mktemp -d "/tmp/ghostty-ssh-$ssh_user.XXXXXX" 2>/dev/null; or echo "/tmp/ghostty-ssh-$ssh_user."(random))
+                            set ssh_cpath_dir (mktemp -d "/tmp/paramux-ssh-$ssh_user.XXXXXX" 2>/dev/null; or echo "/tmp/paramux-ssh-$ssh_user."(random))
                             set ssh_cpath "$ssh_cpath_dir/socket"
 
                             if echo "$ssh_terminfo" | command ssh $ssh_opts -o ControlMaster=yes -o ControlPath="$ssh_cpath" -o ControlPersist=60s $argv '
@@ -191,7 +191,7 @@ function __ghostty_setup --on-event fish_prompt -d "Setup ghostty integration"
                             echo "Warning: Could not generate terminfo data." >&2
                         end
                     else
-                        echo "Warning: ghostty command not available for cache management." >&2
+                        echo "Warning: paramux command not available for cache management." >&2
                     end
                 end
             end
@@ -231,7 +231,7 @@ function __ghostty_setup --on-event fish_prompt -d "Setup ghostty integration"
         printf \e\]7\;file://%s%s\a $hostname (string escape --style=url $PWD)
     end
 
-    # Enable fish to handle reflow because Ghostty clears the prompt on resize.
+    # Enable fish to handle reflow because Paramux clears the prompt on resize.
     set --global fish_handle_reflow 1
 
     # Initial calls for first prompt

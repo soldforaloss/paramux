@@ -190,21 +190,45 @@ last_bell_time: ?std.time.Instant = null,
 /// The effect of an input event. This can be used by callers to take
 /// the appropriate action after an input event. For example, key
 /// input can be forwarded to the OS for further processing if it
-/// wasn't handled in any way by Ghostty.
+/// wasn't handled in any way by Paramux.
 pub const InputEffect = enum {
-    /// The input was not handled in any way by Ghostty and should be
+    /// The input was not handled in any way by Paramux and should be
     /// forwarded to other subsystems (i.e. the OS) for further
     /// processing.
     ignored,
 
-    /// The input was handled and consumed by Ghostty.
+    /// The input was handled and consumed by Paramux.
     consumed,
+
+    /// The input was encoded and queued for the terminal process. This is
+    /// distinct from an app keybinding consuming the event so runtimes can
+    /// acknowledge terminal-specific UI state precisely.
+    terminal_input,
 
     /// The input resulted in a close event for this surface so
     /// the surface, runtime surface, etc. pointers may all be
     /// unsafe to use so exit immediately.
     closed,
 };
+
+/// Returns the input effect for a successfully performed binding action.
+fn inputEffectForBindingAction(action: input.Binding.Action) InputEffect {
+    return switch (action) {
+        .csi, .esc, .text, .cursor_key => .terminal_input,
+        else => .consumed,
+    };
+}
+
+test "binding-input-effect distinguishes terminal writes from app bindings" {
+    try std.testing.expectEqual(
+        InputEffect.terminal_input,
+        inputEffectForBindingAction(.{ .text = "hello" }),
+    );
+    try std.testing.expectEqual(
+        InputEffect.consumed,
+        inputEffectForBindingAction(.new_tab),
+    );
+}
 
 /// The search state for the surface.
 const Search = struct {
@@ -1441,7 +1465,7 @@ fn childExitedAbnormally(
     // Output our error message
     try t.setAttribute(.{ .@"8_fg" = .bright_red });
     try t.setAttribute(.{ .bold = {} });
-    try t.printString("Ghostty failed to launch the requested command:");
+    try t.printString("Paramux failed to launch the requested command:");
     try t.setAttribute(.{ .unset = {} });
 
     t.carriageReturn();
@@ -1930,7 +1954,7 @@ pub fn updateConfig(
         // If we haven't, then we update to the configured font size.
         // This allows config changes to update the font size. We used to
         // never do this but it was a common source of confusion and people
-        // assumed that Ghostty was broken! This logic makes more sense.
+        // assumed that Paramux was broken! This logic makes more sense.
         var size = self.font_size;
         size.points = std.math.clamp(config.@"font-size", 1.0, 255.0);
         break :font_size size;
@@ -2695,7 +2719,7 @@ fn resizeWithIoMode(self: *Surface, size: rendererpkg.ScreenSize, io_mode: Resiz
     self.size.screen = size;
     self.balancePaddingIfNeeded();
 
-    // Recalculate our grid size. Because Ghostty supports fluid resizing,
+    // Recalculate our grid size. Because Paramux supports fluid resizing,
     // its possible the grid doesn't change at all even if the screen size changes.
     // We have to update the IO thread no matter what because we send
     // pixel-level sizing to the subprocess.
@@ -3001,11 +3025,63 @@ pub fn keyCallback(
         break :event copy;
     };
 
+    return try self.sendKeyToTerminal(
+        event,
+        if (insp_ev) |*ev| ev else null,
+    );
+}
+
+/// Send exact UTF-8 bytes to the child PTY for the dedicated automation-input
+/// contract. This bypasses paste transformations and keybindings. Read-only
+/// surfaces reject automation input so callers can detect the drop.
+pub fn sendAutomationText(self: *Surface, text: []const u8) !void {
+    if (text.len == 0 or
+        text.len > apprt.ipc.automation_input_max_len or
+        !std.unicode.utf8ValidateSlice(text))
+    {
+        return error.InvalidAutomationInput;
+    }
+    if (self.child_exited) return error.NoAutomationTarget;
+    if (self.readonly) return error.ReadOnlySurface;
+
+    self.queueIo(try termio.Message.writeReq(self.alloc, text), .unlocked);
+
+    self.renderer_state.mutex.lock();
+    defer self.renderer_state.mutex.unlock();
+    if (self.config.selection_clear_on_typing) try self.setSelection(null);
+    if (self.config.scroll_to_bottom.keystroke) self.io.terminal.scrollViewport(.bottom);
+    try self.queueRender();
+}
+
+/// Encode one synthetic key with the surface's current terminal keyboard modes
+/// while bypassing application keybindings. This preserves cursor-key
+/// application mode and Kitty keyboard protocol state. Read-only surfaces
+/// reject automation input so callers can detect the drop.
+pub fn sendAutomationKey(self: *Surface, event: input.KeyEvent) !void {
+    if (self.child_exited) return error.NoAutomationTarget;
+    if (self.readonly) return error.ReadOnlySurface;
+    if (self.config.vt_kam_allowed) {
+        self.renderer_state.mutex.lock();
+        defer self.renderer_state.mutex.unlock();
+        if (self.io.terminal.modes.get(.disable_keyboard)) return;
+    }
+
+    const effect = try self.sendKeyToTerminal(event, null);
+    if (effect != .terminal_input) return error.InvalidAutomationInput;
+}
+
+/// Encode and queue a key after binding/modifier policy has been decided by the
+/// caller. Shared by normal key input and dedicated automation input.
+fn sendKeyToTerminal(
+    self: *Surface,
+    event: input.KeyEvent,
+    insp_ev: ?*inspectorpkg.KeyEvent,
+) !InputEffect {
     // Encode and send our key. If we didn't encode anything, then we
     // return the effect as ignored.
     if (try self.encodeKey(
         event,
-        if (insp_ev) |*ev| ev else null,
+        insp_ev,
     )) |write_req| {
         // If our process is exited and we press a key that results in
         // an encoded value, we close the surface. We want to eventually
@@ -3044,7 +3120,7 @@ pub fn keyCallback(
         try self.queueRender();
     }
 
-    return .consumed;
+    return .terminal_input;
 }
 
 /// Maybe handles a binding for a given event and if so returns the effect.
@@ -3189,10 +3265,17 @@ fn maybeHandleBinding(
         leaf.flags,
         actions,
     });
+    var input_effect: InputEffect = .consumed;
     const performed = performed: {
         // If this is a global or all action, then we perform it on
         // the app and it applies to every surface.
         if (leaf.flags.global or leaf.flags.all) {
+            for (actions) |action| {
+                if (inputEffectForBindingAction(action) == .terminal_input) {
+                    input_effect = .terminal_input;
+                    break;
+                }
+            }
             self.app.performAllChainedAction(
                 self.rt_app,
                 actions,
@@ -3208,6 +3291,9 @@ fn maybeHandleBinding(
         for (actions) |action| {
             if (self.performBindingAction(action)) |v| {
                 performed = performed or v;
+                if (v and inputEffectForBindingAction(action) == .terminal_input) {
+                    input_effect = .terminal_input;
+                }
             } else |err| {
                 log.info(
                     "key binding action failed action={t} err={}",
@@ -3271,7 +3357,7 @@ fn maybeHandleBinding(
                 break :binding &.{};
             };
         }
-        return .consumed;
+        return input_effect;
     }
 
     // If we didn't perform OR we didn't consume, then we want to
@@ -5151,7 +5237,7 @@ fn mouseSelection(
     );
 }
 
-/// Call to notify Ghostty that the color scheme for the terminal has
+/// Call to notify Paramux that the color scheme for the terminal has
 /// changed.
 pub fn colorSchemeCallback(self: *Surface, scheme: apprt.ColorScheme) !void {
     // Crash metadata in case we crash in here

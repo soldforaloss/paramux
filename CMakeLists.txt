@@ -6,7 +6,7 @@
 # directly. However, downstream users do still require `zig` on the PATH.
 # See dist/cmake/README.md and the repo build docs for toolchain details.
 #
-# Building within the winghostty repo
+# Building within the Paramux repo
 # ---------------------------------
 #
 #   cmake -B build
@@ -23,18 +23,18 @@
 # Option 1 — FetchContent (recommended, no manual install step):
 #
 #   include(FetchContent)
-#   FetchContent_Declare(winghostty
-#       GIT_REPOSITORY https://github.com/amanthanvi/winghostty.git
-#       GIT_TAG main
+#   FetchContent_Declare(paramux
+#       GIT_REPOSITORY https://github.com/soldforaloss/paramux.git
+#       GIT_TAG paramux
 #   )
-#   FetchContent_MakeAvailable(winghostty)
+#   FetchContent_MakeAvailable(paramux)
 #
 #   target_link_libraries(myapp PRIVATE ghostty-vt)        # shared
 #   target_link_libraries(myapp PRIVATE ghostty-vt-static) # static
 #
 # To use a local checkout instead of fetching:
 #
-#   cmake -B build -DFETCHCONTENT_SOURCE_DIR_WINGHOSTTY=/path/to/winghostty
+#   cmake -B build -DFETCHCONTENT_SOURCE_DIR_PARAMUX=/path/to/paramux
 #
 # Option 2 — find_package (after installing to a prefix):
 #

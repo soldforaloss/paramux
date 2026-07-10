@@ -7,7 +7,7 @@ const Allocator = std.mem.Allocator;
 const Sha256 = std.crypto.hash.sha2.Sha256;
 const log = std.log.scoped(.update_github_releases);
 
-pub const repo_owner = "amanthanvi";
+pub const repo_owner = "soldforaloss";
 pub const repo_name = "paramux";
 pub const latest_stable_api_url = "https://api.github.com/repos/soldforaloss/paramux/releases/latest";
 pub const releases_url = "https://github.com/soldforaloss/paramux/releases";

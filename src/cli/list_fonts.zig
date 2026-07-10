@@ -42,7 +42,7 @@ pub const Options = struct {
 /// When executed with no arguments, this will list all available fonts, sorted
 /// by family name, then font name. If a family name is given with `--family`,
 /// the sorting will be disabled and the results instead will be shown in the
-/// same priority order Ghostty would use to pick a font.
+/// same priority order Paramux would use to pick a font.
 ///
 /// Flags:
 ///
@@ -75,7 +75,7 @@ fn runArgs(alloc_gpa: Allocator, argsIter: anytype) !u8 {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    // Its possible to build Ghostty without font discovery!
+    // Its possible to build Paramux without font discovery!
     if (comptime font.Discover == void) {
         var buffer: [1024]u8 = undefined;
         var stderr_writer = std.fs.File.stderr().writer(&buffer);

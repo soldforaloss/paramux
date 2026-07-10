@@ -68,7 +68,7 @@ attach the doc comment to.
 You can also see and read all available configuration options in the source
 Config structure. The available keys are the keys verbatim, and their possible
 values are typically documented in the comments. You also can search for
-the public config files of other paramux and Ghostty users for examples and inspiration.
+the public config files of other Paramux and Ghostty users for examples and inspiration.
 
 ## Configuration Errors
 

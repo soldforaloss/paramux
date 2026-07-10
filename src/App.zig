@@ -231,6 +231,11 @@ test "automation-action safety rejects terminal input and crash actions" {
     try std.testing.expect(!isSafeAutomationAction(.unbind));
     try std.testing.expect(!isSafeAutomationAction(.{ .text = "hello" }));
     try std.testing.expect(!isSafeAutomationAction(.{ .csi = "0m" }));
+    try std.testing.expect(!isSafeAutomationAction(.{ .esc = "[A" }));
+    try std.testing.expect(!isSafeAutomationAction(.{ .cursor_key = .{
+        .normal = "\x1b[A",
+        .application = "\x1bOA",
+    } }));
     try std.testing.expect(!isSafeAutomationAction(.paste_from_clipboard));
     try std.testing.expect(!isSafeAutomationAction(.{ .write_screen_file = .copy }));
     try std.testing.expect(!isSafeAutomationAction(.{ .crash = .main }));
@@ -251,6 +256,67 @@ test "automation-action surface id targets reject app scoped actions" {
         null,
         automationActionTargetError(.{ .surface_id = 42 }, .new_tab),
     );
+}
+
+test "automation-input routing resolves only focused or exact surface id" {
+    var focused_rt: apprt.Surface = undefined;
+    focused_rt.core_surface = undefined;
+    focused_rt.core_surface.id = 11;
+    var other_rt: apprt.Surface = undefined;
+    other_rt.core_surface = undefined;
+    other_rt.core_surface.id = 42;
+    var items = [_]*apprt.Surface{ &focused_rt, &other_rt };
+
+    var app: App = undefined;
+    app.surfaces = .{ .items = &items, .capacity = items.len };
+    app.focused_surface = focused_rt.core();
+
+    try std.testing.expectEqual(
+        focused_rt.core(),
+        try app.resolveAutomationInputSurface(.focused),
+    );
+    try std.testing.expectEqual(
+        other_rt.core(),
+        try app.resolveAutomationInputSurface(.{ .surface_id = 42 }),
+    );
+    try std.testing.expectError(
+        error.NoAutomationTarget,
+        app.resolveAutomationInputSurface(.{ .surface_id = 99 }),
+    );
+}
+
+test "automation-input keys reuse terminal key encoding modes" {
+    const Helper = struct {
+        fn expectEncoded(
+            key: apprt.ipc.AutomationKey,
+            opts: input.key_encode.Options,
+            expected: []const u8,
+        ) !void {
+            var buf: [32]u8 = undefined;
+            var writer: std.Io.Writer = .fixed(&buf);
+            try input.key_encode.encode(&writer, automationKeyEvent(key), opts);
+            try std.testing.expectEqualStrings(expected, writer.buffered());
+        }
+    };
+
+    try Helper.expectEncoded(.enter, .default, "\r");
+    try Helper.expectEncoded(.tab, .default, "\t");
+    try Helper.expectEncoded(.escape, .default, "\x1b");
+    try Helper.expectEncoded(.backspace, .default, "\x7f");
+    try Helper.expectEncoded(.delete, .default, "\x1b[3~");
+    try Helper.expectEncoded(.arrow_up, .default, "\x1b[A");
+    try Helper.expectEncoded(.arrow_down, .default, "\x1b[B");
+    try Helper.expectEncoded(.arrow_right, .default, "\x1b[C");
+    try Helper.expectEncoded(.arrow_left, .default, "\x1b[D");
+    try Helper.expectEncoded(.home, .default, "\x1b[H");
+    try Helper.expectEncoded(.end, .default, "\x1b[F");
+    try Helper.expectEncoded(.page_up, .default, "\x1b[5~");
+    try Helper.expectEncoded(.page_down, .default, "\x1b[6~");
+
+    const application: input.key_encode.Options = .{ .cursor_key_application = true };
+    try Helper.expectEncoded(.arrow_up, application, "\x1bOA");
+    try Helper.expectEncoded(.home, application, "\x1bOH");
+    try Helper.expectEncoded(.end, application, "\x1bOF");
 }
 
 /// Returns true if confirmation is needed to quit the app. It is up to
@@ -293,6 +359,12 @@ fn drainMailbox(self: *App, rt_app: *apprt.App) !void {
                     request.target,
                     request.action_text,
                 ) catch |err| {
+                    request.err = err;
+                };
+            },
+            .automation_input => |request| {
+                defer request.done.set();
+                self.performAutomationInput(request.target, request.input) catch |err| {
                     request.err = err;
                 };
             },
@@ -604,6 +676,46 @@ fn performAutomationAction(
     }
 }
 
+fn resolveAutomationInputSurface(
+    self: *App,
+    target: apprt.ipc.AutomationActionTarget,
+) !*Surface {
+    return switch (target) {
+        .focused => self.focusedSurface() orelse error.NoAutomationTarget,
+        .surface_id => |id| self.findSurfaceByID(id) orelse error.NoAutomationTarget,
+    };
+}
+
+fn automationKeyEvent(key: apprt.ipc.AutomationKey) input.KeyEvent {
+    return .{ .key = switch (key) {
+        .enter => .enter,
+        .tab => .tab,
+        .escape => .escape,
+        .backspace => .backspace,
+        .delete => .delete,
+        .arrow_up => .arrow_up,
+        .arrow_down => .arrow_down,
+        .arrow_left => .arrow_left,
+        .arrow_right => .arrow_right,
+        .home => .home,
+        .end => .end,
+        .page_up => .page_up,
+        .page_down => .page_down,
+    } };
+}
+
+fn performAutomationInput(
+    self: *App,
+    target: apprt.ipc.AutomationActionTarget,
+    value: apprt.ipc.AutomationInput,
+) !void {
+    const surface = try self.resolveAutomationInputSurface(target);
+    switch (value) {
+        .text => |text| try surface.sendAutomationText(text),
+        .key => |key| try surface.sendAutomationKey(automationKeyEvent(key)),
+    }
+}
+
 fn automationActionTargetError(
     target: apprt.ipc.AutomationActionTarget,
     action: input.Binding.Action,
@@ -752,6 +864,9 @@ pub const Message = union(enum) {
     /// Perform a safe parsed keybinding action on the app thread.
     automation_action: *AutomationActionRequest,
 
+    /// Deliver bounded terminal input to one exact surface on the app thread.
+    automation_input: *AutomationInputRequest,
+
     /// Apply a desktop notification / attention state to a surface on the app
     /// thread, delivered over IPC (paramux `+notify`).
     set_notification: *SetNotificationRequest,
@@ -796,6 +911,13 @@ pub const Message = union(enum) {
     pub const AutomationActionRequest = struct {
         target: apprt.ipc.AutomationActionTarget,
         action_text: []const u8,
+        done: std.Thread.ResetEvent = .{},
+        err: ?anyerror = null,
+    };
+
+    pub const AutomationInputRequest = struct {
+        target: apprt.ipc.AutomationActionTarget,
+        input: apprt.ipc.AutomationInput,
         done: std.Thread.ResetEvent = .{},
         err: ?anyerror = null,
     };

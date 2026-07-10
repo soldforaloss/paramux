@@ -79,7 +79,7 @@ if [ -n "$GHOSTTY_BASH_INJECT" ]; then
   builtin unset GHOSTTY_BASH_RCFILE
 fi
 
-# Add Ghostty binary to PATH if the path feature is enabled
+# Add the Paramux binary to PATH if the path feature is enabled
 if [[ "$GHOSTTY_SHELL_FEATURES" == *"path"* && -n "$GHOSTTY_BIN_DIR" ]]; then
   if [[ ":$PATH:" != *":$GHOSTTY_BIN_DIR:"* ]]; then
     export PATH="$PATH:$GHOSTTY_BIN_DIR"
@@ -88,7 +88,7 @@ fi
 
 # Sudo
 if [[ "$GHOSTTY_SHELL_FEATURES" == *"sudo"* && -n "$TERMINFO" ]]; then
-  # Wrap `sudo` command to ensure Ghostty terminfo is preserved.
+  # Wrap `sudo` command to ensure Paramux terminfo is preserved.
   #
   # This approach supports wrapping a `sudo` alias, but the alias definition
   # must come _after_ this function is defined. Otherwise, the alias expansion
@@ -163,7 +163,7 @@ if [[ "$GHOSTTY_SHELL_FEATURES" == *ssh-* ]]; then
           if [[ -n "$ssh_terminfo" ]]; then
             builtin echo "Setting up xterm-ghostty terminfo on $ssh_hostname..." >&2
 
-            ssh_cpath_dir=$(mktemp -d "/tmp/ghostty-ssh-$ssh_user.XXXXXX" 2>/dev/null) || ssh_cpath_dir="/tmp/ghostty-ssh-$ssh_user.$$"
+            ssh_cpath_dir=$(mktemp -d "/tmp/paramux-ssh-$ssh_user.XXXXXX" 2>/dev/null) || ssh_cpath_dir="/tmp/paramux-ssh-$ssh_user.$$"
             ssh_cpath="$ssh_cpath_dir/socket"
 
             if builtin echo "$ssh_terminfo" | builtin command ssh -o ControlMaster=yes -o ControlPath="$ssh_cpath" -o ControlPersist=60s "$@" '

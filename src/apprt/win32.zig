@@ -683,6 +683,8 @@ const CTX_INSPECTOR: usize = 4009;
 const CTX_SPLIT_DOWN: usize = 4010;
 const CTX_SPLIT_LEFT: usize = 4011;
 const CTX_SPLIT_UP: usize = 4012;
+const CTX_CLOSE_SURFACE: usize = 4013;
+const CTX_TAB_OVERVIEW: usize = 4014;
 const CTX_TAB_RENAME: usize = 4020;
 const CTX_TAB_CLOSE: usize = 4021;
 const CTX_TAB_CLOSE_OTHERS: usize = 4022;
@@ -775,6 +777,11 @@ const PIPE_READMODE_BYTE = 0x00000000;
 const PIPE_WAIT = 0x00000000;
 const PIPE_ACCESS_DUPLEX = 0x00000003;
 const PIPE_UNLIMITED_INSTANCES = 255;
+// Keep every bounded authenticated request below the pipe input quota. The
+// client writes a complete frame before reading its ack, while the server may
+// reject a stale token after only the shared prefix. If a valid frame exceeds
+// this quota, both sides can otherwise wait on each other before token retry.
+const ipc_pipe_buffer_len: u32 = 64 * 1024;
 const ipc_pipe_prefix = "\\\\.\\pipe\\paramux.";
 // Wire v2 (paramux): the request header carries a per-instance auth token
 // (`[u32 ver][u8 kind][u16 token_len][token]`). Bumped from v1 so a mismatched
@@ -787,6 +794,8 @@ const ipc_ack_unsafe_automation_action: u8 = 3;
 const ipc_ack_invalid_automation_target: u8 = 4;
 const ipc_ack_no_automation_target: u8 = 5;
 const ipc_ack_unauthorized: u8 = 6;
+const ipc_ack_invalid_automation_input: u8 = 7;
+const ipc_ack_readonly_target: u8 = 8;
 const ipc_max_data_response_len: u32 = 16 * 1024 * 1024;
 const ipc_max_action_text_len: u32 = 16 * 1024;
 const ipc_max_new_window_argc: u32 = 4096;
@@ -799,7 +808,16 @@ const IpcRequestKind = enum(u8) {
     perform_action = 3,
     set_notification = 4,
     read_pane = 5,
+    send = 6,
+    send_key = 7,
 };
+
+fn ipcRequestRequiresToken(kind: IpcRequestKind) bool {
+    return switch (kind) {
+        .new_window, .list_windows => false,
+        .perform_action, .set_notification, .read_pane, .send, .send_key => true,
+    };
+}
 
 const POINT = win32_types.POINT;
 const RECT = win32_types.RECT;
@@ -2189,6 +2207,339 @@ test "encodeReadPaneIpcRequest byte layout" {
     try testing.expectEqual(@as(u64, 0x0102030405060708), readU64(req[8..16]));
 }
 
+fn encodeSendIpcRequest(
+    alloc: Allocator,
+    token: []const u8,
+    target: apprt.ipc.AutomationActionTarget,
+    text: []const u8,
+) ![]u8 {
+    if (text.len == 0 or
+        text.len > apprt.ipc.automation_input_max_len or
+        !std.unicode.utf8ValidateSlice(text))
+    {
+        return error.InvalidAutomationInput;
+    }
+
+    var encoded: std.ArrayList(u8) = .empty;
+    errdefer encoded.deinit(alloc);
+    try appendIpcRequestPrefix(&encoded, alloc, .send, token);
+    try encoded.append(alloc, switch (target) {
+        .focused => 0,
+        .surface_id => 1,
+    });
+    try appendU64(&encoded, alloc, switch (target) {
+        .focused => 0,
+        .surface_id => |id| id,
+    });
+    try appendU32(&encoded, alloc, @intCast(text.len));
+    try encoded.appendSlice(alloc, text);
+    return try encoded.toOwnedSlice(alloc);
+}
+
+fn decodeSendIpcPayload(
+    alloc: Allocator,
+    pipe: windows.HANDLE,
+) !struct {
+    target: apprt.ipc.AutomationActionTarget,
+    text: []u8,
+} {
+    var header: [13]u8 = undefined;
+    try readExactHandle(pipe, &header);
+    const target: apprt.ipc.AutomationActionTarget = switch (header[0]) {
+        0 => .focused,
+        1 => .{ .surface_id = readU64(header[1..9]) },
+        else => return error.InvalidIpcRequest,
+    };
+    const len = readU32(header[9..13]);
+    if (len == 0 or len > apprt.ipc.automation_input_max_len) {
+        return error.InvalidAutomationInput;
+    }
+    const text = try alloc.alloc(u8, len);
+    errdefer alloc.free(text);
+    try readExactHandle(pipe, text);
+    if (!std.unicode.utf8ValidateSlice(text)) return error.InvalidAutomationInput;
+    return .{ .target = target, .text = text };
+}
+
+fn encodeSendKeyIpcRequest(
+    alloc: Allocator,
+    token: []const u8,
+    target: apprt.ipc.AutomationActionTarget,
+    key: apprt.ipc.AutomationKey,
+) ![]u8 {
+    var encoded: std.ArrayList(u8) = .empty;
+    errdefer encoded.deinit(alloc);
+    try appendIpcRequestPrefix(&encoded, alloc, .send_key, token);
+    try encoded.append(alloc, switch (target) {
+        .focused => 0,
+        .surface_id => 1,
+    });
+    try appendU64(&encoded, alloc, switch (target) {
+        .focused => 0,
+        .surface_id => |id| id,
+    });
+    try encoded.append(alloc, @intFromEnum(key));
+    return try encoded.toOwnedSlice(alloc);
+}
+
+fn decodeSendKeyIpcPayload(
+    pipe: windows.HANDLE,
+) !struct {
+    target: apprt.ipc.AutomationActionTarget,
+    key: apprt.ipc.AutomationKey,
+} {
+    var payload: [10]u8 = undefined;
+    try readExactHandle(pipe, &payload);
+    const target: apprt.ipc.AutomationActionTarget = switch (payload[0]) {
+        0 => .focused,
+        1 => .{ .surface_id = readU64(payload[1..9]) },
+        else => return error.InvalidIpcRequest,
+    };
+    const key = std.meta.intToEnum(apprt.ipc.AutomationKey, payload[9]) catch {
+        return error.InvalidAutomationInput;
+    };
+    return .{ .target = target, .key = key };
+}
+
+test "automation-input ipc encodes exact utf8 and target" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const request = try encodeSendIpcRequest(
+        std.testing.allocator,
+        "ab",
+        .{ .surface_id = 0x0102030405060708 },
+        "snowman ☃",
+    );
+    defer std.testing.allocator.free(request);
+
+    try std.testing.expectEqual(ipc_wire_version, readU32(request[0..4]));
+    try std.testing.expectEqual(@intFromEnum(IpcRequestKind.send), request[4]);
+    try std.testing.expectEqual(@as(u16, 2), std.mem.readInt(u16, request[5..7], .little));
+    try std.testing.expectEqualStrings("ab", request[7..9]);
+    try std.testing.expectEqual(@as(u8, 1), request[9]);
+    try std.testing.expectEqual(@as(u64, 0x0102030405060708), readU64(request[10..18]));
+    try std.testing.expectEqual(@as(u32, 11), readU32(request[18..22]));
+    try std.testing.expectEqualStrings("snowman ☃", request[22..]);
+}
+
+test "automation-input ipc rejects invalid and oversized utf8" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectError(
+        error.InvalidAutomationInput,
+        encodeSendIpcRequest(std.testing.allocator, "", .focused, &.{0xFF}),
+    );
+
+    const oversized = try std.testing.allocator.alloc(u8, apprt.ipc.automation_input_max_len + 1);
+    defer std.testing.allocator.free(oversized);
+    @memset(oversized, 'x');
+    try std.testing.expectError(
+        error.InvalidAutomationInput,
+        encodeSendIpcRequest(std.testing.allocator, "", .focused, oversized),
+    );
+}
+
+test "automation-input authenticated requests fit the pipe input quota" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const max_text = try std.testing.allocator.alloc(
+        u8,
+        apprt.ipc.automation_input_max_len,
+    );
+    defer std.testing.allocator.free(max_text);
+    @memset(max_text, 'x');
+    const token = "0123456789abcdef0123456789abcdef";
+
+    const send_request = try encodeSendIpcRequest(
+        std.testing.allocator,
+        token,
+        .focused,
+        max_text,
+    );
+    defer std.testing.allocator.free(send_request);
+    try std.testing.expect(send_request.len <= @as(usize, ipc_pipe_buffer_len));
+
+    const notification_request = try encodeSetNotificationIpcRequest(
+        std.testing.allocator,
+        token,
+        .focused,
+        max_text,
+        max_text,
+    );
+    defer std.testing.allocator.free(notification_request);
+    try std.testing.expect(notification_request.len <= @as(usize, ipc_pipe_buffer_len));
+}
+
+test "automation-input ipc decodes exact utf8" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var file = try tmp.dir.createFile("ipc-send.bin", .{ .read = true, .truncate = true });
+    defer file.close();
+
+    var header: [13]u8 = undefined;
+    header[0] = 1;
+    std.mem.writeInt(u64, header[1..9], 42, .little);
+    std.mem.writeInt(u32, header[9..13], 6, .little);
+    try file.writeAll(&header);
+    try file.writeAll("héllo");
+    try file.seekTo(0);
+
+    const payload = try decodeSendIpcPayload(std.testing.allocator, file.handle);
+    defer std.testing.allocator.free(payload.text);
+    try std.testing.expectEqual(@as(u64, 42), payload.target.surface_id);
+    try std.testing.expectEqualStrings("héllo", payload.text);
+}
+
+test "automation-input ipc encodes and decodes named keys" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const request = try encodeSendKeyIpcRequest(
+        std.testing.allocator,
+        "",
+        .focused,
+        .page_down,
+    );
+    defer std.testing.allocator.free(request);
+    try std.testing.expectEqual(@intFromEnum(IpcRequestKind.send_key), request[4]);
+    try std.testing.expectEqual(@as(u8, 0), request[7]);
+    try std.testing.expectEqual(@as(u64, 0), readU64(request[8..16]));
+    try std.testing.expectEqual(@intFromEnum(apprt.ipc.AutomationKey.page_down), request[16]);
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var file = try tmp.dir.createFile("ipc-send-key.bin", .{ .read = true, .truncate = true });
+    defer file.close();
+    try file.writeAll(request[7..]);
+    try file.seekTo(0);
+    const decoded = try decodeSendKeyIpcPayload(file.handle);
+    try std.testing.expect(decoded.target == .focused);
+    try std.testing.expectEqual(apprt.ipc.AutomationKey.page_down, decoded.key);
+}
+
+test "automation-input ipc keeps launch forwarding open and input token gated" {
+    try std.testing.expect(!ipcRequestRequiresToken(.new_window));
+    try std.testing.expect(!ipcRequestRequiresToken(.list_windows));
+    try std.testing.expect(ipcRequestRequiresToken(.perform_action));
+    try std.testing.expect(ipcRequestRequiresToken(.set_notification));
+    try std.testing.expect(ipcRequestRequiresToken(.read_pane));
+    try std.testing.expect(ipcRequestRequiresToken(.send));
+    try std.testing.expect(ipcRequestRequiresToken(.send_key));
+}
+
+test "automation-input ipc maps invalid-input ack" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var file = try tmp.dir.createFile("ipc-input-ack.bin", .{ .read = true, .truncate = true });
+    defer file.close();
+    try writeIpcAckStatus(file.handle, ipc_ack_invalid_automation_input);
+    try file.seekTo(0);
+    try std.testing.expectError(error.InvalidAutomationInput, readIpcAck(file.handle));
+}
+
+test "automation-input ipc maps readonly-target ack" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var file = try tmp.dir.createFile("ipc-readonly-ack.bin", .{ .read = true, .truncate = true });
+    defer file.close();
+    try writeIpcAckStatus(file.handle, ipc_ack_readonly_target);
+    try file.seekTo(0);
+    try std.testing.expectError(error.ReadOnlySurface, readIpcAck(file.handle));
+}
+
+test "automation-input ipc rejects malformed decoded payloads" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        var file = try tmp.dir.createFile("ipc-send-invalid-utf8.bin", .{ .read = true, .truncate = true });
+        defer file.close();
+        var header: [13]u8 = undefined;
+        header[0] = 0;
+        std.mem.writeInt(u64, header[1..9], 0, .little);
+        std.mem.writeInt(u32, header[9..13], 1, .little);
+        try file.writeAll(&header);
+        try file.writeAll(&.{0xFF});
+        try file.seekTo(0);
+        try std.testing.expectError(
+            error.InvalidAutomationInput,
+            decodeSendIpcPayload(std.testing.allocator, file.handle),
+        );
+    }
+
+    {
+        var file = try tmp.dir.createFile("ipc-send-oversized.bin", .{ .read = true, .truncate = true });
+        defer file.close();
+        var header: [13]u8 = undefined;
+        header[0] = 0;
+        std.mem.writeInt(u64, header[1..9], 0, .little);
+        std.mem.writeInt(
+            u32,
+            header[9..13],
+            @intCast(apprt.ipc.automation_input_max_len + 1),
+            .little,
+        );
+        try file.writeAll(&header);
+        try file.seekTo(0);
+        try std.testing.expectError(
+            error.InvalidAutomationInput,
+            decodeSendIpcPayload(std.testing.allocator, file.handle),
+        );
+    }
+
+    {
+        var file = try tmp.dir.createFile("ipc-send-key-invalid.bin", .{ .read = true, .truncate = true });
+        defer file.close();
+        var payload: [10]u8 = @splat(0);
+        payload[9] = 0xFF;
+        try file.writeAll(&payload);
+        try file.seekTo(0);
+        try std.testing.expectError(
+            error.InvalidAutomationInput,
+            decodeSendKeyIpcPayload(file.handle),
+        );
+    }
+}
+
+test "automation-input ipc rejects missing and wrong auth before payload decode" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const Helper = struct {
+        fn expectDenied(kind: IpcRequestKind, token: []const u8) !void {
+            const request = switch (kind) {
+                .send => try encodeSendIpcRequest(std.testing.allocator, token, .focused, "x"),
+                .send_key => try encodeSendKeyIpcRequest(std.testing.allocator, token, .focused, .enter),
+                else => unreachable,
+            };
+            defer std.testing.allocator.free(request);
+
+            var tmp = std.testing.tmpDir(.{});
+            defer tmp.cleanup();
+            var file = try tmp.dir.createFile("ipc-input-auth.bin", .{ .read = true, .truncate = true });
+            defer file.close();
+            try file.writeAll(request);
+            try file.seekTo(0);
+
+            var app: App = undefined;
+            app.ipc_token = "0123456789abcdef0123456789abcdef";
+            try handleIpcClient(&app, file.handle);
+
+            try file.seekTo(7 + token.len);
+            try std.testing.expectError(error.Unauthorized, readIpcAck(file.handle));
+        }
+    };
+
+    try Helper.expectDenied(.send, "");
+    try Helper.expectDenied(.send_key, "wrong-token");
+}
+
 test "ipcTokenValid rejects wrong, short, empty, and absent tokens" {
     const testing = std.testing;
     var app: App = undefined;
@@ -2230,6 +2581,8 @@ fn readIpcAck(pipe: windows.HANDLE) !bool {
         ipc_ack_invalid_automation_target => error.InvalidAutomationTarget,
         ipc_ack_no_automation_target => error.NoAutomationTarget,
         ipc_ack_unauthorized => error.Unauthorized,
+        ipc_ack_invalid_automation_input => error.InvalidAutomationInput,
+        ipc_ack_readonly_target => error.ReadOnlySurface,
         else => error.InvalidIpcResponse,
     };
 }
@@ -2467,6 +2820,46 @@ fn sendReadPaneIpc(
     return try readIpcDataResponse(alloc, pipe);
 }
 
+fn sendTextIpc(
+    alloc: Allocator,
+    pipe_name: [:0]const u16,
+    token: []const u8,
+    target: apprt.ipc.AutomationActionTarget,
+    text: []const u8,
+) !bool {
+    const pipe = connectToIpcPipe(pipe_name) catch |err| switch (err) {
+        error.FileNotFound => return false,
+        error.PipeBusy => return error.IPCFailed,
+        else => return err,
+    };
+    defer _ = windows.CloseHandle(pipe);
+
+    const request = try encodeSendIpcRequest(alloc, token, target, text);
+    defer alloc.free(request);
+    try writeAllHandle(pipe, request);
+    return try readIpcAck(pipe);
+}
+
+fn sendKeyIpc(
+    alloc: Allocator,
+    pipe_name: [:0]const u16,
+    token: []const u8,
+    target: apprt.ipc.AutomationActionTarget,
+    key: apprt.ipc.AutomationKey,
+) !bool {
+    const pipe = connectToIpcPipe(pipe_name) catch |err| switch (err) {
+        error.FileNotFound => return false,
+        error.PipeBusy => return error.IPCFailed,
+        else => return err,
+    };
+    defer _ = windows.CloseHandle(pipe);
+
+    const request = try encodeSendKeyIpcRequest(alloc, token, target, key);
+    defer alloc.free(request);
+    try writeAllHandle(pipe, request);
+    return try readIpcAck(pipe);
+}
+
 fn applyNewWindowArguments(
     alloc_gpa: Allocator,
     config: *configpkg.Config,
@@ -2579,8 +2972,8 @@ fn ipcServerMain(app: *App) void {
             PIPE_ACCESS_DUPLEX,
             windows.PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
             PIPE_UNLIMITED_INSTANCES,
-            16 * 1024,
-            16 * 1024,
+            ipc_pipe_buffer_len,
+            ipc_pipe_buffer_len,
             0,
             null,
         );
@@ -2635,6 +3028,9 @@ fn handleIpcClient(app: *App, pipe: windows.HANDLE) !void {
     // client never blocks: an ack for the ack-reply methods, a data response
     // for read_pane.
     const authed = app.ipcTokenValid(header.token());
+    if (ipcRequestRequiresToken(header.kind) and !authed) {
+        return writeIpcAckStatus(pipe, ipc_ack_unauthorized);
+    }
     switch (header.kind) {
         .new_window => handleNewWindowIpcClient(app, pipe) catch |err| {
             log.warn("failed to process win32 new-window IPC request err={}", .{err});
@@ -2645,14 +3041,12 @@ fn handleIpcClient(app: *App, pipe: windows.HANDLE) !void {
             try writeIpcDataResponse(pipe, false, "");
         },
         .perform_action => {
-            if (!authed) return writeIpcAckStatus(pipe, ipc_ack_unauthorized);
             handlePerformActionIpcClient(app, pipe) catch |err| {
                 log.warn("failed to process win32 automation action IPC request err={}", .{err});
                 try writeIpcAck(pipe, false);
             };
         },
         .set_notification => {
-            if (!authed) return writeIpcAckStatus(pipe, ipc_ack_unauthorized);
             handleSetNotificationIpcClient(app, pipe) catch |err| {
                 log.warn("failed to process win32 set-notification IPC request err={}", .{err});
                 try writeIpcAck(pipe, false);
@@ -2662,11 +3056,18 @@ fn handleIpcClient(app: *App, pipe: windows.HANDLE) !void {
             // A bare unauthorized ack header (no data length) is a valid
             // data-response prefix that readIpcDataResponse maps to
             // error.Unauthorized, letting the client retry with the file token.
-            if (!authed) return writeIpcAckStatus(pipe, ipc_ack_unauthorized);
             handleReadPaneIpcClient(app, pipe) catch |err| {
                 log.warn("failed to process win32 read-pane IPC request err={}", .{err});
                 try writeIpcDataResponse(pipe, false, "");
             };
+        },
+        .send => handleSendIpcClient(app, pipe) catch |err| {
+            log.warn("failed to process win32 send IPC request err={}", .{err});
+            try writeIpcAck(pipe, false);
+        },
+        .send_key => handleSendKeyIpcClient(app, pipe) catch |err| {
+            log.warn("failed to process win32 send-key IPC request err={}", .{err});
+            try writeIpcAck(pipe, false);
         },
     }
 }
@@ -2755,6 +3156,52 @@ fn handleReadPaneIpcClient(app: *App, pipe: windows.HANDLE) !void {
     };
     defer app.core_app.alloc.free(text);
     try writeIpcDataResponse(pipe, true, text);
+}
+
+fn handleSendIpcClient(app: *App, pipe: windows.HANDLE) !void {
+    const payload = decodeSendIpcPayload(app.core_app.alloc, pipe) catch |err| switch (err) {
+        error.InvalidAutomationInput => {
+            try writeIpcAckStatus(pipe, ipc_ack_invalid_automation_input);
+            return;
+        },
+        else => return err,
+    };
+    defer app.core_app.alloc.free(payload.text);
+
+    requestAutomationInput(app, payload.target, .{ .text = payload.text }) catch |err| {
+        const status: u8 = switch (err) {
+            error.InvalidAutomationInput => ipc_ack_invalid_automation_input,
+            error.InvalidAutomationTarget => ipc_ack_invalid_automation_target,
+            error.NoAutomationTarget => ipc_ack_no_automation_target,
+            error.ReadOnlySurface => ipc_ack_readonly_target,
+            else => return err,
+        };
+        try writeIpcAckStatus(pipe, status);
+        return;
+    };
+    try writeIpcAck(pipe, true);
+}
+
+fn handleSendKeyIpcClient(app: *App, pipe: windows.HANDLE) !void {
+    const payload = decodeSendKeyIpcPayload(pipe) catch |err| switch (err) {
+        error.InvalidAutomationInput => {
+            try writeIpcAckStatus(pipe, ipc_ack_invalid_automation_input);
+            return;
+        },
+        else => return err,
+    };
+    requestAutomationInput(app, payload.target, .{ .key = payload.key }) catch |err| {
+        const status: u8 = switch (err) {
+            error.InvalidAutomationInput => ipc_ack_invalid_automation_input,
+            error.InvalidAutomationTarget => ipc_ack_invalid_automation_target,
+            error.NoAutomationTarget => ipc_ack_no_automation_target,
+            error.ReadOnlySurface => ipc_ack_readonly_target,
+            else => return err,
+        };
+        try writeIpcAckStatus(pipe, status);
+        return;
+    };
+    try writeIpcAck(pipe, true);
 }
 
 /// Wait for an IPC request's UI-thread completion, but bail out with an error if
@@ -2859,6 +3306,26 @@ fn requestReadPane(
     try waitForIpcRequestDone(app, &request.done);
     if (request.err) |err| return err;
     return request.result orelse error.IPCFailed;
+}
+
+fn requestAutomationInput(
+    app: *App,
+    target: apprt.ipc.AutomationActionTarget,
+    value: apprt.ipc.AutomationInput,
+) !void {
+    var request: CoreApp.Message.AutomationInputRequest = .{
+        .target = target,
+        .input = value,
+    };
+    const mailbox: CoreApp.Mailbox = .{
+        .rt_app = app,
+        .mailbox = &app.core_app.mailbox,
+    };
+    if (mailbox.push(.{ .automation_input = &request }, .{ .forever = {} }) == 0) {
+        return error.IPCFailed;
+    }
+    try waitForIpcRequestDone(app, &request.done);
+    if (request.err) |err| return err;
 }
 
 pub fn getProcAddress(name: [*:0]const u8) callconv(.c) ?*const anyopaque {
@@ -5508,6 +5975,40 @@ pub const App = struct {
         };
     }
 
+    pub fn performSend(
+        alloc: Allocator,
+        target: apprt.ipc.Target,
+        action_target: apprt.ipc.AutomationActionTarget,
+        text: []const u8,
+    ) !bool {
+        const pipe_name = try resolveIpcPipeNameForTarget(alloc, target);
+        defer alloc.free(pipe_name);
+        const token = readClientIpcToken(alloc) orelse "";
+        defer if (token.len > 0) alloc.free(token);
+        return sendTextIpc(alloc, pipe_name, token, action_target, text) catch |err| {
+            const retry = retryTokenAfterUnauthorized(alloc, err, token) orelse return err;
+            defer alloc.free(retry);
+            return try sendTextIpc(alloc, pipe_name, retry, action_target, text);
+        };
+    }
+
+    pub fn performSendKey(
+        alloc: Allocator,
+        target: apprt.ipc.Target,
+        action_target: apprt.ipc.AutomationActionTarget,
+        key: apprt.ipc.AutomationKey,
+    ) !bool {
+        const pipe_name = try resolveIpcPipeNameForTarget(alloc, target);
+        defer alloc.free(pipe_name);
+        const token = readClientIpcToken(alloc) orelse "";
+        defer if (token.len > 0) alloc.free(token);
+        return sendKeyIpc(alloc, pipe_name, token, action_target, key) catch |err| {
+            const retry = retryTokenAfterUnauthorized(alloc, err, token) orelse return err;
+            defer alloc.free(retry);
+            return try sendKeyIpc(alloc, pipe_name, retry, action_target, key);
+        };
+    }
+
     pub fn buildAutomationWindowListJson(
         self: *App,
         alloc: Allocator,
@@ -7446,13 +7947,23 @@ pub const App = struct {
         try self.showInfoMessage(target, caption, message);
     }
 
+    fn buildDesktopNotificationLaunch(self: *App, target: apprt.Target) !?[]u8 {
+        const surface = switch (target) {
+            .app => return null,
+            .surface => |core_surface| self.findSurfaceByCore(core_surface) orelse return null,
+        };
+        return try buildToastLaunchForSurface(self.core_app.alloc, surface);
+    }
+
     fn showDesktopNotification(
         self: *App,
         target: apprt.Target,
         title: [:0]const u8,
         body: [:0]const u8,
     ) !void {
-        try self.showDesktopNotificationWithLaunch(target, title, body, null);
+        const launch = try self.buildDesktopNotificationLaunch(target);
+        defer if (launch) |value| self.core_app.alloc.free(value);
+        try self.showDesktopNotificationWithLaunch(target, title, body, launch);
     }
 
     /// paramux FR-4/FR-5: apply a desktop notification to a target surface —
@@ -8194,6 +8705,7 @@ const TabOverviewEntry = struct {
     title: ?[]const u8 = null,
     pane_count: usize = 1,
     active: bool = false,
+    attention: AttentionState = .none,
 };
 
 const SplitTreeSurface = SplitTree(Surface);
@@ -9697,6 +10209,46 @@ const Host = struct {
         return tab.focusedSurface();
     }
 
+    /// Activate the pane represented by a clicked sidebar row. The sidebar is
+    /// the primary pane navigator, so its rows must behave like controls rather
+    /// than paint-only status labels. When the tab is zoomed, selecting another
+    /// row moves the zoom to that pane instead of focusing a hidden child HWND.
+    fn activateSidebarRowAtPoint(self: *Host, x: i32, y: i32) bool {
+        const tab = self.activeTab() orelse return false;
+        const content_rect = self.contentRect() catch return false;
+        const sidebar_rect = RECT{
+            .left = 0,
+            .top = content_rect.top,
+            .right = content_rect.left,
+            .bottom = content_rect.bottom,
+        };
+        const row_index = sidebarRowIndexAtPoint(
+            sidebar_rect,
+            self.scaled(host_sidebar_row_height),
+            x,
+            y,
+            tab.leafCount(),
+        ) orelse return false;
+
+        var selected_surface: ?*Surface = null;
+        var selected_handle: SplitTreeSurface.Node.Handle = .root;
+        var index: usize = 0;
+        var it = tab.tree.iterator();
+        while (it.next()) |entry| : (index += 1) {
+            if (index != row_index) continue;
+            selected_surface = entry.view;
+            selected_handle = entry.handle;
+            break;
+        }
+
+        const surface = selected_surface orelse return false;
+        if (tab.tree.zoomed != null and tab.tree.zoomed.? != selected_handle) {
+            tab.tree.zoom(selected_handle);
+        }
+        self.app.activateSurface(surface);
+        return true;
+    }
+
     /// Hit-test the pane divider (if any) under host-client point (x, y),
     /// returning a draggable divider descriptor or null. Null when the point
     /// is not on a divider, or the active tab is single-pane / zoomed. Uses
@@ -10477,8 +11029,37 @@ const Host = struct {
     }
 
     fn setOverlayDefaultBanner(self: *Host, mode: HostOverlayMode) !void {
-        _ = mode;
-        try self.setBanner(.none, null);
+        if (mode != .tab_overview) {
+            try self.setBanner(.none, null);
+            return;
+        }
+
+        const alloc = self.app.core_app.alloc;
+        const entries = try alloc.alloc(TabOverviewEntry, self.tabs.items.len);
+        defer alloc.free(entries);
+        for (self.tabs.items, 0..) |*tab, index| {
+            var attention: AttentionState = .none;
+            var it = tab.tree.iterator();
+            while (it.next()) |entry| {
+                attention = AttentionState.max(attention, entry.view.attention_state);
+            }
+            entries[index] = .{
+                .title = if (tab.focusedSurface()) |surface| surface.effectiveTitle() else null,
+                .pane_count = tab.leafCount(),
+                .active = index == self.active_tab,
+                .attention = attention,
+            };
+        }
+        const banner = try buildTabOverviewBannerText(alloc, entries);
+        defer alloc.free(banner);
+        try self.setBanner(.info, banner);
+    }
+
+    fn refreshTabOverviewBanner(self: *Host) void {
+        if (self.overlay_mode != .tab_overview) return;
+        self.setOverlayDefaultBanner(.tab_overview) catch |err| {
+            log.warn("failed to refresh win32 tab overview banner err={}", .{err});
+        };
     }
 
     fn ensureOverlayControls(self: *Host) !void {
@@ -11351,6 +11932,7 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_STRING, CTX_COMMAND_PALETTE, std.unicode.utf8ToUtf16LeStringLiteral("Command Palette\tCtrl+Shift+P"));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New Tab\tCtrl+Shift+T"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_OVERVIEW, std.unicode.utf8ToUtf16LeStringLiteral("Tabs / Workspaces..."));
 
         // Split directions as direct, top-level items (not a buried submenu) so
         // creating a split is discoverable, with the keyboard shortcut shown so
@@ -11360,6 +11942,8 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_DOWN, std.unicode.utf8ToUtf16LeStringLiteral("Split Down\tCtrl+Shift+E"));
         _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_LEFT, std.unicode.utf8ToUtf16LeStringLiteral("Split Left"));
         _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_UP, std.unicode.utf8ToUtf16LeStringLiteral("Split Up"));
+        const pane_count = if (self.activeTab()) |tab| tab.leafCount() else 1;
+        _ = AppendMenuW(menu, MF_STRING, CTX_CLOSE_SURFACE, closeSurfaceMenuLabel(pane_count));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
 
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_WINDOW, std.unicode.utf8ToUtf16LeStringLiteral("New Window\tCtrl+Shift+N"));
@@ -11397,6 +11981,9 @@ const Host = struct {
             CTX_NEW_TAB => {
                 self.postDeferredNewTab();
             },
+            CTX_TAB_OVERVIEW => {
+                runUiActionOrLog("context tab overview failed", surface.toggleTabOverview());
+            },
             CTX_SPLIT_RIGHT => {
                 runUiActionOrLog("context menu split right failed", self.app.performAction(.{ .surface = surface.core() }, .new_split, .right));
             },
@@ -11408,6 +11995,9 @@ const Host = struct {
             },
             CTX_SPLIT_UP => {
                 runUiActionOrLog("context menu split up failed", self.app.performAction(.{ .surface = surface.core() }, .new_split, .up));
+            },
+            CTX_CLOSE_SURFACE => {
+                runUiActionOrLog("context menu close pane failed", surface.core_surface.performBindingAction(.{ .close_surface = {} }));
             },
             CTX_NEW_WINDOW => {
                 runUiActionOrLog("context menu new window failed", self.app.performAction(.{ .surface = surface.core() }, .new_window, .{}));
@@ -11502,8 +12092,11 @@ const Host = struct {
         // Utility items. Split lives here too (not just the right-click menu) so
         // the one obvious "more actions" control advertises how to split a pane.
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New tab\tCtrl+Shift+T"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_OVERVIEW, std.unicode.utf8ToUtf16LeStringLiteral("Tabs / Workspaces..."));
         _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_RIGHT, std.unicode.utf8ToUtf16LeStringLiteral("Split right\tCtrl+Shift+O"));
         _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_DOWN, std.unicode.utf8ToUtf16LeStringLiteral("Split down\tCtrl+Shift+E"));
+        const pane_count = if (self.activeTab()) |tab| tab.leafCount() else 1;
+        _ = AppendMenuW(menu, MF_STRING, CTX_CLOSE_SURFACE, closeSurfaceMenuLabel(pane_count));
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_WINDOW, std.unicode.utf8ToUtf16LeStringLiteral("New window\tCtrl+Shift+N"));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
         _ = AppendMenuW(menu, MF_STRING, CTX_COMMAND_PALETTE, std.unicode.utf8ToUtf16LeStringLiteral("Command Palette\tCtrl+Shift+P"));
@@ -11549,11 +12142,17 @@ const Host = struct {
             CTX_NEW_TAB => {
                 self.postDeferredNewTab();
             },
+            CTX_TAB_OVERVIEW => {
+                runUiActionOrLog("overflow tab overview failed", surface.toggleTabOverview());
+            },
             CTX_SPLIT_RIGHT => {
                 runUiActionOrLog("overflow split right failed", self.app.performAction(.{ .surface = surface.core() }, .new_split, .right));
             },
             CTX_SPLIT_DOWN => {
                 runUiActionOrLog("overflow split down failed", self.app.performAction(.{ .surface = surface.core() }, .new_split, .down));
+            },
+            CTX_CLOSE_SURFACE => {
+                runUiActionOrLog("overflow close pane failed", surface.core_surface.performBindingAction(.{ .close_surface = {} }));
             },
             CTX_NEW_WINDOW => {
                 runUiActionOrLog("overflow new window failed", self.app.performAction(.{ .surface = surface.core() }, .new_window, .{}));
@@ -12379,7 +12978,7 @@ const Host = struct {
                 }
                 const action = input.Binding.Action.parse(text) catch |err| {
                     log.warn("win32 command palette invalid action action={s} err={}", .{ text, err });
-                    try self.setBanner(.err, "Unknown Ghostty action. Example: new_tab or toggle_fullscreen");
+                    try self.setBanner(.err, "Unknown Paramux action. Example: new_tab or toggle_fullscreen");
                     return false;
                 };
                 self.app.pushPaletteMru(text) catch |err| {
@@ -13815,20 +14414,26 @@ const Host = struct {
                 .right = text_right,
                 .bottom = y + half,
             }, theme.text_primary);
-            // Metadata line: "[branch[*]  ]cwd[  :port :port]". Ports are
-            // pid-derived (FR-3), so they show even when there's no OSC-7 cwd.
+            // The secondary line explains an active agent state in words and
+            // preserves the latest notification. Idle panes use the usual
+            // "[branch[*]  ]cwd[  :port :port]" metadata instead.
             {
                 var ports_buf: [128]u8 = undefined;
-                const ports_seg = formatSidebarPorts(&ports_buf, surface.listening_ports);
                 var meta_buf: [384]u8 = undefined;
-                const meta: []const u8 = if (surface.pwd) |pwd| blk: {
-                    const cwd = basename(pwd);
-                    break :blk if (surface.git_branch) |br|
-                        (std.fmt.bufPrint(&meta_buf, "{s}{s}  {s}{s}", .{ br, if (surface.git_dirty) "*" else "", cwd, ports_seg }) catch cwd)
-                    else
-                        (std.fmt.bufPrint(&meta_buf, "{s}{s}", .{ cwd, ports_seg }) catch cwd);
-                } else std.mem.trimLeft(u8, ports_seg, " ");
-                if (meta.len > 0) drawPaletteRowText(hdc, meta, .{
+                var attention_buf: [512]u8 = undefined;
+                const secondary: []const u8 = if (surface.attention_state != .none)
+                    formatSidebarAttention(&attention_buf, surface.attention_state, surface.last_notification)
+                else blk: {
+                    const ports_seg = formatSidebarPorts(&ports_buf, surface.listening_ports);
+                    break :blk if (surface.pwd) |pwd| pwd_blk: {
+                        const cwd = basename(pwd);
+                        break :pwd_blk if (surface.git_branch) |br|
+                            (std.fmt.bufPrint(&meta_buf, "{s}{s}  {s}{s}", .{ br, if (surface.git_dirty) "*" else "", cwd, ports_seg }) catch cwd)
+                        else
+                            (std.fmt.bufPrint(&meta_buf, "{s}{s}", .{ cwd, ports_seg }) catch cwd);
+                    } else std.mem.trimLeft(u8, ports_seg, " ");
+                };
+                if (secondary.len > 0) drawPaletteRowText(hdc, secondary, .{
                     .left = rect.left + pad,
                     .top = y + half - self.scaled(2),
                     .right = text_right,
@@ -16088,6 +16693,7 @@ fn surfaceConfirmPasteAccept(userdata: ?*anyopaque) void {
     const alloc = surface.app.core_app.alloc;
     surface.pending_clipboard_op = null;
     defer alloc.free(pending.data);
+    surface.acknowledgeAttention();
     surface.core_surface.completeClipboardRequest(
         pending.request,
         pending.data,
@@ -16209,11 +16815,14 @@ fn surfaceDropPayloadCallback(ctx: *anyopaque, payload: []const u8) void {
             surface.requestPasteConfirm(.paste, payload_z) catch |inner| {
                 std.log.warn("drop payload protected paste confirm failed err={}", .{inner});
             };
+            return;
         },
         else => {
             std.log.warn("drop payload paste failed err={}", .{err});
+            return;
         },
     };
+    surface.acknowledgeAttention();
 }
 
 const QuickTerminalGeometrySize = struct {
@@ -17659,6 +18268,9 @@ fn buildTabOverviewBannerText(
         });
         if (entry.pane_count > 1) {
             try buf.writer(alloc).print(" ({d})", .{entry.pane_count});
+        }
+        if (entry.attention != .none) {
+            try buf.writer(alloc).print(" [{s}]", .{attentionStateLabel(entry.attention)});
         }
     }
     return try buf.toOwnedSlice(alloc);
@@ -20145,6 +20757,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
             if (host) |v| {
                 const mx = signedLowWord(lParamBits(lParam));
                 const my = signedHighWord(lParamBits(lParam));
+                if (v.activateSidebarRowAtPoint(mx, my)) return 0;
                 if (v.dividerAtPoint(mx, my)) |divider| {
                     v.split_resize.begin(divider, v.scaled(win32_split_resize.min_pane_px));
                     _ = SetCapture(hwnd);
@@ -20310,10 +20923,12 @@ fn desiredTabIndex(total: usize, current: usize, goto: apprt.action.GotoTab) ?us
         .next => (current + 1) % total,
         .last => total - 1,
         _ => blk: {
+            // Numeric goto_tab values are documented as 1-based; clamp
+            // overshoot to the last tab (see input.Binding.Action.goto_tab).
             const raw: c_int = @intFromEnum(goto);
-            if (raw < 0) return null;
+            if (raw < 1) return null;
             const idx: usize = @intCast(raw);
-            break :blk @min(idx, total - 1);
+            break :blk @min(idx - 1, total - 1);
         },
     };
 }
@@ -20517,6 +21132,22 @@ fn isSafeStartupCwd(path: []const u8) bool {
         std.ascii.isAlphabetic(path[0]) and
         path[1] == ':' and
         (path[2] == '\\' or path[2] == '/');
+}
+
+fn sidebarRowIndexAtPoint(rect: RECT, row_height: i32, x: i32, y: i32, row_count: usize) ?usize {
+    if (row_height <= 0 or row_count == 0) return null;
+    if (x < rect.left or x >= rect.right or y < rect.top or y >= rect.bottom) return null;
+
+    const index: usize = @intCast(@divTrunc(y - rect.top, row_height));
+    if (index >= row_count) return null;
+    return index;
+}
+
+fn closeSurfaceMenuLabel(pane_count: usize) [*:0]const u16 {
+    return if (pane_count > 1)
+        std.unicode.utf8ToUtf16LeStringLiteral("Close pane\tCtrl+Shift+W")
+    else
+        std.unicode.utf8ToUtf16LeStringLiteral("Close tab\tCtrl+Shift+W");
 }
 
 fn pointInRect(point: POINT, rect: RECT) bool {
@@ -21816,6 +22447,54 @@ fn parseAttentionState(title: [:0]const u8) struct { state: AttentionState, titl
     return .{ .state = .waiting, .title = title };
 }
 
+fn attentionStateLabel(state: AttentionState) []const u8 {
+    return switch (state) {
+        .none => "",
+        .working => "WORKING",
+        .waiting => "WAITING",
+        .done => "DONE",
+        .@"error" => "ERROR",
+    };
+}
+
+fn formatSidebarAttention(buf: []u8, state: AttentionState, notification: ?[]const u8) []const u8 {
+    const label = attentionStateLabel(state);
+    if (label.len == 0) return "";
+    const message = if (notification) |value| std.mem.trim(u8, value, &std.ascii.whitespace) else "";
+    if (message.len == 0) return label;
+    const prefix = std.fmt.bufPrint(buf, "{s} · ", .{label}) catch return label;
+    var message_len = @min(message.len, buf.len - prefix.len);
+    while (message_len > 0 and !std.unicode.utf8ValidateSlice(message[0..message_len])) {
+        message_len -= 1;
+    }
+    @memcpy(buf[prefix.len..][0..message_len], message[0..message_len]);
+    return buf[0 .. prefix.len + message_len];
+}
+
+fn inputEffectAcknowledgesAttention(effect: CoreSurface.InputEffect) bool {
+    return effect == .terminal_input;
+}
+
+fn replaceLastNotification(
+    alloc: Allocator,
+    target: *?[:0]const u8,
+    title: []const u8,
+    body: []const u8,
+) !bool {
+    var buf: [512]u8 = undefined;
+    const text: []const u8 = if (title.len > 0 and body.len > 0)
+        (std.fmt.bufPrint(&buf, "{s}: {s}", .{ title, body }) catch body)
+    else if (body.len > 0) body else title;
+    if (text.len == 0) {
+        if (target.* == null) return false;
+        try appendOwnedString(alloc, target, null);
+        return true;
+    }
+    if (ownedStringEquals(target.*, text)) return false;
+    try appendOwnedString(alloc, target, text);
+    return true;
+}
+
 test "parseAttentionState maps the state marker and preserves plain titles" {
     const testing = std.testing;
 
@@ -21834,6 +22513,51 @@ test "parseAttentionState maps the state marker and preserves plain titles" {
     const plain = parseAttentionState("Build output");
     try testing.expectEqual(AttentionState.waiting, plain.state);
     try testing.expectEqualStrings("Build output", plain.title);
+}
+
+test "formatSidebarAttention makes state and notification readable" {
+    const testing = std.testing;
+    var buf: [128]u8 = undefined;
+
+    try testing.expectEqualStrings(
+        "WAITING · Claude needs approval",
+        formatSidebarAttention(&buf, .waiting, "Claude needs approval"),
+    );
+    try testing.expectEqualStrings("DONE", formatSidebarAttention(&buf, .done, null));
+    try testing.expectEqualStrings("ERROR", formatSidebarAttention(&buf, .@"error", ""));
+    try testing.expectEqualStrings("", formatSidebarAttention(&buf, .none, "ignored"));
+
+    var short_buf: [24]u8 = undefined;
+    const truncated = formatSidebarAttention(
+        &short_buf,
+        .waiting,
+        "a notification that is much too long",
+    );
+    try testing.expect(std.mem.startsWith(u8, truncated, "WAITING · "));
+    try testing.expect(truncated.len <= short_buf.len);
+    try testing.expect(std.unicode.utf8ValidateSlice(truncated));
+}
+
+test "attention persists through bindings and clears on terminal input" {
+    const testing = std.testing;
+
+    try testing.expect(!inputEffectAcknowledgesAttention(.consumed));
+    try testing.expect(!inputEffectAcknowledgesAttention(.ignored));
+    try testing.expect(inputEffectAcknowledgesAttention(.terminal_input));
+}
+
+test "empty notification replaces stale sidebar message" {
+    const testing = std.testing;
+    var notification: ?[:0]const u8 = try testing.allocator.dupeZ(u8, "needs approval");
+    defer if (notification) |value| testing.allocator.free(value);
+
+    try testing.expect(try replaceLastNotification(
+        testing.allocator,
+        &notification,
+        "",
+        "",
+    ));
+    try testing.expectEqual(@as(?[:0]const u8, null), notification);
 }
 
 pub const Surface = struct {
@@ -22649,11 +23373,13 @@ pub const Surface = struct {
                     std.log.warn("paste confirm dispatch failed err={}", .{inner});
                     return false;
                 };
+                return true;
             },
 
             else => return err,
         };
 
+        if (state == .paste) self.acknowledgeAttention();
         return true;
     }
 
@@ -24785,8 +25511,6 @@ pub const Surface = struct {
 
     fn focusChanged(self: *Surface, focused: bool) void {
         self.window_focused = focused;
-        // paramux M3: viewing a pane clears its attention flag.
-        if (focused) self.setAttentionState(.none);
         const focus_state_changed = if (focused) self.app.noteSurfaceFocused(self) else false;
         if (!self.core_initialized) return;
         if (focused) self.app.core_app.focusSurface(self.core());
@@ -24807,7 +25531,7 @@ pub const Surface = struct {
         const event = keyEventFromWin32Message(msg, wParam, lParam) orelse return;
         self.pending_wm_char_text = event.composing and event.action != .release;
 
-        _ = self.core_surface.keyCallback(event) catch |err| {
+        const effect = self.core_surface.keyCallback(event) catch |err| {
             log.err("win32 key callback failed err={} vk={} action={} key={} mods={}", .{
                 err,
                 @as(UINT, @intCast(wParam & 0xFFFF)),
@@ -24817,6 +25541,7 @@ pub const Surface = struct {
             });
             return;
         };
+        if (inputEffectAcknowledgesAttention(effect)) self.acknowledgeAttention();
     }
 
     fn handleCharMessage(self: *Surface, wParam: WPARAM, lParam: LPARAM) void {
@@ -24857,9 +25582,11 @@ pub const Surface = struct {
             .unshifted_codepoint = codepoint,
         };
         event.utf8 = utf8_buf[0..utf8_len];
-        _ = self.core_surface.keyCallback(event) catch |err| {
+        const effect = self.core_surface.keyCallback(event) catch |err| {
             log.err("win32 char commit failed err={} codepoint={}", .{ err, codepoint });
+            return;
         };
+        if (inputEffectAcknowledgesAttention(effect)) self.acknowledgeAttention();
     }
 
     fn positionImeWindow(self: *Surface) void {
@@ -24919,9 +25646,11 @@ pub const Surface = struct {
             .mods = .{},
         };
         event.utf8 = utf8_buf[0..utf8_len];
-        _ = self.core_surface.keyCallback(event) catch |err| {
+        const effect = self.core_surface.keyCallback(event) catch |err| {
             log.err("win32 IME commit failed err={}", .{err});
+            return;
         };
+        if (inputEffectAcknowledgesAttention(effect)) self.acknowledgeAttention();
     }
 
     fn handleImeComposition(self: *Surface) void {
@@ -25027,9 +25756,11 @@ pub const Surface = struct {
             .mods = .{},
         };
         event.utf8 = result.items;
-        _ = self.core_surface.keyCallback(event) catch |err| {
+        const effect = self.core_surface.keyCallback(event) catch |err| {
             log.err("win32 drop files failed err={}", .{err});
+            return;
         };
+        if (inputEffectAcknowledgesAttention(effect)) self.acknowledgeAttention();
     }
 
     fn handleMouseMove(self: *Surface, lParam: LPARAM, mods: input.Mods) void {
@@ -25049,6 +25780,7 @@ pub const Surface = struct {
 
         self.cursor_pos = cursorPosFromLParam(lParam);
         if (state == .press) {
+            self.acknowledgeAttention();
             if (self.hwnd) |hwnd| {
                 _ = SetFocus(hwnd);
                 _ = SetCapture(hwnd);
@@ -25088,6 +25820,7 @@ pub const Surface = struct {
 
         self.cursor_pos = cursorPosFromLParam(lParam);
         if (state == .press) {
+            self.acknowledgeAttention();
             if (self.hwnd) |h| {
                 _ = SetFocus(h);
                 _ = SetCapture(h);
@@ -25337,15 +26070,35 @@ pub const Surface = struct {
     /// paramux M2: store the most recent desktop-notification text for the
     /// sidebar row.
     fn setLastNotification(self: *Surface, title: []const u8, body: []const u8) !void {
-        const alloc = self.app.core_app.alloc;
-        var buf: [512]u8 = undefined;
-        const text: []const u8 = if (title.len > 0 and body.len > 0)
-            (std.fmt.bufPrint(&buf, "{s}: {s}", .{ title, body }) catch body)
-        else if (body.len > 0) body else title;
-        if (text.len == 0) return;
-        if (ownedStringEquals(self.last_notification, text)) return;
-        try appendOwnedString(alloc, &self.last_notification, text);
-        self.invalidateStatusBarState();
+        if (try replaceLastNotification(
+            self.app.core_app.alloc,
+            &self.last_notification,
+            title,
+            body,
+        )) {
+            self.invalidateStatusBarState();
+            if (self.host) |host| host.refreshTabOverviewBanner();
+        }
+    }
+
+    /// Clear an event only after the user actually interacts with this
+    /// terminal. Focus changes and app-level navigation bindings do not call
+    /// this path.
+    fn acknowledgeAttention(self: *Surface) void {
+        var changed = false;
+        if (self.attention_state != .none) {
+            self.attention_state = .none;
+            changed = true;
+        }
+        if (self.last_notification) |value| {
+            self.app.core_app.alloc.free(value);
+            self.last_notification = null;
+            changed = true;
+        }
+        if (changed) {
+            self.invalidateStatusBarState();
+            if (self.host) |host| host.refreshTabOverviewBanner();
+        }
     }
 
     /// paramux FR-4: set the pane's attention state and repaint. Transitioning
@@ -25357,6 +26110,7 @@ pub const Surface = struct {
             if (self.host) |host| host.flashForAttention();
         }
         self.invalidateStatusBarState();
+        if (self.host) |host| host.refreshTabOverviewBanner();
     }
 
     fn setSecureInput(self: *Surface, value: apprt.action.SecureInput) !void {
@@ -31211,10 +31965,87 @@ test "win32 buildTabOverviewBannerText lists active tabs and pane counts" {
 
     const banner = try buildTabOverviewBannerText(std.testing.allocator, &.{
         .{ .title = "pwsh", .pane_count = 1, .active = true },
-        .{ .title = "logs-and-output-pane", .pane_count = 3, .active = false },
+        .{ .title = "logs-and-output-pane", .pane_count = 3, .active = false, .attention = .waiting },
     });
     defer std.testing.allocator.free(banner);
-    try std.testing.expectEqualStrings("Tabs: *1:pwsh | 2:logs-and-output... (3)", banner);
+    try std.testing.expectEqualStrings("Tabs: *1:pwsh | 2:logs-and-output... (3) [WAITING]", banner);
+}
+
+test "win32 tab-overview-live refreshes on notification arrival" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+
+    var host: Host = .{
+        .app = &app,
+        .id = 93,
+        .overlay_mode = .tab_overview,
+    };
+    defer {
+        if (host.banner_text) |value| std.testing.allocator.free(value);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface: Surface = .{
+        .app = &app,
+        .host = &host,
+        .host_id = host.id,
+        .title = "pwsh",
+    };
+    defer if (surface.last_notification) |value| std.testing.allocator.free(value);
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface));
+    try host.setOverlayDefaultBanner(.tab_overview);
+    try std.testing.expectEqualStrings("Tabs: *1:pwsh", host.banner_text.?);
+
+    try surface.setLastNotification("Waiting", "Needs approval");
+    surface.setAttentionState(.waiting);
+
+    try std.testing.expectEqualStrings("Tabs: *1:pwsh [WAITING]", host.banner_text.?);
+}
+
+test "win32 tab-overview-live refreshes on acknowledgement" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+
+    var host: Host = .{
+        .app = &app,
+        .id = 94,
+        .overlay_mode = .tab_overview,
+    };
+    defer {
+        if (host.banner_text) |value| std.testing.allocator.free(value);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface: Surface = .{
+        .app = &app,
+        .host = &host,
+        .host_id = host.id,
+        .title = "pwsh",
+        .last_notification = try std.testing.allocator.dupeZ(u8, "Needs approval"),
+        .attention_state = .waiting,
+    };
+    defer if (surface.last_notification) |value| std.testing.allocator.free(value);
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface));
+    try host.setOverlayDefaultBanner(.tab_overview);
+    try std.testing.expectEqualStrings("Tabs: *1:pwsh [WAITING]", host.banner_text.?);
+
+    surface.acknowledgeAttention();
+
+    try std.testing.expectEqualStrings("Tabs: *1:pwsh", host.banner_text.?);
 }
 
 test "win32 buildSearchButtonLabel reflects active search state" {
@@ -31657,6 +32488,49 @@ test "win32 buildToastLaunchForSurface includes host tab id" {
     try std.testing.expectEqual(@as(?u32, 44), parsed.tab_id);
     try std.testing.expectEqual(@as(?u32, host.id), parsed.window_id);
     try std.testing.expectEqual(@as(?win32_toast_activation.Action, .focus), parsed.action);
+}
+
+test "win32 desktop notifications build a launch target for their pane" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.windows = .empty;
+    app.hosts = .empty;
+    defer app.windows.deinit(std.testing.allocator);
+    defer app.hosts.deinit(std.testing.allocator);
+
+    var host: Host = undefined;
+    host.app = &app;
+    host.id = 92;
+    host.tabs = .empty;
+    host.active_tab = 0;
+    defer {
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface: Surface = undefined;
+    surface.app = &app;
+    surface.core_surface = undefined;
+    surface.core_surface.id = 556;
+    surface.host = &host;
+    surface.host_id = host.id;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 45, &surface));
+    try app.windows.append(std.testing.allocator, &surface);
+    try app.hosts.append(std.testing.allocator, &host);
+
+    const launch = (try app.buildDesktopNotificationLaunch(.{ .surface = surface.core() })).?;
+    defer std.testing.allocator.free(launch);
+    const parsed = try win32_toast_activation.parseLaunchArg(launch);
+    try std.testing.expectEqual(@as(?u64, 556), parsed.surface_id);
+    try std.testing.expectEqual(@as(?u32, 45), parsed.tab_id);
+    try std.testing.expectEqual(@as(?u32, 92), parsed.window_id);
+    try std.testing.expect((try app.buildDesktopNotificationLaunch(.app)) == null);
 }
 
 test "win32 commandFinishPlan enforces threshold and focus policy" {
@@ -33004,7 +33878,7 @@ test "win32 buildOverlayFeedbackText prefers inline banner state" {
     const err = try buildOverlayFeedbackText(
         std.testing.allocator,
         .err,
-        "Unknown Ghostty action",
+        "Unknown Paramux action",
         .command_palette,
         "",
         null,
@@ -33016,7 +33890,7 @@ test "win32 buildOverlayFeedbackText prefers inline banner state" {
         empty_mru,
     );
     defer std.testing.allocator.free(err);
-    try std.testing.expectEqualStrings("Error: Unknown Ghostty action", err);
+    try std.testing.expectEqualStrings("Error: Unknown Paramux action", err);
 
     const fallback = try buildOverlayFeedbackText(
         std.testing.allocator,
@@ -33931,8 +34805,9 @@ test "win32 desiredTabIndex cycles and clamps" {
     try std.testing.expectEqual(@as(?usize, 2), desiredTabIndex(3, 1, .next));
     try std.testing.expectEqual(@as(?usize, 0), desiredTabIndex(3, 2, .next));
     try std.testing.expectEqual(@as(?usize, 2), desiredTabIndex(3, 0, .last));
-    try std.testing.expectEqual(@as(?usize, 0), desiredTabIndex(3, 1, @enumFromInt(0)));
+    try std.testing.expectEqual(@as(?usize, 0), desiredTabIndex(3, 1, @enumFromInt(1)));
     try std.testing.expectEqual(@as(?usize, 2), desiredTabIndex(3, 1, @enumFromInt(9)));
+    try std.testing.expectEqual(@as(?usize, null), desiredTabIndex(3, 1, @enumFromInt(0)));
 }
 
 test "win32 tab button mouse-up still activates tab after capture release" {
@@ -34104,4 +34979,36 @@ test "win32 tab overview parser accepts one-based tab numbers" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
     try std.testing.expectEqual(@as(usize, 2), try std.fmt.parseUnsigned(usize, "2", 10));
+}
+
+test "win32 sidebar row hit testing maps clicks to visible panes" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const rect = RECT{ .left = 0, .top = 48, .right = 240, .bottom = 240 };
+    try std.testing.expectEqual(@as(?usize, 0), sidebarRowIndexAtPoint(rect, 48, 12, 48, 4));
+    try std.testing.expectEqual(@as(?usize, 1), sidebarRowIndexAtPoint(rect, 48, 12, 96, 4));
+    try std.testing.expectEqual(@as(?usize, 3), sidebarRowIndexAtPoint(rect, 48, 239, 239, 4));
+
+    try std.testing.expectEqual(@as(?usize, null), sidebarRowIndexAtPoint(rect, 48, -1, 48, 4));
+    try std.testing.expectEqual(@as(?usize, null), sidebarRowIndexAtPoint(rect, 48, 240, 48, 4));
+    try std.testing.expectEqual(@as(?usize, null), sidebarRowIndexAtPoint(rect, 48, 12, 240, 4));
+    try std.testing.expectEqual(@as(?usize, null), sidebarRowIndexAtPoint(rect, 48, 12, 239, 3));
+    try std.testing.expectEqual(@as(?usize, null), sidebarRowIndexAtPoint(rect, 0, 12, 48, 4));
+}
+
+test "win32 close surface menu names the visible scope" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const expected_tab = std.unicode.utf8ToUtf16LeStringLiteral("Close tab\tCtrl+Shift+W");
+    try std.testing.expectEqualSlices(
+        u16,
+        expected_tab[0..expected_tab.len],
+        std.mem.span(closeSurfaceMenuLabel(1)),
+    );
+    const expected_pane = std.unicode.utf8ToUtf16LeStringLiteral("Close pane\tCtrl+Shift+W");
+    try std.testing.expectEqualSlices(
+        u16,
+        expected_pane[0..expected_pane.len],
+        std.mem.span(closeSurfaceMenuLabel(2)),
+    );
 }

@@ -27,7 +27,7 @@ pub const Error = error{ CacheIsLocked, HostnameIsInvalid };
 
 /// Returns the default path for the cache for a given program.
 ///
-/// On all platforms, this is `${XDG_STATE_HOME}/ghostty/ssh_cache`.
+/// On all platforms, this is `${XDG_STATE_HOME}/{program}/ssh_cache`.
 ///
 /// The returned value is allocated and must be freed by the caller.
 pub fn defaultPath(
@@ -43,6 +43,33 @@ pub fn defaultPath(
     };
     defer alloc.free(state_dir);
     return try std.fs.path.join(alloc, &.{ state_dir, "ssh_cache" });
+}
+
+/// Copy a legacy cache into this cache's path when this cache does not exist.
+/// The legacy cache is retained and an existing destination is never replaced.
+pub fn migrateFrom(self: DiskCache, legacy_path: []const u8) !bool {
+    target_missing: {
+        std.fs.accessAbsolute(self.path, .{}) catch |err| switch (err) {
+            error.FileNotFound => break :target_missing,
+            else => return err,
+        };
+        return false;
+    }
+
+    std.fs.accessAbsolute(legacy_path, .{}) catch |err| switch (err) {
+        error.FileNotFound => return false,
+        else => return err,
+    };
+
+    const cache_dir = std.fs.path.dirname(self.path) orelse return error.InvalidCachePath;
+    try std.fs.cwd().makePath(cache_dir);
+    std.fs.copyFileAbsolute(legacy_path, self.path, .{
+        .override_mode = 0o600,
+    }) catch |err| switch (err) {
+        error.FileNotFound => return false,
+        else => return err,
+    };
+    return true;
 }
 
 /// Clear all cache data stored in the disk cache.
@@ -400,9 +427,72 @@ test "disk cache default path" {
     const testing = std.testing;
     const alloc = std.testing.allocator;
 
-    const path = try DiskCache.defaultPath(alloc, "ghostty");
+    const path = try DiskCache.defaultPath(alloc, "paramux");
     defer alloc.free(path);
-    try testing.expect(path.len > 0);
+    try testing.expectEqualStrings("ssh_cache", std.fs.path.basename(path));
+    try testing.expectEqualStrings(
+        "paramux",
+        std.fs.path.basename(std.fs.path.dirname(path).?),
+    );
+}
+
+test "branding disk cache ignores a missing legacy cache" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root = try tmp.dir.realpathAlloc(alloc, ".");
+    defer alloc.free(root);
+    const legacy_path = try std.fs.path.join(alloc, &.{ root, "ghostty", "ssh_cache" });
+    defer alloc.free(legacy_path);
+    const paramux_path = try std.fs.path.join(alloc, &.{ root, "paramux", "ssh_cache" });
+    defer alloc.free(paramux_path);
+
+    const cache: DiskCache = .{ .path = paramux_path };
+    try testing.expect(!(try cache.migrateFrom(legacy_path)));
+    try testing.expectError(error.FileNotFound, std.fs.openFileAbsolute(paramux_path, .{}));
+}
+
+test "branding disk cache migrates legacy data without overwriting Paramux data" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.makePath("ghostty");
+
+    {
+        var file = try tmp.dir.createFile("ghostty/ssh_cache", .{});
+        defer file.close();
+        try file.writeAll("legacy-data");
+    }
+
+    const root = try tmp.dir.realpathAlloc(alloc, ".");
+    defer alloc.free(root);
+    const legacy_path = try std.fs.path.join(alloc, &.{ root, "ghostty", "ssh_cache" });
+    defer alloc.free(legacy_path);
+    const paramux_path = try std.fs.path.join(alloc, &.{ root, "paramux", "ssh_cache" });
+    defer alloc.free(paramux_path);
+
+    const cache: DiskCache = .{ .path = paramux_path };
+    try testing.expect(try cache.migrateFrom(legacy_path));
+
+    const migrated = try std.fs.cwd().readFileAlloc(alloc, paramux_path, 1024);
+    defer alloc.free(migrated);
+    try testing.expectEqualStrings("legacy-data", migrated);
+
+    {
+        var file = try std.fs.createFileAbsolute(legacy_path, .{});
+        defer file.close();
+        try file.writeAll("new-legacy-data");
+    }
+
+    try testing.expect(!(try cache.migrateFrom(legacy_path)));
+    const preserved = try std.fs.cwd().readFileAlloc(alloc, paramux_path, 1024);
+    defer alloc.free(preserved);
+    try testing.expectEqualStrings("legacy-data", preserved);
 }
 
 test "disk cache clear" {

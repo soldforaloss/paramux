@@ -37,21 +37,21 @@ fn writeCompletions(writer: *std.Io.Writer) !void {
         try writer.writeAll("\"\n");
     }
 
-    try writer.writeAll("complete -c ghostty -f\n");
+    try writer.writeAll("complete -c paramux -f\n");
 
-    try writer.writeAll("complete -c ghostty -s e -l help -f\n");
-    try writer.writeAll("complete -c ghostty -n \"not __fish_seen_subcommand_from $commands\" -l version -f\n");
+    try writer.writeAll("complete -c paramux -s e -l help -f\n");
+    try writer.writeAll("complete -c paramux -n \"not __fish_seen_subcommand_from $commands\" -l version -f\n");
 
     for (@typeInfo(Config).@"struct".fields) |field| {
         if (field.name[0] == '_') continue;
 
-        try writer.writeAll("complete -c ghostty -n \"not __fish_seen_subcommand_from $commands\" -l ");
+        try writer.writeAll("complete -c paramux -n \"not __fish_seen_subcommand_from $commands\" -l ");
         try writer.writeAll(field.name);
         try writer.writeAll(if (field.type != bool) " -r" else " ");
         if (std.mem.startsWith(u8, field.name, "font-family"))
-            try writer.writeAll(" -f  -a \"(ghostty +list-fonts | grep '^[A-Z]')\"")
+            try writer.writeAll(" -f  -a \"(paramux +list-fonts | grep '^[A-Z]')\"")
         else if (std.mem.eql(u8, "theme", field.name))
-            try writer.writeAll(" -f -a \"(ghostty +list-themes | sed -E 's/^(.*) \\(.*\\$/\\1/')\"")
+            try writer.writeAll(" -f -a \"(paramux +list-themes | sed -E 's/^(.*) \\(.*\\$/\\1/')\"")
         else if (std.mem.eql(u8, "working-directory", field.name))
             try writer.writeAll(" -f -k -a \"(__fish_complete_directories)\"")
         else {
@@ -94,7 +94,7 @@ fn writeCompletions(writer: *std.Io.Writer) !void {
     }
 
     {
-        try writer.writeAll("complete -c ghostty -n \"string match -q -- '+*' (commandline -pt)\" -f -a \"");
+        try writer.writeAll("complete -c paramux -n \"string match -q -- '+*' (commandline -pt)\" -f -a \"");
         var count: usize = 0;
         for (@typeInfo(Action).@"enum".fields) |field| {
             if (count > 0) try writer.writeAll(" ");
@@ -112,7 +112,7 @@ fn writeCompletions(writer: *std.Io.Writer) !void {
         const options = ghostty.options(@field(Action, field.name));
         for (@typeInfo(options).@"struct".fields) |opt| {
             if (opt.name[0] == '_') continue;
-            try writer.writeAll("complete -c ghostty -n \"__fish_seen_subcommand_from +" ++ field.name ++ "\" -l ");
+            try writer.writeAll("complete -c paramux -n \"__fish_seen_subcommand_from +" ++ field.name ++ "\" -l ");
             try writer.writeAll(opt.name);
             try writer.writeAll(if (opt.type != bool) " -r" else "");
 
@@ -200,4 +200,11 @@ test "getDescription" {
         const result = getDescription(input);
         try testing.expectEqualStrings(expected, result);
     }
+}
+
+test "fish completion targets paramux command" {
+    const testing = std.testing;
+
+    try testing.expect(std.mem.indexOf(u8, completions, "complete -c paramux") != null);
+    try testing.expect(std.mem.indexOf(u8, completions, "complete -c ghostty") == null);
 }

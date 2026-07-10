@@ -24,6 +24,8 @@ const list_windows = @import("list_windows.zig");
 const perform_action = @import("perform_action.zig");
 const notify = @import("notify.zig");
 const read_pane = @import("read_pane.zig");
+const send = @import("send.zig");
+const send_key = @import("send_key.zig");
 const import_theme = @import("import_theme.zig");
 
 pub const Action = @import("ghostty_action.zig").Action;
@@ -82,6 +84,8 @@ fn runMain(self: Action, alloc: Allocator) !u8 {
         .@"perform-action" => try perform_action.run(alloc),
         .notify => try notify.run(alloc),
         .@"read-pane" => try read_pane.run(alloc),
+        .send => try send.run(alloc),
+        .@"send-key" => try send_key.run(alloc),
         .@"import-theme" => try import_theme.run(alloc),
     };
 }
@@ -113,6 +117,8 @@ pub fn options(comptime self: Action) type {
             .@"perform-action" => perform_action.Options,
             .notify => notify.Options,
             .@"read-pane" => read_pane.Options,
+            .send => send.Options,
+            .@"send-key" => send_key.Options,
             .@"import-theme" => import_theme.Options,
         };
     }
@@ -164,6 +170,30 @@ test "parse action version" {
         const action = try actionpkg.detectIter(Action, &iter);
         try testing.expect(action.? == .version);
     }
+}
+
+test "control-action-dispatch recognizes dedicated send operations" {
+    const testing = std.testing;
+
+    inline for (.{
+        .{ "+send hello", "send" },
+        .{ "+send-key enter", "send-key" },
+    }) |case| {
+        var iter = try std.process.ArgIteratorGeneral(.{}).init(
+            testing.allocator,
+            case[0],
+        );
+        defer iter.deinit();
+
+        const action = try actionpkg.detectIter(Action, &iter);
+        try testing.expect(action != null);
+        try testing.expectEqualStrings(case[1], @tagName(action.?));
+    }
+}
+
+test {
+    _ = @import("send.zig");
+    _ = @import("send_key.zig");
 }
 
 test "parse action plus" {

@@ -5,8 +5,8 @@ const Config = @import("../config/Config.zig");
 pub const syntax = comptimeGenSyntax();
 pub const ftdetect =
     \\" Vim filetype detect file
-    \\" Language: Ghostty config file
-    \\" Maintainer: Ghostty <https://github.com/ghostty-org/ghostty>
+    \\" Language: Paramux config file
+    \\" Maintainer: Paramux <https://github.com/soldforaloss/paramux>
     \\"
     \\" THIS FILE IS AUTO-GENERATED
     \\
@@ -15,8 +15,8 @@ pub const ftdetect =
 ;
 pub const ftplugin =
     \\" Vim filetype plugin file
-    \\" Language: Ghostty config file
-    \\" Maintainer: Ghostty <https://github.com/ghostty-org/ghostty>
+    \\" Language: Paramux config file
+    \\" Maintainer: Paramux <https://github.com/soldforaloss/paramux>
     \\"
     \\" THIS FILE IS AUTO-GENERATED
     \\
@@ -31,8 +31,8 @@ pub const ftplugin =
     \\" Use syntax keywords for completion
     \\setlocal omnifunc=syntaxcomplete#Complete
     \\
-    \\" Ask ghostty to explain config keywords
-    \\setlocal keywordprg=ghostty\ +explain-config
+    \\" Ask paramux to explain config keywords
+    \\setlocal keywordprg=paramux\ +explain-config
     \\
     \\let b:undo_ftplugin = 'setl cms< isk< ofu< kp<'
     \\
@@ -44,8 +44,8 @@ pub const ftplugin =
 ;
 pub const compiler =
     \\" Vim compiler file
-    \\" Language: Ghostty config file
-    \\" Maintainer: Ghostty <https://github.com/ghostty-org/ghostty>
+    \\" Language: Paramux config file
+    \\" Maintainer: Paramux <https://github.com/soldforaloss/paramux>
     \\"
     \\" THIS FILE IS AUTO-GENERATED
     \\
@@ -54,7 +54,7 @@ pub const compiler =
     \\endif
     \\let current_compiler = "ghostty"
     \\
-    \\CompilerSet makeprg=ghostty\ +validate-config\ --config-file=%:S
+    \\CompilerSet makeprg=paramux\ +validate-config\ --config-file=%:S
     \\CompilerSet errorformat=%f:%l:%m,%m
     \\
 ;
@@ -78,8 +78,8 @@ fn comptimeGenSyntax() []const u8 {
 fn writeSyntax(writer: *std.Io.Writer) !void {
     try writer.writeAll(
         \\" Vim syntax file
-        \\" Language: Ghostty config file
-        \\" Maintainer: Ghostty <https://github.com/ghostty-org/ghostty>
+        \\" Language: Paramux config file
+        \\" Maintainer: Paramux <https://github.com/soldforaloss/paramux>
         \\"
         \\" THIS FILE IS AUTO-GENERATED
         \\

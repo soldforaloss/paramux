@@ -851,7 +851,7 @@ const Preview = struct {
                     "",
                     "For more details on configuration and themes, visit the paramux repository:",
                     "",
-                    "https://github.com/soldforaloss/paramux/blob/main/src/config/config-template",
+                    "https://github.com/soldforaloss/paramux/blob/paramux/src/config/config-template",
                 };
 
                 for (save_instructions, 0..) |instruction, captured_i| {

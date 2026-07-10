@@ -121,7 +121,7 @@
             echo "Setting up xterm-ghostty terminfo on "$ssh-hostname"..." >&2
 
             use os
-            var ssh-cpath-dir = (os:temp-dir "ghostty-ssh-"$ssh-user".*")
+            var ssh-cpath-dir = (os:temp-dir "paramux-ssh-"$ssh-user".*")
             var ssh-cpath = $ssh-cpath-dir"/socket"
 
             if (bool ?(echo $ssh-terminfo | (external ssh) $@ssh-opts -o ControlMaster=yes -o ControlPath=$ssh-cpath -o ControlPersist=60s $@args '
@@ -142,7 +142,7 @@
             echo "Warning: Could not generate terminfo data." >&2
           }
         } else {
-          echo "Warning: ghostty command not available for cache management." >&2
+          echo "Warning: paramux command not available for cache management." >&2
         }
       }
     }

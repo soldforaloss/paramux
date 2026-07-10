@@ -40,7 +40,7 @@ pub const Options = struct {
 /// When executed without any arguments this will list the current keybinds
 /// loaded by the config file. If no config file is found or there aren't any
 /// changes to the keybinds it will print out the default ones configured for
-/// Ghostty
+/// Paramux
 ///
 /// Flags:
 ///
@@ -230,7 +230,7 @@ fn prettyPrint(alloc: Allocator, keybinds: Config.Keybinds) !u8 {
     const writer = tty.writer();
     defer vx.deinit(alloc, writer);
 
-    // We know we are ghostty, so let's enable mode 2027. Vaxis normally does this but you need an
+    // We know we are paramux, so let's enable mode 2027. Vaxis normally does this but you need an
     // event loop to auto-enable it.
     vx.caps.unicode = .unicode;
     try writer.writeAll(vaxis.ctlseqs.unicode_set);

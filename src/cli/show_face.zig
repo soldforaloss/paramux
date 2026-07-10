@@ -44,7 +44,7 @@ pub const Options = struct {
 /// specific codepoint. Note that this command does not take into consideration
 /// grapheme clustering or any other Unicode features that might modify the
 /// presentation of a codepoint, so this may show a different font face than
-/// Ghostty uses to render a codepoint in a terminal session.
+/// Paramux uses to render a codepoint in a terminal session.
 ///
 /// Flags:
 ///
@@ -90,7 +90,7 @@ fn runArgs(
     stdout: *std.Io.Writer,
     stderr: *std.Io.Writer,
 ) !u8 {
-    // Its possible to build Ghostty without font discovery!
+    // Its possible to build Paramux without font discovery!
     if (comptime font.Discover == void) {
         try stderr.print(
             \\paramux was built without a font discovery mechanism. This is a compile-time
@@ -218,7 +218,7 @@ fn lookup(
 
     const face = font_grid.resolver.collection.getFace(idx) catch |err| switch (err) {
         error.SpecialHasNoFace => {
-            try stdout.print("U+{0X:0>2} « {0u} » is handled by Ghostty's internal sprites.\n", .{cp});
+            try stdout.print("U+{0X:0>2} « {0u} » is handled by Paramux's internal sprites.\n", .{cp});
             return null;
         },
         else => {

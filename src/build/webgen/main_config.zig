@@ -15,7 +15,7 @@ pub fn genConfig(writer: *std.Io.Writer) !void {
         \\---
         \\title: Reference
         \\description: Reference of all paramux configuration options.
-        \\editOnGithubLink: https://github.com/soldforaloss/paramux/edit/main/src/config/Config.zig
+        \\editOnGithubLink: https://github.com/soldforaloss/paramux/edit/paramux/src/config/Config.zig
         \\---
         \\
         \\This is a reference of all paramux configuration options. These

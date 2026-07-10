@@ -18,13 +18,13 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #
-# Enables integration between zsh and ghostty.
+# Enables integration between zsh and Paramux.
 #
 # This is an autoloadable function. It's invoked automatically in shells
-# directly spawned by Ghostty but not in any other shells. For example, running
+# directly spawned by Paramux but not in any other shells. For example, running
 # `exec zsh`, `sudo -E zsh`, `tmux`, or plain `zsh` will create a shell where
 # ghostty-integration won't automatically run. Zsh users who want integration with
-# Ghostty in all shells should add the following lines to their .zshrc:
+# Paramux in all shells should add the following lines to their .zshrc:
 #
 #   if [[ -n $GHOSTTY_RESOURCES_DIR ]]; then
 #     source "$GHOSTTY_RESOURCES_DIR"/shell-integration/zsh/ghostty-integration
@@ -46,7 +46,7 @@ _entrypoint() {
     # We require zsh 5.1+ (released Sept 2015) for features like functions_source,
     # introspection arrays, and array pattern substitution.
     if ! { builtin autoload -- is-at-least 2>/dev/null && is-at-least 5.1; }; then
-        builtin echo "Zsh ${ZSH_VERSION} is too old for ghostty shell integration (5.1+ required)" >&2
+        builtin echo "Zsh ${ZSH_VERSION} is too old for Paramux shell integration (5.1+ required)" >&2
         builtin return 1
     fi
 
@@ -230,7 +230,7 @@ _ghostty_deferred_init() {
         (( _ghostty_state = 1 ))
     }
 
-    # Enable reporting current working dir to terminal. Ghostty supports
+    # Enable reporting current working dir to terminal. Paramux supports
     # the kitty-shell-cwd format.
     _ghostty_report_pwd() { builtin print -nu $_ghostty_fd '\e]7;kitty-shell-cwd://'"$HOST""$PWD"'\a'; }
     chpwd_functions=(${chpwd_functions[@]} "_ghostty_report_pwd")
@@ -279,7 +279,7 @@ _ghostty_deferred_init() {
         fi
     "${functions[_ghostty_zle_line_init]}
 
-    # Add Ghostty binary to PATH if the path feature is enabled
+    # Add Paramux binary to PATH if the path feature is enabled
     if [[ "$GHOSTTY_SHELL_FEATURES" == *"path"* ]] && [[ -n "$GHOSTTY_BIN_DIR" ]]; then
       if [[ ":$PATH:" != *":$GHOSTTY_BIN_DIR:"* ]]; then
         builtin export PATH="$PATH:$GHOSTTY_BIN_DIR"
@@ -288,7 +288,7 @@ _ghostty_deferred_init() {
 
     # Sudo
     if [[ "$GHOSTTY_SHELL_FEATURES" == *"sudo"* ]] && [[ -n "$TERMINFO" ]]; then
-      # Wrap `sudo` command to ensure Ghostty terminfo is preserved
+      # Wrap `sudo` command to ensure Paramux terminfo is preserved
       function sudo() {
         builtin local sudo_has_sudoedit_flags="no"
         for arg in "$@"; do
@@ -351,7 +351,7 @@ _ghostty_deferred_init() {
               if [[ -n "$ssh_terminfo" ]]; then
                 print "Setting up xterm-ghostty terminfo on $ssh_hostname..." >&2
 
-                ssh_cpath_dir=$(mktemp -d "/tmp/ghostty-ssh-$ssh_user.XXXXXX" 2>/dev/null) || ssh_cpath_dir="/tmp/ghostty-ssh-$ssh_user.$$"
+                ssh_cpath_dir=$(mktemp -d "/tmp/paramux-ssh-$ssh_user.XXXXXX" 2>/dev/null) || ssh_cpath_dir="/tmp/paramux-ssh-$ssh_user.$$"
                 ssh_cpath="$ssh_cpath_dir/socket"
 
                 if builtin print -r "$ssh_terminfo" | command ssh "${ssh_opts[@]}" -o ControlMaster=yes -o ControlPath="$ssh_cpath" -o ControlPersist=60s "$@" '
@@ -372,7 +372,7 @@ _ghostty_deferred_init() {
                 print "Warning: Could not generate terminfo data." >&2
               fi
             else
-              print "Warning: ghostty command not available for cache management." >&2
+              print "Warning: paramux command not available for cache management." >&2
             fi
           fi
         fi

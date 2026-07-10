@@ -115,7 +115,7 @@ pub const Action = union(Key) {
     /// Toggle the command palette.
     toggle_command_palette,
 
-    /// Toggle the visibility of all Ghostty terminal windows.
+    /// Toggle the visibility of all Paramux terminal windows.
     toggle_visibility,
 
     /// Toggle the window background opacity. This only has an effect
@@ -189,7 +189,7 @@ pub const Action = union(Key) {
     /// Show the legacy platform inspector.
     ///
     /// In the Windows-only fork this is treated as a compatibility alias for
-    /// showing the native Ghostty inspector.
+    /// showing the native Paramux inspector.
     show_gtk_inspector,
 
     /// The inspector for the given target has changes and should be
@@ -225,7 +225,7 @@ pub const Action = union(Key) {
     /// The health of the renderer has changed.
     renderer_health: renderer.Health,
 
-    /// Open the Ghostty configuration. This is platform-specific about
+    /// Open the Paramux configuration. This is platform-specific about
     /// what it means; it can mean opening a dedicated UI or just opening
     /// a file in a text editor.
     open_config,
@@ -557,7 +557,7 @@ pub const MoveTab = extern struct {
 pub const NewWindow = struct {
     /// Optional CLI-style arguments to apply to the first surface created in
     /// the new window. These are primarily used by the Windows-only IPC path
-    /// for `ghostty +new-window`.
+    /// for `paramux +new-window`.
     arguments: ?[]const [:0]const u8 = null,
 
     pub const C = extern struct {

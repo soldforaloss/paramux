@@ -70,6 +70,12 @@ pub const Action = enum {
     // Read a pane's current viewport text from the running instance.
     @"read-pane",
 
+    // Send exact UTF-8 input to a pane in the running instance.
+    send,
+
+    // Send one named key to a pane in the running instance.
+    @"send-key",
+
     // Convert a Windows Terminal color scheme into a paramux theme.
     @"import-theme",
 

@@ -1,10 +1,19 @@
-//! GhosttyDocs generates all the on-disk documentation that Ghostty is
+//! GhosttyDocs generates all the on-disk documentation that Paramux is
 //! installed with (man pages, html, markdown, etc.)
 const GhosttyDocs = @This();
 
 const std = @import("std");
 const Config = @import("Config.zig");
 const SharedDeps = @import("SharedDeps.zig");
+
+const manpages = [_]struct {
+    generator_name: []const u8,
+    output_name: []const u8,
+    section: []const u8,
+}{
+    .{ .generator_name = "ghostty", .output_name = "paramux", .section = "1" },
+    .{ .generator_name = "ghostty", .output_name = "paramux", .section = "5" },
+};
 
 steps: []*std.Build.Step,
 
@@ -15,17 +24,9 @@ pub fn init(
     var steps: std.ArrayList(*std.Build.Step) = .empty;
     errdefer steps.deinit(b.allocator);
 
-    const manpages = [_]struct {
-        name: []const u8,
-        section: []const u8,
-    }{
-        .{ .name = "ghostty", .section = "1" },
-        .{ .name = "ghostty", .section = "5" },
-    };
-
     inline for (manpages) |manpage| {
         const generate_markdown = b.addExecutable(.{
-            .name = "mdgen_" ++ manpage.name ++ "_" ++ manpage.section,
+            .name = "mdgen_" ++ manpage.generator_name ++ "_" ++ manpage.section,
             .root_module = b.createModule(.{
                 .root_source_file = b.path("src/main.zig"),
                 .target = b.graph.host,
@@ -40,7 +41,7 @@ pub fn init(
             var copy = deps.config.*;
             copy.exe_entrypoint = @field(
                 Config.ExeEntrypoint,
-                "mdgen_" ++ manpage.name ++ "_" ++ manpage.section,
+                "mdgen_" ++ manpage.generator_name ++ "_" ++ manpage.section,
             );
             break :config copy;
         };
@@ -54,7 +55,7 @@ pub fn init(
 
         try steps.append(b.allocator, &b.addInstallFile(
             markdown_output,
-            "share/ghostty/doc/" ++ manpage.name ++ "." ++ manpage.section ++ ".md",
+            "share/ghostty/doc/" ++ manpage.output_name ++ "." ++ manpage.section ++ ".md",
         ).step);
 
         const generate_html = b.addSystemCommand(&.{"pandoc"});
@@ -69,7 +70,7 @@ pub fn init(
 
         try steps.append(b.allocator, &b.addInstallFile(
             generate_html.captureStdOut(),
-            "share/ghostty/doc/" ++ manpage.name ++ "." ++ manpage.section ++ ".html",
+            "share/ghostty/doc/" ++ manpage.output_name ++ "." ++ manpage.section ++ ".html",
         ).step);
 
         const generate_manpage = b.addSystemCommand(&.{"pandoc"});
@@ -84,7 +85,7 @@ pub fn init(
 
         try steps.append(b.allocator, &b.addInstallFile(
             generate_manpage.captureStdOut(),
-            "share/man/man" ++ manpage.section ++ "/" ++ manpage.name ++ "." ++ manpage.section,
+            "share/man/man" ++ manpage.section ++ "/" ++ manpage.output_name ++ "." ++ manpage.section,
         ).step);
     }
 
@@ -121,4 +122,13 @@ pub fn installDummy(self: *const GhosttyDocs, step: *std.Build.Step) void {
         ),
         path,
     ).step);
+}
+
+test "branding generated manpages use Paramux output names" {
+    const testing = std.testing;
+
+    for (manpages) |manpage| {
+        try testing.expectEqualStrings("ghostty", manpage.generator_name);
+        try testing.expectEqualStrings("paramux", manpage.output_name);
+    }
 }

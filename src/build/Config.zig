@@ -274,7 +274,7 @@ pub fn init(b: *std.Build, appVersion: []const u8) !Config {
     config.emit_terminfo = b.option(
         bool,
         "emit-terminfo",
-        "Install Ghostty terminfo source file",
+        "Install the bundled xterm-ghostty terminfo source file",
     ) orelse switch (target.result.os.tag) {
         .windows => true,
         else => switch (optimize) {
@@ -286,7 +286,7 @@ pub fn init(b: *std.Build, appVersion: []const u8) !Config {
     config.emit_termcap = b.option(
         bool,
         "emit-termcap",
-        "Install Ghostty termcap file",
+        "Install the bundled xterm-ghostty termcap file",
     ) orelse switch (optimize) {
         .Debug => true,
         .ReleaseSafe, .ReleaseFast, .ReleaseSmall => false,
@@ -295,7 +295,7 @@ pub fn init(b: *std.Build, appVersion: []const u8) !Config {
     config.emit_themes = b.option(
         bool,
         "emit-themes",
-        "Install bundled iTerm2-Color-Schemes Ghostty themes",
+        "Install bundled Paramux themes from iTerm2-Color-Schemes",
     ) orelse true;
 
     config.emit_webdata = b.option(

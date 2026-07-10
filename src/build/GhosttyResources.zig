@@ -146,7 +146,7 @@ pub fn init(b: *std.Build, cfg: *const Config, deps: *const SharedDeps) !Ghostty
         const run = b.addRunArtifact(build_data_exe);
         run.addArg("+fish");
         const wf = b.addWriteFiles();
-        _ = wf.addCopyFile(run.captureStdOut(), "ghostty.fish");
+        _ = wf.addCopyFile(run.captureStdOut(), "paramux.fish");
 
         const install_step = b.addInstallDirectory(.{
             .source_dir = wf.getDirectory(),
@@ -161,7 +161,7 @@ pub fn init(b: *std.Build, cfg: *const Config, deps: *const SharedDeps) !Ghostty
         const run = b.addRunArtifact(build_data_exe);
         run.addArg("+zsh");
         const wf = b.addWriteFiles();
-        _ = wf.addCopyFile(run.captureStdOut(), "_ghostty");
+        _ = wf.addCopyFile(run.captureStdOut(), "_paramux");
 
         const install_step = b.addInstallDirectory(.{
             .source_dir = wf.getDirectory(),
@@ -176,7 +176,7 @@ pub fn init(b: *std.Build, cfg: *const Config, deps: *const SharedDeps) !Ghostty
         const run = b.addRunArtifact(build_data_exe);
         run.addArg("+bash");
         const wf = b.addWriteFiles();
-        _ = wf.addCopyFile(run.captureStdOut(), "ghostty.bash");
+        _ = wf.addCopyFile(run.captureStdOut(), "paramux.bash");
 
         const install_step = b.addInstallDirectory(.{
             .source_dir = wf.getDirectory(),
@@ -231,7 +231,7 @@ pub fn init(b: *std.Build, cfg: *const Config, deps: *const SharedDeps) !Ghostty
     // 'ghostty.sublime-syntax' file from zig-out to the '~.config/bat/syntaxes'
     // directory. The syntax then needs to be mapped to the correct language in
     // the config file within the '~.config/bat' directory
-    // (ex: --map-syntax "/Users/user/.config/ghostty/config.ghostty:Ghostty Config").
+    // (ex: --map-syntax "/Users/user/.config/ghostty/config.ghostty:Paramux Config").
     {
         const run = b.addRunArtifact(build_data_exe);
         run.addArg("+sublime");

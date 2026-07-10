@@ -1,10 +1,14 @@
 const std = @import("std");
 const fs = std.fs;
 const Allocator = std.mem.Allocator;
+const build_config = @import("../build_config.zig");
 const args = @import("args.zig");
 const actionpkg = @import("action.zig");
 pub const Entry = @import("ssh-cache/Entry.zig");
 pub const DiskCache = @import("ssh-cache/DiskCache.zig");
+
+const cache_program_name = build_config.data_dir_name;
+const legacy_cache_program_name = build_config.legacy_data_dir_name;
 
 pub const Options = struct {
     clear: bool = false,
@@ -84,12 +88,16 @@ pub fn runInner(
     stdout: *std.Io.Writer,
     stderr: *std.Io.Writer,
 ) !u8 {
-    // Setup our disk cache to the standard location
-    const cache_path = try DiskCache.defaultPath(alloc, "ghostty");
+    // Set up the Paramux cache and migrate a pre-rebrand cache once when needed.
+    const cache_path = try DiskCache.defaultPath(alloc, cache_program_name);
     const cache: DiskCache = .{ .path = cache_path };
+    const legacy_cache_path = try DiskCache.defaultPath(alloc, legacy_cache_program_name);
+    const legacy_cache: DiskCache = .{ .path = legacy_cache_path };
+    _ = try cache.migrateFrom(legacy_cache.path);
 
     if (opts.clear) {
         try cache.clear();
+        try legacy_cache.clear();
         try stdout.print("Cache cleared.\n", .{});
         return 0;
     }
@@ -225,4 +233,11 @@ fn listEntries(
 test {
     _ = DiskCache;
     _ = Entry;
+}
+
+test "branding ssh cache uses Paramux and retains the legacy identity" {
+    const testing = std.testing;
+
+    try testing.expectEqualStrings("paramux", cache_program_name);
+    try testing.expectEqualStrings("ghostty", legacy_cache_program_name);
 }

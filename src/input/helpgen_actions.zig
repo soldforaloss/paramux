@@ -47,11 +47,11 @@ pub const Format = enum {
             .markdown =>
             \\---
             \\title: Keybinding Action Reference
-            \\description: Reference of all Ghostty keybinding actions.
-            \\editOnGithubLink: https://github.com/soldforaloss/paramux/edit/main/src/input/Binding.zig
+            \\description: Reference of all Paramux keybinding actions.
+            \\editOnGithubLink: https://github.com/soldforaloss/paramux/edit/paramux/src/input/Binding.zig
             \\---
             \\
-            \\This is a reference of all Ghostty keybinding actions.
+            \\This is a reference of all Paramux keybinding actions.
             \\
             \\
             ,
