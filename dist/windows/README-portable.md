@@ -60,10 +60,10 @@ The local automation surface can discover panes, read their viewport, and send
 bounded input without a network service:
 
 ```powershell
-paramux +list-windows
-paramux +read-pane --surface-id=42
-paramux +send --surface-id=42 "npm test"
-paramux +send-key --surface-id=42 enter
+paramux list-windows
+paramux read-pane --surface-id=42
+paramux send --surface-id=42 "npm test"
+paramux send-key --surface-id=42 enter
 ```
 
 For tmux/wmux muscle memory, `config-presets\tmux-prefix.ghostty` adds opt-in
@@ -82,5 +82,5 @@ Paramux's direct native shortcuts remain enabled alongside the preset.
 - Capability status: https://github.com/soldforaloss/paramux/blob/paramux/docs/paramux/capability-parity.md
 - Security policy: https://github.com/soldforaloss/paramux/blob/paramux/SECURITY.md
 
-Run `paramux +help` for CLI actions and `paramux +list-keybinds` for the active
+Run `paramux help` for CLI actions and `paramux list-keybinds` for the active
 keyboard map.

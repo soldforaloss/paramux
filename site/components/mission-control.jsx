@@ -23,7 +23,7 @@ const SCENES = [
   {
     title: 'agent attention',
     lines: [
-      { kind: 'cmd', text: 'paramux +notify --state=waiting "Review auth diff"' },
+      { kind: 'cmd', text: 'paramux notify --state=waiting "Review auth diff"' },
       { kind: 'out', t: '→ pane 42 · waiting · sidebar + tab + pane ring', c: 'waiting' },
       { kind: 'out', t: '→ native toast + taskbar attention', c: 'dim' },
     ],
@@ -31,15 +31,15 @@ const SCENES = [
   {
     title: 'drive a pane',
     lines: [
-      { kind: 'cmd', text: 'paramux +send --surface-id=42 "npm test"' },
+      { kind: 'cmd', text: 'paramux send --surface-id=42 "npm test"' },
       { kind: 'out', t: '→ exact bounded input · token-gated · pane-targeted', c: 'fg' },
-      { kind: 'out', t: '→ paramux +send-key --surface-id=42 enter', c: 'dim' },
+      { kind: 'out', t: '→ paramux send-key --surface-id=42 enter', c: 'dim' },
     ],
   },
   {
     title: 'split locally',
     lines: [
-      { kind: 'cmd', text: 'paramux +perform-action new_split:right' },
+      { kind: 'cmd', text: 'paramux perform-action new_split:right' },
       { kind: 'out', t: '→ split created in the active tab', c: 'done' },
       { kind: 'out', t: '→ independent ConPTY pane · drag to resize', c: 'dim' },
     ],
@@ -47,7 +47,7 @@ const SCENES = [
   {
     title: 'discover panes',
     lines: [
-      { kind: 'cmd', text: 'paramux +list-windows' },
+      { kind: 'cmd', text: 'paramux list-windows' },
       { kind: 'out', t: '→ paramux.windows.v2 · 1 window · 2 tabs · 4 panes', c: 'fg' },
       { kind: 'out', t: '→ local-only discovery; sensitive calls stay token-gated', c: 'dim' },
     ],

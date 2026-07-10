@@ -1376,7 +1376,7 @@ const help_shortcuts_text: LPCWSTR = blk: {
             "Find\tCtrl+Shift+F\n" ++
             "Command palette\tCtrl+Shift+P\n" ++
             "Settings\tCtrl+,\n\n" ++
-            "Full list: run \"paramux +list-keybinds\" in any pane.",
+            "Full list: run \"paramux list-keybinds\" in any pane.",
     );
 };
 const tooltip_more_actions = std.unicode.utf8ToUtf16LeStringLiteral("More actions");
@@ -4668,8 +4668,8 @@ pub const App = struct {
         // that setting governs launch *forwarding*, not automation, and it is
         // forced to `.false` whenever a command is launched with `-e` (the
         // exact case for running an agent in a pane). Since the pipe namespace
-        // is deterministic, always listening makes `+notify` / `+list-windows`
-        // / `+perform-action` work out of the box. (With multiple paramux
+        // is deterministic, always listening makes `notify` / `list-windows`
+        // / `perform-action` work out of the box. (With multiple paramux
         // *processes* an automation client may reach an arbitrary one; the CLI
         // falls back to its console path in that case.)
         if (self.ipc_thread != null) return;
@@ -8174,7 +8174,7 @@ pub const App = struct {
     }
 
     /// paramux: apply a notification delivered over IPC (from `paramux
-    /// +notify` run inside a pane). Resolves the addressed surface, then reuses
+    /// notify` run inside a pane). Resolves the addressed surface, then reuses
     /// `applyDesktopNotification`. Runs on the UI thread via the mailbox.
     pub fn applySetNotification(
         self: *App,
@@ -8196,7 +8196,7 @@ pub const App = struct {
         try self.applyDesktopNotification(.{ .surface = surface.core() }, title_z, body_z);
     }
 
-    /// paramux: read a pane's current viewport text (for the `+read-pane` IPC
+    /// paramux: read a pane's current viewport text (for the `read-pane` IPC
     /// method). Runs on the UI thread; locks the surface's renderer mutex so the
     /// dump is safe against concurrent IO-thread writes. Caller owns the result.
     pub fn readPaneText(
@@ -23787,7 +23787,7 @@ pub const Surface = struct {
     listening_ports: []const u16 = &.{},
     last_notification: ?[:0]const u8 = null,
     /// paramux FR-4 attention: the current agent-attention state for this pane
-    /// (OSC 9/777 or an agent hook via `+notify --state`). Drives the sidebar
+    /// (OSC 9/777 or an agent hook via `notify --state`). Drives the sidebar
     /// status dot color + taskbar flash; reset to `.none` when the pane is
     /// focused (viewing acknowledges it).
     attention_state: AttentionState = .none,
@@ -24598,7 +24598,7 @@ pub const Surface = struct {
         }
 
         // paramux: expose the per-instance IPC auth token so `paramux
-        // +notify`/`+perform-action`/`+read-pane` run inside this pane are
+        // notify`/`perform-action`/`read-pane` run inside this pane are
         // authenticated automatically (e.g. from agent hooks).
         if (self.app.ipc_token) |token| {
             try env.put("PARAMUX_TOKEN", token);

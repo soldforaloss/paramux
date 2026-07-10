@@ -868,10 +868,10 @@ pub const Message = union(enum) {
     automation_input: *AutomationInputRequest,
 
     /// Apply a desktop notification / attention state to a surface on the app
-    /// thread, delivered over IPC (paramux `+notify`).
+    /// thread, delivered over IPC (paramux `notify`).
     set_notification: *SetNotificationRequest,
 
-    /// Read a surface's viewport text on the app thread (paramux `+read-pane`).
+    /// Read a surface's viewport text on the app thread (paramux `read-pane`).
     read_pane: *ReadPaneRequest,
 
     /// Apply an async git-dirty result to a surface on the app thread (paramux

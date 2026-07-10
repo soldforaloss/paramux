@@ -56,12 +56,12 @@ The file format is documented below as an example:
     palette = 15=#fbf1c7
 
 You can view all available configuration options and their documentation by
-executing the command `paramux +show-config --default --docs`. Note that this will
+executing the command `paramux show-config --default --docs`. Note that this will
 output the full default configuration with docs to stdout, so you may want to
 pipe that through a pager, an editor, etc.
 
 Note: You'll see a lot of weird blank configurations like `font-family =`. This
-is a valid syntax to specify the default behavior (no value). The `+show-config`
+is a valid syntax to specify the default behavior (no value). The `show-config`
 outputs it so it's clear that key is defaulting and also to have something to
 attach the doc comment to.
 

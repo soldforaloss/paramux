@@ -1352,6 +1352,15 @@ pub fn ArgsIterator(comptime Iterator: type) type {
             // this iterator is created.
             if (value.len > 0 and value[0] == '+') return self.next();
 
+            // A BARE first argument that exactly names an action is the
+            // action word ("paramux update --check") — skip it the same
+            // way `+update` is skipped, so action option parsers and
+            // config loading never see it as a field.
+            if (self.index == 1 and value.len > 0 and value[0] != '-') {
+                const Action = @import("ghostty_action.zig").Action;
+                if (std.meta.stringToEnum(Action, value) != null) return self.next();
+            }
+
             return value;
         }
 

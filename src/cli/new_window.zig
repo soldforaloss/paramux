@@ -18,7 +18,7 @@ pub const Options = struct {
     /// Did the user specify a `--working-directory` argument on the command line?
     _working_directory_seen: bool = false,
 
-    /// All of the arguments after `+new-window`. They will be sent to paramux
+    /// All of the arguments after `new-window`. They will be sent to paramux
     /// for processing.
     _arguments: std.ArrayList([:0]const u8) = .empty,
 
@@ -26,7 +26,7 @@ pub const Options = struct {
     /// there is a "normal" config setting on the cli.
     _diagnostics: diagnostics.DiagnosticList = .{},
 
-    /// Manual parse hook, collect all of the arguments after `+new-window`.
+    /// Manual parse hook, collect all of the arguments after `new-window`.
     pub fn parseManuallyHook(self: *Options, alloc: Allocator, arg: []const u8, iter: anytype) (error{InvalidValue} || homedir.ExpandError || std.fs.Dir.RealPathAllocError || Allocator.Error)!bool {
         var e_seen: bool = std.mem.eql(u8, arg, "-e");
 
@@ -93,7 +93,7 @@ pub const Options = struct {
 /// and contact a running paramux instance that was configured with the same
 /// `class` as was given on the command line.
 ///
-/// All of the arguments after the `+new-window` argument (except for the
+/// All of the arguments after the `new-window` argument (except for the
 /// `--class` flag) will be sent to the remote paramux instance and will be
 /// parsed as command line flags. These flags will override certain settings
 /// when creating the first surface in the new window. Currently, only
@@ -104,14 +104,14 @@ pub const Options = struct {
 ///
 /// If `--working-directory` is found on the command line and is a relative
 /// path (i.e. doesn't start with `/`) it will be resolved to an absolute path
-/// relative to the current working directory that the `paramux +new-window`
+/// relative to the current working directory that the `paramux new-window`
 /// command is run from. `~/` prefixes will also be expanded to the user's home
 /// directory.
 ///
 /// If `--working-directory` is _not_ found on the command line, the working
-/// directory that `paramux +new-window` is run from will be passed to paramux.
+/// directory that `paramux new-window` is run from will be passed to paramux.
 ///
-/// On Win32, `+new-window` uses a native named-pipe IPC channel to forward the
+/// On Win32, `new-window` uses a native named-pipe IPC channel to forward the
 /// collected command-line arguments into an already-running `paramux.exe`
 /// instance. If no matching instance is available, paramux falls back to
 /// launching a new `paramux.exe` process. If `--class` is provided, that value

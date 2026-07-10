@@ -34,8 +34,8 @@ const PerformSendKeyFn = *const fn (
 /// pane routing. Supported keys are enter, tab, escape, backspace, delete,
 /// up/down/left/right (or arrow-*), home, end, page-up, and page-down.
 ///
-///   * `paramux +send-key enter`
-///   * `paramux +send-key --surface-id=42 arrow-up`
+///   * `paramux send-key enter`
+///   * `paramux send-key --surface-id=42 arrow-up`
 pub fn run(alloc: Allocator) !u8 {
     var iter = try args.argsIterator(alloc);
     defer iter.deinit();

@@ -16,7 +16,7 @@ pub const Options = struct {
     class: ?[:0]const u8 = null,
 
     /// If set, perform the action against a specific surface from
-    /// `+list-windows` instead of the focused surface.
+    /// `list-windows` instead of the focused surface.
     @"surface-id": ?u64 = null,
 
     pub fn deinit(self: *Options) void {
@@ -36,12 +36,12 @@ pub const Options = struct {
 ///
 /// The action uses the same syntax as `keybind` values, for example:
 ///
-///   * `paramux +perform-action new_tab`
-///   * `paramux +perform-action --surface-id=42 toggle_fullscreen`
+///   * `paramux perform-action new_tab`
+///   * `paramux perform-action --surface-id=42 toggle_fullscreen`
 ///
 /// The default target is the focused surface for surface-scoped actions and the
 /// app for app-scoped actions. `--surface-id` accepts pane IDs from
-/// `paramux +list-windows` and is only valid for surface-scoped actions.
+/// `paramux list-windows` and is only valid for surface-scoped actions.
 ///
 /// To keep this automation surface bounded, terminal-input and arbitrary file
 /// helper actions such as `text`, `csi`, `esc`, `paste_from_clipboard`,

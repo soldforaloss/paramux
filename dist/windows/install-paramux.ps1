@@ -145,6 +145,6 @@ Write-Host ""
 Write-Host "Done. Open a NEW terminal, then try:" -ForegroundColor Cyan
 Write-Host "  paramux                  # launch the terminal"
 Write-Host "  paramux -e claude        # launch it running Claude Code"
-Write-Host "  paramux +list-windows    # automation / scripting"
+Write-Host "  paramux list-windows    # automation / scripting"
 Write-Host ""
 Write-Host "(To undo: run  .\install-paramux.ps1 -Remove )"

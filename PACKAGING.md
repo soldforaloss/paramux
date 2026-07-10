@@ -119,7 +119,7 @@ Compare the hash with `SHA256SUMS-windows-x64.txt`, then extract the ZIP to a
 temporary directory and verify:
 
 ```powershell
-.\paramux\paramux.com +version
+.\paramux\paramux.com version
 Get-AuthenticodeSignature .\paramux\paramux.exe | Select-Object Status, StatusMessage
 ```
 
@@ -135,7 +135,7 @@ For the current release lane:
 2. Run the x64 baseline check.
 3. Stage the x64 portable package with the intended prerelease version.
 4. Confirm the ZIP contains the full resource tree and both PATH-helper files.
-5. Confirm `paramux.com +version` runs from the extracted ZIP.
+5. Confirm `paramux.com version` runs from the extracted ZIP.
 6. Confirm the checksum file matches the uploaded ZIP.
 7. Publish to `soldforaloss/paramux` as a **prerelease**, not a stable release.
 8. Upload only the artifacts that were actually built and verified.

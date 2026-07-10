@@ -19,12 +19,12 @@ This is an **unsigned x64 portable prerelease**. There is no current Paramux
 installer, WinGet package, Scoop package, ARM64 release, or public stable
 download.
 
-This build adds CLI lifecycle management — `paramux +install`,
-`+uninstall [--purge]`, and checksum-verified in-place `+update`
+This build adds CLI lifecycle management — `paramux install`,
+`uninstall [--purge]`, and checksum-verified in-place `update`
 (section 10) — on top of the `v0.1.0-paramux.6` UI/UX overhaul (five-button
 toolbar with hover tooltips, drag-and-drop pane rearrangement, settings
 theme picker, merge/zoom/equalize actions, first-run hints, the Explorer
-"Open in Paramux" entry), the agent-hook adapters, the `+send`/`+send-key`
+"Open in Paramux" entry), the agent-hook adapters, the `send`/`send-key`
 commands (section 9), and the packaged tmux-prefix preset (section 7). It
 is the first release the CLI can update FROM. The earlier
 `v0.1.0-paramux.4` build is a superseded legacy test artifact.
@@ -106,7 +106,7 @@ You can also drag a split divider with the mouse.
 See the complete effective list with:
 
 ```powershell
-paramux +list-keybinds
+paramux list-keybinds
 ```
 
 ## 6. Use the agent sidebar and attention states
@@ -125,11 +125,11 @@ settings example can be merged into your user or project settings. Other agent
 examples use the same command:
 
 ```powershell
-paramux +notify --state=waiting "Agent needs input"
-paramux +notify --state=done "Agent finished"
+paramux notify --state=waiting "Agent needs input"
+paramux notify --state=done "Agent finished"
 ```
 
-Run `+notify` from inside the pane you want to update. Paramux injects
+Run `notify` from inside the pane you want to update. Paramux injects
 `PARAMUX_SURFACE_ID` into each pane so the command can target the correct row.
 
 ## 7. Configure the terminal
@@ -161,8 +161,8 @@ Ghostty terminal core. Save the file and press `Ctrl+Shift+,` to reload it.
 List themes and inspect all options with inline documentation:
 
 ```powershell
-paramux +list-themes
-paramux +show-config --default --docs | more
+paramux list-themes
+paramux show-config --default --docs | more
 ```
 
 Rebind an action with the same `trigger=action` grammar:
@@ -210,7 +210,7 @@ not proof that a distribution can launch successfully.
 List the running windows, tabs, and panes:
 
 ```powershell
-paramux +list-windows
+paramux list-windows
 ```
 
 The response schema is `paramux.windows.v2`. The list response includes IDs,
@@ -219,30 +219,30 @@ focus/active state, and structural counts; it does not include terminal text.
 Invoke an allowlisted action on the focused surface or a specific pane:
 
 ```powershell
-paramux +perform-action new_tab
-paramux +perform-action --surface-id=<surface_id> toggle_fullscreen
+paramux perform-action new_tab
+paramux perform-action --surface-id=<surface_id> toggle_fullscreen
 ```
 
 Read a pane's current viewport text:
 
 ```powershell
-paramux +read-pane --surface-id=<surface_id>
+paramux read-pane --surface-id=<surface_id>
 ```
 
 Send exact UTF-8 text and a named terminal key to that pane:
 
 ```powershell
-paramux +send --surface-id=<surface_id> "npm test"
-paramux +send-key --surface-id=<surface_id> enter
+paramux send --surface-id=<surface_id> "npm test"
+paramux send-key --surface-id=<surface_id> enter
 ```
 
-`+perform-action`, `+notify`, `+read-pane`, `+send`, and `+send-key` use the
+`perform-action`, `notify`, `read-pane`, `send`, and `send-key` use the
 current Paramux instance token. In-pane clients receive it through
 `PARAMUX_TOKEN`; external Paramux CLI clients use the token file under
-`%LOCALAPPDATA%\paramux`. `+list-windows` remains unauthenticated for structural
+`%LOCALAPPDATA%\paramux`. `list-windows` remains unauthenticated for structural
 discovery.
 
-`+send` accepts one non-empty, valid UTF-8 payload up to 16 KiB. `+send-key`
+`send` accepts one non-empty, valid UTF-8 payload up to 16 KiB. `send-key`
 supports Enter, Tab, Escape, Backspace, Delete, arrows, Home, End, Page Up, and
 Page Down while respecting the pane's active terminal keyboard modes. The
 generic action allowlist continues to reject terminal-write, arbitrary file
@@ -253,11 +253,11 @@ helper, and crash actions. New action variants remain disabled until reviewed.
 Update the portable install in place from a newer GitHub release:
 
 ```powershell
-paramux +update --check   # report whether a newer release exists
-paramux +update           # download, verify SHA-256, and swap files in place
+paramux update --check   # report whether a newer release exists
+paramux update           # download, verify SHA-256, and swap files in place
 ```
 
-`+update` refuses to run while a paramux window is open from that folder,
+`update` refuses to run while a paramux window is open from that folder,
 never touches your configuration, and verifies the release checksum before
 changing anything. The manual path still works too: download the next
 portable ZIP, verify its checksum, and replace the extracted folder.
@@ -265,11 +265,11 @@ portable ZIP, verify its checksum, and replace the extracted folder.
 Uninstall with:
 
 ```powershell
-paramux +uninstall           # PATH, PARAMUX_HOME, Explorer menu
-paramux +uninstall --purge   # also deletes %LOCALAPPDATA%\paramux
+paramux uninstall           # PATH, PARAMUX_HOME, Explorer menu
+paramux uninstall --purge   # also deletes %LOCALAPPDATA%\paramux
 ```
 
-Then delete the extracted folder itself. `paramux +install` is the CLI
+Then delete the extracted folder itself. `paramux install` is the CLI
 equivalent of `install-paramux.cmd` for wiring a folder back up.
 
 A signed installer update lane is planned, but it is not a current user path.
@@ -286,7 +286,7 @@ Nothing in that directory is uploaded automatically. Inspect the local report
 surface with:
 
 ```powershell
-paramux +crash-report
+paramux crash-report
 ```
 
 ## 12. Uninstall

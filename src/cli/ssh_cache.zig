@@ -43,13 +43,13 @@ pub const Options = struct {
 /// multiple actions into separate commands.
 ///
 /// Examples:
-///   paramux +ssh-cache                          # List all cached hosts
-///   paramux +ssh-cache --host=example.com       # Check if host is cached
-///   paramux +ssh-cache --add=example.com        # Manually add host to cache
-///   paramux +ssh-cache --add=user@example.com   # Add user@host combination
-///   paramux +ssh-cache --remove=example.com     # Remove host from cache
-///   paramux +ssh-cache --clear                  # Clear entire cache
-///   paramux +ssh-cache --expire-days=30         # Set custom expiration period
+///   paramux ssh-cache                          # List all cached hosts
+///   paramux ssh-cache --host=example.com       # Check if host is cached
+///   paramux ssh-cache --add=example.com        # Manually add host to cache
+///   paramux ssh-cache --add=user@example.com   # Add user@host combination
+///   paramux ssh-cache --remove=example.com     # Remove host from cache
+///   paramux ssh-cache --clear                  # Clear entire cache
+///   paramux ssh-cache --expire-days=30         # Set custom expiration period
 pub fn run(alloc_gpa: Allocator) !u8 {
     var arena = std.heap.ArenaAllocator.init(alloc_gpa);
     defer arena.deinit();

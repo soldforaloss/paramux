@@ -17,7 +17,8 @@ pub const help_error = error.ActionHelpRequested;
 pub fn detectArgs(comptime E: type, alloc: Allocator) !?E {
     var iter = try std.process.argsWithAllocator(alloc);
     defer iter.deinit();
-    return try detectIter(E, &iter);
+    _ = iter.next(); // skip argv[0] (the executable path)
+    return try detectIterFirstBare(E, &iter);
 }
 
 /// Detect the action from any iterator. Each iterator value should yield
@@ -34,9 +35,45 @@ pub fn detectIter(
     comptime E: type,
     iter: anytype,
 ) DetectError!?E {
-    var fallback: ?E = null;
+    return detectRest(E, iter, null, null);
+}
+
+/// Like `detectIter`, but the iterator must NOT include argv[0], and a
+/// BARE first argument that exactly names an action is that action —
+/// `paramux update` means the update action. Only the first argument gets
+/// this treatment so `-e`-launched commands, flags, and positional
+/// config arguments behave exactly as before; `+action` keeps working
+/// anywhere for compatibility with existing scripts and agent hooks.
+pub fn detectIterFirstBare(
+    comptime E: type,
+    iter: anytype,
+) DetectError!?E {
     var pending: ?E = null;
-    while (iter.next()) |arg| {
+    var first: ?[]const u8 = iter.next();
+    if (first) |arg| {
+        if (arg.len > 0 and arg[0] != '-' and arg[0] != '+') {
+            if (std.meta.stringToEnum(E, arg)) |action| {
+                pending = action;
+                first = null; // consumed as the action word
+            }
+            // A bare first word that is NOT an action falls through to
+            // the normal scan (where it is ignored), preserving the
+            // legacy behavior for positional arguments.
+        }
+    }
+    return detectRest(E, iter, first, pending);
+}
+
+fn detectRest(
+    comptime E: type,
+    iter: anytype,
+    first_arg: ?[]const u8,
+    initial: ?E,
+) DetectError!?E {
+    var fallback: ?E = null;
+    var pending: ?E = initial;
+    var current: ?[]const u8 = first_arg orelse iter.next();
+    while (current) |arg| : (current = iter.next()) {
         // Allow handling of special cases.
         if (@hasDecl(E, "detectSpecialCase")) special: {
             const special = E.detectSpecialCase(arg) orelse break :special;
@@ -79,6 +116,80 @@ pub fn SpecialCase(comptime E: type) type {
         /// a special case to allow "-e" in Ghostty.
         abort_if_no_action,
     };
+}
+
+test "detect bare first-arg action" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    const Enum = enum { foo, bar, baz };
+
+    // Bare first word that names an action IS the action.
+    {
+        var iter = try std.process.ArgIteratorGeneral(.{}).init(alloc, "foo");
+        defer iter.deinit();
+        try testing.expectEqual(Enum.foo, (try detectIterFirstBare(Enum, &iter)).?);
+    }
+
+    // Bare action word with trailing options.
+    {
+        var iter = try std.process.ArgIteratorGeneral(.{}).init(alloc, "bar --opt=1");
+        defer iter.deinit();
+        try testing.expectEqual(Enum.bar, (try detectIterFirstBare(Enum, &iter)).?);
+    }
+
+    // The + form keeps working through the same entry.
+    {
+        var iter = try std.process.ArgIteratorGeneral(.{}).init(alloc, "+baz");
+        defer iter.deinit();
+        try testing.expectEqual(Enum.baz, (try detectIterFirstBare(Enum, &iter)).?);
+    }
+
+    // A bare word that is NOT an action is ignored (legacy positional).
+    {
+        var iter = try std.process.ArgIteratorGeneral(.{}).init(alloc, "nonsense --flag");
+        defer iter.deinit();
+        try testing.expect((try detectIterFirstBare(Enum, &iter)) == null);
+    }
+
+    // Only the FIRST argument gets bare treatment.
+    {
+        var iter = try std.process.ArgIteratorGeneral(.{}).init(alloc, "--flag foo");
+        defer iter.deinit();
+        try testing.expect((try detectIterFirstBare(Enum, &iter)) == null);
+    }
+
+    // Bare action followed by a +action is ambiguous.
+    {
+        var iter = try std.process.ArgIteratorGeneral(.{}).init(alloc, "foo +bar");
+        defer iter.deinit();
+        try testing.expectError(
+            DetectError.MultipleActions,
+            detectIterFirstBare(Enum, &iter),
+        );
+    }
+}
+
+test "detect bare first-arg respects -e abort" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    const Enum = enum {
+        foo,
+        bar,
+
+        fn detectSpecialCase(arg: []const u8) ?SpecialCase(@This()) {
+            return if (std.mem.eql(u8, arg, "-e"))
+                .abort_if_no_action
+            else
+                null;
+        }
+    };
+
+    // `-e foo` launches a command named foo; it is NOT the foo action.
+    {
+        var iter = try std.process.ArgIteratorGeneral(.{}).init(alloc, "-e foo");
+        defer iter.deinit();
+        try testing.expect((try detectIterFirstBare(Enum, &iter)) == null);
+    }
 }
 
 test "detect direct match" {

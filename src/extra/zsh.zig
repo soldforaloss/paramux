@@ -29,13 +29,13 @@ fn writeZshCompletions(writer: *std.Io.Writer) !void {
         \\#compdef paramux
         \\
         \\_fonts () {
-        \\  local font_list=$(paramux +list-fonts | grep -Z '^[A-Z]')
+        \\  local font_list=$(paramux list-fonts | grep -Z '^[A-Z]')
         \\  local fonts=(${(f)font_list})
         \\  _describe -t fonts 'fonts' fonts
         \\}
         \\
         \\_themes() {
-        \\  local theme_list=$(paramux +list-themes | sed -E 's/^(.*) \(.*$/\1/')
+        \\  local theme_list=$(paramux list-themes | sed -E 's/^(.*) \(.*$/\1/')
         \\  local themes=(${(f)theme_list})
         \\  _describe -t themes 'themes' themes
         \\}

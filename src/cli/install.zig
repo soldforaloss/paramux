@@ -38,7 +38,7 @@ pub const Options = struct {
 ///     `configure-paramux-hooks.ps1` is present next to the executable
 ///
 /// Everything is per-user and idempotent; run it again after moving the
-/// folder. Undo with `paramux +uninstall`.
+/// folder. Undo with `paramux uninstall`.
 ///
 /// Flags: `--no-path`, `--no-context-menu`, `--no-hooks` skip the
 /// corresponding step.

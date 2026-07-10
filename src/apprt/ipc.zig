@@ -118,7 +118,7 @@ pub const AutomationActionTarget = union(enum) {
 /// contract. The client and server both enforce this bound.
 pub const automation_input_max_len: usize = 16 * 1024;
 
-/// Named keys accepted by `paramux +send-key`.
+/// Named keys accepted by `paramux send-key`.
 pub const AutomationKey = enum(u8) {
     enter = 1,
     tab,

@@ -51,7 +51,7 @@ pub fn run(alloc: Allocator) !u8 {
     }
 
     if (comptime builtin.os.tag != .windows) {
-        std.debug.print("+update is a Windows lifecycle command.\n", .{});
+        std.debug.print("update is a Windows lifecycle command.\n", .{});
         return 1;
     }
 
@@ -93,7 +93,7 @@ pub fn run(alloc: Allocator) !u8 {
 
     if (opts.check) {
         try stdout.print(
-            "Update available: {s} -> {s}\nRun `paramux +update` to apply it.\n",
+            "Update available: {s} -> {s}\nRun `paramux update` to apply it.\n",
             .{ build_config.version_string, release.version_text },
         );
         return 0;
@@ -103,7 +103,7 @@ pub fn run(alloc: Allocator) !u8 {
     // would only half-apply and the restart story gets confusing.
     if (paramuxGuiRunningIn(alloc, exe_dir)) {
         try stdout.print(
-            "error: paramux is running from this folder. Close its windows, then run `paramux +update` again.\n",
+            "error: paramux is running from this folder. Close its windows, then run `paramux update` again.\n",
             .{},
         );
         return 1;
@@ -128,7 +128,7 @@ pub fn run(alloc: Allocator) !u8 {
     try stdout.flush();
     applyPortableZip(alloc, staged.installer_path, exe_dir) catch |err| {
         try stdout.print(
-            "error: applying the update failed ({s}). The install may be partially updated; re-run `paramux +update` or extract the ZIP manually:\n  {s}\n",
+            "error: applying the update failed ({s}). The install may be partially updated; re-run `paramux update` or extract the ZIP manually:\n  {s}\n",
             .{ @errorName(err), staged.installer_path },
         );
         return 1;
@@ -139,7 +139,7 @@ pub fn run(alloc: Allocator) !u8 {
     sweepOldFiles(exe_dir);
 
     try stdout.print(
-        "Updated {s} -> {s}. New windows use the new version; `paramux +version` confirms it.\n",
+        "Updated {s} -> {s}. New windows use the new version; `paramux version` confirms it.\n",
         .{ build_config.version_string, release.version_text },
     );
     return 0;
@@ -278,7 +278,7 @@ const win = struct {
 
 /// True when a `paramux.exe` GUI process is running whose image lives in
 /// `install_dir`. The CLI's own process (`paramux.com`) is excluded by
-/// image name, so `paramux +update` can update the folder it runs from.
+/// image name, so `paramux update` can update the folder it runs from.
 fn paramuxGuiRunningIn(alloc: Allocator, install_dir: []const u8) bool {
     const snapshot = win.CreateToolhelp32Snapshot(win.TH32CS_SNAPPROCESS, 0);
     if (snapshot == win.INVALID_HANDLE_VALUE) return false;

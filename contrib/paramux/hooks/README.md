@@ -1,13 +1,13 @@
 # paramux agent-attention hooks
 
 These snippets wire the four supported AI coding agents into paramux's
-attention system (FR-4/FR-5). Each agent calls the built-in `+notify` CLI when
+attention system (FR-4/FR-5). Each agent calls the built-in `notify` CLI when
 its state changes; paramux colors that pane's sidebar row and fires a Windows
 toast + taskbar flash.
 
 ## How it works
 
-`paramux +notify [--state=<state>] [--title=<t>] <message...>` prefers the
+`paramux notify [--state=<state>] [--title=<t>] <message...>` prefers the
 authenticated local IPC route using the `PARAMUX_SURFACE_ID` and
 `PARAMUX_TOKEN` that Paramux injects into every pane. This **auto-targets the
 pane the command ran in** — no window or surface id needed — and still works
@@ -23,7 +23,7 @@ the CLI falls back to an OSC 777 notification through the pane's `CONOUT$`.
 | `done`    | green | the agent finished               | yes     |
 | `error`   | red   | the agent errored                | yes     |
 
-A plain `+notify "msg"` with no `--state` defaults to `waiting`.
+A plain `notify "msg"` with no `--state` defaults to `waiting`.
 
 Run `install-paramux.cmd` before installing these adapters. It adds Paramux to
 `PATH`, sets the absolute `PARAMUX_HOME` used by copied plugins, and replaces
@@ -111,7 +111,7 @@ ignored so it cannot immediately overwrite the red error state.
 From inside any paramux pane:
 
 ```
-paramux +notify --state=waiting testing paramux attention
+paramux notify --state=waiting testing paramux attention
 ```
 
 The pane's sidebar dot should turn amber and a Windows toast should appear.

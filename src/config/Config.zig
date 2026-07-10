@@ -178,7 +178,7 @@ language: ?[:0]const u8 = null,
 ///
 /// You can generate the list of valid values using the CLI:
 ///
-///     paramux +list-fonts
+///     paramux list-fonts
 ///
 /// This configuration can be repeated multiple times to specify preferred
 /// fallback fonts when the requested codepoint is not available in the primary
@@ -600,7 +600,7 @@ language: ?[:0]const u8 = null,
 /// `share/ghostty/themes` directory next to the built application. When
 /// running from the source tree, this is typically `zig-out/share/ghostty/themes`.
 ///
-/// To see a list of available themes, run `paramux +list-themes`.
+/// To see a list of available themes, run `paramux list-themes`.
 ///
 /// A theme file is simply another paramux configuration file. They share
 /// the same syntax and can set most configuration options. A theme is not
@@ -1481,7 +1481,7 @@ title: ?[:0]const u8 = null,
 /// In this Windows fork, this value is used as the instance identifier for
 /// single-instance behavior and IPC routing. Changing it between invocations
 /// creates a separate paramux instance namespace, so commands such as
-/// `paramux +new-window` will only target processes launched with the same
+/// `paramux new-window` will only target processes launched with the same
 /// `class` value.
 ///
 /// The default is `io.github.soldforaloss.paramux`.
@@ -1526,7 +1526,7 @@ class: ?[:0]const u8 = null,
 
 /// Key bindings. The format is `trigger=action`. Duplicate triggers will
 /// overwrite previously set values. The list of actions is available in
-/// the documentation or using the `paramux +list-actions` command.
+/// the documentation or using the `paramux list-actions` command.
 ///
 /// Trigger: `+`-separated list of keys and modifiers. Example: `ctrl+a`,
 /// `ctrl+shift+b`, `up`.
@@ -1657,7 +1657,7 @@ class: ?[:0]const u8 = null,
 ///     e.g. `text:\x15` sends Ctrl-U.
 ///
 ///   * All other actions can be found in the documentation or by using the
-///     `paramux +list-actions` command.
+///     `paramux list-actions` command.
 ///
 /// Some notes for the action:
 ///

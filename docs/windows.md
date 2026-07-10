@@ -114,8 +114,8 @@ notification. The four attention states are `working`, `waiting`, `done`, and
 Agent hooks call:
 
 ```powershell
-paramux +notify --state=waiting "Agent needs input"
-paramux +notify --state=done "Agent finished"
+paramux notify --state=waiting "Agent needs input"
+paramux notify --state=done "Agent finished"
 ```
 
 The state is reflected in sidebar, pane, and tab cues. Paramux also requests a
@@ -161,24 +161,24 @@ Windows. Paramux does not implement global keyboard capture.
 The local control surface uses the Paramux Win32 IPC path:
 
 ```powershell
-paramux +list-windows
-paramux +perform-action new_tab
-paramux +perform-action --surface-id=<surface_id> toggle_fullscreen
-paramux +read-pane --surface-id=<surface_id>
-paramux +send --surface-id=<surface_id> "npm test"
-paramux +send-key --surface-id=<surface_id> enter
-paramux +notify --surface-id=<surface_id> --state=waiting "Needs input"
+paramux list-windows
+paramux perform-action new_tab
+paramux perform-action --surface-id=<surface_id> toggle_fullscreen
+paramux read-pane --surface-id=<surface_id>
+paramux send --surface-id=<surface_id> "npm test"
+paramux send-key --surface-id=<surface_id> enter
+paramux notify --surface-id=<surface_id> --state=waiting "Needs input"
 ```
 
-`+list-windows` reports the `paramux.windows.v2` JSON schema. It exposes local
-window/tab/pane IDs and structural state without terminal text. `+read-pane`
+`list-windows` reports the `paramux.windows.v2` JSON schema. It exposes local
+window/tab/pane IDs and structural state without terminal text. `read-pane`
 is the explicit, token-gated viewport-text operation.
 
-`+perform-action`, `+notify`, `+read-pane`, `+send`, and `+send-key` require the
+`perform-action`, `notify`, `read-pane`, `send`, and `send-key` require the
 current instance token. Paramux injects `PARAMUX_TOKEN` and
 `PARAMUX_SURFACE_ID` into panes; external Paramux CLI clients read the token
-from the local state directory. `+send` accepts one non-empty, valid UTF-8
-payload up to 16 KiB; `+send-key` uses the pane's current terminal keyboard
+from the local state directory. `send` accepts one non-empty, valid UTF-8
+payload up to 16 KiB; `send-key` uses the pane's current terminal keyboard
 modes. The generic action allowlist still rejects terminal-write,
 arbitrary-file helper, and crash actions, and new action variants remain
 disabled until reviewed.
@@ -242,7 +242,7 @@ same extracted build.
 
 ### Updating the prerelease
 
-Run `paramux +update` (or `paramux +update --check` to only look). It
+Run `paramux update` (or `paramux update --check` to only look). It
 downloads the newest release's portable ZIP, verifies its SHA-256 against
 the published checksum file, and swaps the files in place; close paramux
 windows first, and configuration is never touched. The manual path —

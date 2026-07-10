@@ -557,7 +557,7 @@ pub const MoveTab = extern struct {
 pub const NewWindow = struct {
     /// Optional CLI-style arguments to apply to the first surface created in
     /// the new window. These are primarily used by the Windows-only IPC path
-    /// for `paramux +new-window`.
+    /// for `paramux new-window`.
     arguments: ?[]const [:0]const u8 = null,
 
     pub const C = extern struct {

@@ -14,7 +14,7 @@ pub const Options = struct {
     /// local paramux instance.
     class: ?[:0]const u8 = null,
 
-    /// Read a specific pane by its `+list-windows` id. Defaults to the focused
+    /// Read a specific pane by its `list-windows` id. Defaults to the focused
     /// pane, or the `PARAMUX_SURFACE_ID` of the pane this command runs in.
     @"surface-id": ?u64 = null,
 
@@ -31,15 +31,15 @@ pub const Options = struct {
 };
 
 /// The `read-pane` command prints a pane's current viewport text from a running
-/// paramux instance, over the same IPC channel as `+list-windows`.
+/// paramux instance, over the same IPC channel as `list-windows`.
 ///
 /// The default target is the focused pane, or — when run inside a pane — the
 /// pane identified by the `PARAMUX_SURFACE_ID` environment variable. Use
-/// `--surface-id` (a pane id from `paramux +list-windows`) to read a
+/// `--surface-id` (a pane id from `paramux list-windows`) to read a
 /// specific pane.
 ///
-///   * `paramux +read-pane`
-///   * `paramux +read-pane --surface-id=42`
+///   * `paramux read-pane`
+///   * `paramux read-pane --surface-id=42`
 ///
 /// This lets a script drive a workspace and read an agent's output back.
 ///

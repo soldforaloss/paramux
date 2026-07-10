@@ -22,7 +22,7 @@ pub const Options = struct {
     /// done=green, error=red) instead of treating it as a plain notification.
     state: []const u8 = "",
 
-    /// Target a specific pane by its `+list-windows` id instead of the pane
+    /// Target a specific pane by its `list-windows` id instead of the pane
     /// this command runs in. Normally unset — the pane id is discovered from
     /// the `PARAMUX_SURFACE_ID` environment variable injected into each pane.
     @"surface-id": ?u64 = null,
@@ -32,7 +32,7 @@ pub const Options = struct {
     _surface_id_invalid: bool = false,
 
     /// The notification message, collected from all positional arguments after
-    /// `+notify`.
+    /// `notify`.
     _message: std.ArrayList([]const u8) = .empty,
 
     /// Collect the `--title`/`--state` flags and all positional arguments as
@@ -91,18 +91,18 @@ pub const Options = struct {
 /// sequence travels down the pane's own PTY, it automatically targets the
 /// correct pane with no window or surface id required.
 ///
-/// The message is taken from all arguments after `+notify`:
+/// The message is taken from all arguments after `notify`:
 ///
-///     paramux +notify Claude is waiting for your input
+///     paramux notify Claude is waiting for your input
 ///
 /// An optional title may be set with `--title=`:
 ///
-///     paramux +notify --title=Claude review complete
+///     paramux notify --title=Claude review complete
 ///
 /// For agent hooks, `--state=` colors the pane by attention state, one of
 /// `working`, `waiting`, `done`, or `error`:
 ///
-///     paramux +notify --state=waiting Claude needs your approval
+///     paramux notify --state=waiting Claude needs your approval
 ///
 /// Delivery is console-independent when possible: if `PARAMUX_SURFACE_ID` is in
 /// the environment (paramux injects it into every pane) or `--surface-id` is
@@ -130,7 +130,7 @@ pub fn run(alloc: Allocator) !u8 {
         var buf: [128]u8 = undefined;
         var stderr_writer = std.fs.File.stderr().writer(&buf);
         const stderr = &stderr_writer.interface;
-        stderr.writeAll("+notify: invalid --surface-id value\n") catch {};
+        stderr.writeAll("notify: invalid --surface-id value\n") catch {};
         stderr.flush() catch {};
         return 1;
     }
@@ -183,7 +183,7 @@ pub fn run(alloc: Allocator) !u8 {
         var buf: [256]u8 = undefined;
         var stderr_writer = std.fs.File.stderr().writer(&buf);
         const stderr = &stderr_writer.interface;
-        stderr.print("+notify failed to write to the terminal: {}\n", .{err}) catch {};
+        stderr.print("notify failed to write to the terminal: {}\n", .{err}) catch {};
         stderr.flush() catch {};
         return 1;
     };
@@ -258,7 +258,7 @@ test "notify collects message and title" {
 
     const child = try std.process.ArgIteratorGeneral(.{}).init(
         alloc,
-        "+notify --title=Done Claude is waiting",
+        "notify --title=Done Claude is waiting",
     );
     const ArgsIter = args.ArgsIterator(@TypeOf(child));
     var iter: ArgsIter = .{ .iterator = child };

@@ -566,7 +566,7 @@ pub const Action = union(enum) {
     ///
     /// This is only supported on Linux and when the system's libadwaita
     /// version is 1.4 or newer. The current libadwaita version can be
-    /// found by running `paramux +version`.
+    /// found by running `paramux version`.
     toggle_tab_overview,
 
     /// Change the title of the current focused surface via a pop-up prompt.
@@ -761,7 +761,7 @@ pub const Action = union(enum) {
     ///
     /// In the Windows-only fork, this is implemented by the native Win32 host.
     /// On Linux, this requires libadwaita 1.5 or newer. The current
-    /// libadwaita version can be found by running `paramux +version`.
+    /// libadwaita version can be found by running `paramux version`.
     toggle_command_palette,
 
     /// Toggle the quick terminal.

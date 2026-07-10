@@ -92,7 +92,7 @@ function run(payloadText) {
   }
   const child = spawnSync(
     executable,
-    ["+notify", `--state=${event.state}`, event.message],
+    ["notify", `--state=${event.state}`, event.message],
     {
       encoding: "utf8",
       maxBuffer: MAX_STDERR_BYTES,

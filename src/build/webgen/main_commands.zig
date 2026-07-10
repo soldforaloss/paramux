@@ -45,7 +45,7 @@ pub fn genActions(writer: *std.Io.Writer) !void {
             try writer.writeAll("\n```\n");
             switch (action) {
                 .help, .version => try writer.writeAll("paramux --" ++ field.name ++ "\n"),
-                else => try writer.writeAll("paramux +" ++ field.name ++ "\n"),
+                else => try writer.writeAll("paramux " ++ field.name ++ "\n"),
             }
             try writer.writeAll("```\n\n");
         }

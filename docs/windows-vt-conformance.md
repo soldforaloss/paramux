@@ -1,6 +1,6 @@
 # Windows VT Conformance
 
-`+vt-probe` is a deterministic capability inventory. It distinguishes shared
+`vt-probe` is a deterministic capability inventory. It distinguishes shared
 parser/core support from behavior that has also been validated through the
 Win32 runtime.
 
@@ -40,7 +40,7 @@ Run the metadata validator plus the referenced Win32 runtime harnesses:
 powershell.exe -ExecutionPolicy Bypass -File .\test\windows\vt-probe-win32-conformance.ps1 -ResetState -Runtime
 ```
 
-Known runtime gaps are intentionally visible in `+vt-probe`: OSC 7 cwd state,
+Known runtime gaps are intentionally visible in `vt-probe`: OSC 7 cwd state,
 OSC 8 link interaction, OSC 52 clipboard prompts/reads/writes, color rendering
 for OSC 4 / 10 / 11 / 21, and Kitty graphics pixel validation do not yet have
 dedicated Win32 GUI harnesses.

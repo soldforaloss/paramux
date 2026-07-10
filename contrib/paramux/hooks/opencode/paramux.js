@@ -32,7 +32,7 @@ function runParamux(notification) {
   return new Promise((resolve, reject) => {
     const child = spawn(
       executable,
-      ["+notify", `--state=${notification.state}`, notification.message],
+      ["notify", `--state=${notification.state}`, notification.message],
       {
         shell: false,
         stdio: ["ignore", "ignore", "pipe"],

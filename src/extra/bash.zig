@@ -58,13 +58,13 @@ fn writeBashCompletions(writer: *std.Io.Writer) !void {
         \\  _fonts() {
         \\    local IFS=$'\n'
         \\    COMPREPLY=()
-        \\    while read -r line; do COMPREPLY+=("$line"); done < <( compgen -P '"' -S '"' -W "$($paramux +list-fonts | grep '^[A-Z]' )" -- "$cur")
+        \\    while read -r line; do COMPREPLY+=("$line"); done < <( compgen -P '"' -S '"' -W "$($paramux list-fonts | grep '^[A-Z]' )" -- "$cur")
         \\  }
         \\
         \\  _themes() {
         \\    local IFS=$'\n'
         \\    COMPREPLY=()
-        \\    while read -r line; do COMPREPLY+=("$line"); done < <( compgen -P '"' -S '"' -W "$($paramux +list-themes | sed -E 's/^(.*) \(.*$/\1/')" -- "$cur")
+        \\    while read -r line; do COMPREPLY+=("$line"); done < <( compgen -P '"' -S '"' -W "$($paramux list-themes | sed -E 's/^(.*) \(.*$/\1/')" -- "$cur")
         \\  }
         \\
         \\  _files() {

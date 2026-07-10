@@ -16,26 +16,26 @@ pub const Options = struct {
 };
 
 pub const keybinding_discovery_hint =
-    \\  `paramux +explain-config --keybind=<action>` explains one keybind action.
-    \\  `paramux +list-actions --docs` lists bindable actions with docs.
-    \\  `paramux +list-keybinds --default` shows the shipped default bindings.
-    \\  `paramux +list-keybinds --docs` annotates bindings with action docs.
+    \\  `paramux explain-config --keybind=<action>` explains one keybind action.
+    \\  `paramux list-actions --docs` lists bindable actions with docs.
+    \\  `paramux list-keybinds --default` shows the shipped default bindings.
+    \\  `paramux list-keybinds --docs` annotates bindings with action docs.
 ;
 
 const help_prelude =
-    \\Usage: paramux [+action] [options]
+    \\Usage: paramux [action] [options]
     \\
     \\Run the Windows-native paramux terminal or a specific helper action.
     \\
-    \\If no `+action` is specified, run `paramux.exe`.
+    \\If no action is specified, run `paramux.exe`.
     \\All configuration keys are available as command line options.
     \\To specify a configuration key, use the `--<key>=<value>` syntax
     \\where key and value are the same format you'd put into a configuration
     \\file. For example, `--font-size=12` or `--font-family="Fira Code"`.
     \\
     \\Discover configuration from the CLI:
-    \\  `paramux +show-config --default --docs` lists every config key and its docs.
-    \\  `paramux +explain-config <option>` explains one config key.
+    \\  `paramux show-config --default --docs` lists every config key and its docs.
+    \\  `paramux explain-config <option>` explains one config key.
     \\
     \\A special command line argument `-e <command>` can be used to run
     \\the specific command inside the terminal emulator. For example,
@@ -46,21 +46,21 @@ const help_prelude =
 ++ keybinding_discovery_hint ++
     \\
     \\Useful Windows actions:
-    \\  `paramux +new-window` forwards into the running instance when possible.
-    \\  `paramux +list-windows` prints local automation window IDs as JSON.
-    \\  `paramux +perform-action new_tab` forwards a safe UI action.
-    \\  `paramux +edit-config` opens the config file in your default editor.
+    \\  `paramux new-window` forwards into the running instance when possible.
+    \\  `paramux list-windows` prints local automation window IDs as JSON.
+    \\  `paramux perform-action new_tab` forwards a safe UI action.
+    \\  `paramux edit-config` opens the config file in your default editor.
     \\
     \\Available actions:
     \\
     \\
 ;
 
-/// The `help` command shows general help about paramux. Recognized as either
-/// `-h, `--help`, or like other actions `+help`.
+/// The `help` command shows general help about paramux. Recognized as
+/// `-h`, `--help`, or like other actions as `paramux help`.
 ///
 /// You can also specify `--help` or `-h` along with any action such as
-/// `+list-themes` to see help for a specific action.
+/// `list-themes` to see help for a specific action.
 pub fn run(alloc: Allocator) !u8 {
     var opts: Options = .{};
     defer opts.deinit();
@@ -77,13 +77,14 @@ pub fn run(alloc: Allocator) !u8 {
     try stdout.writeAll(help_prelude);
 
     inline for (@typeInfo(Action).@"enum".fields) |field| {
-        try stdout.print("  +{s}\n", .{field.name});
+        try stdout.print("  {s}\n", .{field.name});
     }
 
     try stdout.writeAll(
         \\
-        \\Specify `+<action> --help` to see the help for a specific action,
-        \\where `<action>` is one of actions listed above.
+        \\Specify `<action> --help` to see the help for a specific action,
+        \\where `<action>` is one of actions listed above. The legacy
+        \\`+<action>` spelling is still accepted everywhere.
         \\
     );
     try stdout.flush();
@@ -99,12 +100,13 @@ test "help prelude is Windows-only" {
 }
 
 test "help prelude points to CLI discovery commands" {
-    try std.testing.expect(std.mem.indexOf(u8, help_prelude, "+show-config --default --docs") != null);
-    try std.testing.expect(std.mem.indexOf(u8, help_prelude, "+explain-config") != null);
-    try std.testing.expect(std.mem.indexOf(u8, help_prelude, "+explain-config --keybind=<action>") != null);
-    try std.testing.expect(std.mem.indexOf(u8, help_prelude, "+list-actions --docs") != null);
-    try std.testing.expect(std.mem.indexOf(u8, help_prelude, "+list-keybinds --default") != null);
-    try std.testing.expect(std.mem.indexOf(u8, help_prelude, "+list-keybinds --docs") != null);
+    try std.testing.expect(std.mem.indexOf(u8, help_prelude, "show-config --default --docs") != null);
+    try std.testing.expect(std.mem.indexOf(u8, help_prelude, "explain-config") != null);
+    try std.testing.expect(std.mem.indexOf(u8, help_prelude, "explain-config --keybind=<action>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, help_prelude, "list-actions --docs") != null);
+    try std.testing.expect(std.mem.indexOf(u8, help_prelude, "list-keybinds --default") != null);
+    try std.testing.expect(std.mem.indexOf(u8, help_prelude, "list-keybinds --docs") != null);
+    try std.testing.expect(std.mem.indexOf(u8, help_prelude, "+show-config") == null);
     try std.testing.expect(std.mem.indexOf(u8, help_prelude, "src/config/Config.zig") == null);
     try std.testing.expect(std.mem.indexOf(u8, help_prelude, "future update") == null);
 }

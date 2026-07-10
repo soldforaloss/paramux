@@ -73,8 +73,8 @@ lineage and compatibility names; **Paramux is the product and executable.**
   import.
 - Portable packaging with `paramux.exe`, the console-friendly `paramux.com`
   launcher, and an idempotent user-PATH installer.
-- CLI lifecycle management: `paramux +install`, `+uninstall [--purge]`, and
-  checksum-verified in-place `+update` from GitHub releases.
+- CLI lifecycle management: `paramux install`, `uninstall [--purge]`, and
+  checksum-verified in-place `update` from GitHub releases.
 
 The current build is a public, unsigned prerelease. Signed installers, WinGet, and Scoop
 distribution are not published yet; the portable build is the truthful install
@@ -89,13 +89,13 @@ published 2026-07-10 for Windows x64:
 - [`paramux-0.1.0-paramux.8-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.8/paramux-0.1.0-paramux.8-windows-x64-portable.zip)
 - [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.8/SHA256SUMS-windows-x64.txt)
 
-This build adds CLI lifecycle management (`+install`, `+uninstall`,
-checksum-verified in-place `+update`) on top of the `v0.1.0-paramux.6`
+This build adds CLI lifecycle management (`install`, `uninstall`,
+checksum-verified in-place `update`) on top of the `v0.1.0-paramux.6`
 UI/UX overhaul (five-button toolbar with tooltips, drag-and-drop pane
 rearrangement, settings theme picker, merge/zoom/equalize actions,
 first-run hints, and the Explorer "Open in Paramux" entry). It is the
 first release the CLI can update FROM: future releases apply with
-`paramux +update`. Earlier prereleases are superseded
+`paramux update`. Earlier prereleases are superseded
 (`v0.1.0-paramux.4` remains a legacy test artifact).
 
 1. Download both the portable ZIP and `SHA256SUMS-windows-x64.txt`.
@@ -127,11 +127,11 @@ paramux
 The CLI can manage its own lifecycle from there on:
 
 ```powershell
-paramux +update --check   # is a newer release available?
-paramux +update           # checksum-verified in-place update
-paramux +uninstall        # remove PATH/PARAMUX_HOME/Explorer entries
-paramux +uninstall --purge  # ... and delete %LOCALAPPDATA%\paramux
-paramux +install          # re-wire a moved folder (same as install-paramux.cmd)
+paramux update --check   # is a newer release available?
+paramux update           # checksum-verified in-place update
+paramux uninstall        # remove PATH/PARAMUX_HOME/Explorer entries
+paramux uninstall --purge  # ... and delete %LOCALAPPDATA%\paramux
+paramux install          # re-wire a moved folder (same as install-paramux.cmd)
 ```
 
 To undo the PATH change with the script instead:
@@ -178,7 +178,7 @@ Useful defaults:
 See the effective keymap at any time:
 
 ```powershell
-paramux +list-keybinds
+paramux list-keybinds
 ```
 
 ## Agent attention
@@ -190,13 +190,13 @@ The included examples live in [`contrib/paramux/hooks/`](contrib/paramux/hooks/)
 Manual smoke test from inside a pane:
 
 ```powershell
-paramux +notify --state=waiting "Waiting for approval"
-paramux +notify --state=done "Task complete"
-paramux +notify --state=error "Tests failed"
+paramux notify --state=waiting "Waiting for approval"
+paramux notify --state=done "Task complete"
+paramux notify --state=error "Tests failed"
 ```
 
 Supported states are `working`, `waiting`, `done`, and `error`. Plain
-`paramux +notify "message"` notifications default to `waiting`.
+`paramux notify "message"` notifications default to `waiting`.
 
 ## Local automation
 
@@ -206,26 +206,26 @@ per-instance token written under `%LOCALAPPDATA%\paramux`.
 
 ```powershell
 # Discover window, tab, and pane IDs.
-paramux +list-windows
+paramux list-windows
 
 # Split the focused pane.
-paramux +perform-action new_split:right
+paramux perform-action new_split:right
 
 # Read the focused pane, or target an ID returned above.
-paramux +read-pane
-paramux +read-pane --surface-id=42
+paramux read-pane
+paramux read-pane --surface-id=42
 
 # Send exact text and a terminal key to a pane.
-paramux +send --surface-id=42 "npm test"
-paramux +send-key --surface-id=42 enter
+paramux send --surface-id=42 "npm test"
+paramux send-key --surface-id=42 enter
 
 # Target an agent-attention event explicitly.
-paramux +notify --surface-id=42 --state=waiting "Review needed"
+paramux notify --surface-id=42 --state=waiting "Review needed"
 ```
 
-The JSON discovery schema is `paramux.windows.v2`. Dedicated `+send` and
-`+send-key` calls are bounded, UTF-8 validated, pane-targeted, and token-gated.
-The generic `+perform-action` allowlist still rejects terminal-write, file
+The JSON discovery schema is `paramux.windows.v2`. Dedicated `send` and
+`send-key` calls are bounded, UTF-8 validated, pane-targeted, and token-gated.
+The generic `perform-action` allowlist still rejects terminal-write, file
 helper, and crash actions.
 
 ## Configuration and themes
@@ -246,9 +246,9 @@ theme = Dracula
 ```
 
 ```powershell
-paramux +show-config --default --docs | more
-paramux +list-themes
-paramux +import-theme "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
+paramux show-config --default --docs | more
+paramux list-themes
+paramux import-theme "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
 ```
 
 ## Build from source

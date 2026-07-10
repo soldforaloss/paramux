@@ -14,12 +14,12 @@ README or the public paramux repository documentation
 
 | Shell | Automatic injection | Prompt / cwd marks | `ssh-env` | `ssh-terminfo` |
 | --- | --- | --- | --- | --- |
-| Bash | Yes, via POSIX `ENV` wrapper | Yes | Yes | Installs remote `xterm-ghostty` terminfo with local `infocmp`, remote `tic`, and `paramux +ssh-cache` |
-| Zsh | Yes, via temporary `ZDOTDIR` | Yes | Yes | Installs remote `xterm-ghostty` terminfo with local `infocmp`, remote `tic`, and `paramux +ssh-cache` |
-| Fish | Yes, via `XDG_DATA_DIRS` vendor config | Yes | Yes | Installs remote `xterm-ghostty` terminfo with local `infocmp`, remote `tic`, and `paramux +ssh-cache` |
-| Nushell | Yes, via `XDG_DATA_DIRS` vendor autoload plus `use ghostty *` | Shell-native where available | Yes | Installs remote `xterm-ghostty` terminfo with local `infocmp`, remote `tic`, and `paramux +ssh-cache` |
-| Elvish | Available as distributed module | Shell-native where available | Yes | Installs remote `xterm-ghostty` terminfo with local `infocmp`, remote `tic`, and `paramux +ssh-cache` |
-| PowerShell | Yes on Windows for interactive `powershell.exe` / `pwsh.exe` | OSC 7 + OSC 133 | Yes | Cache-aware only: uses `xterm-ghostty` for hosts already present in `paramux +ssh-cache`, otherwise falls back to `xterm-256color` |
+| Bash | Yes, via POSIX `ENV` wrapper | Yes | Yes | Installs remote `xterm-ghostty` terminfo with local `infocmp`, remote `tic`, and `paramux ssh-cache` |
+| Zsh | Yes, via temporary `ZDOTDIR` | Yes | Yes | Installs remote `xterm-ghostty` terminfo with local `infocmp`, remote `tic`, and `paramux ssh-cache` |
+| Fish | Yes, via `XDG_DATA_DIRS` vendor config | Yes | Yes | Installs remote `xterm-ghostty` terminfo with local `infocmp`, remote `tic`, and `paramux ssh-cache` |
+| Nushell | Yes, via `XDG_DATA_DIRS` vendor autoload plus `use ghostty *` | Shell-native where available | Yes | Installs remote `xterm-ghostty` terminfo with local `infocmp`, remote `tic`, and `paramux ssh-cache` |
+| Elvish | Available as distributed module | Shell-native where available | Yes | Installs remote `xterm-ghostty` terminfo with local `infocmp`, remote `tic`, and `paramux ssh-cache` |
+| PowerShell | Yes on Windows for interactive `powershell.exe` / `pwsh.exe` | OSC 7 + OSC 133 | Yes | Cache-aware only: uses `xterm-ghostty` for hosts already present in `paramux ssh-cache`, otherwise falls back to `xterm-256color` |
 | cmd.exe | No | No | No | No |
 
 ### Bash
@@ -156,7 +156,7 @@ When `GHOSTTY_SHELL_FEATURES` contains `ssh-env` or `ssh-terminfo`, PowerShell
 wraps `ssh` and runs the remote session with `TERM=xterm-256color` by default.
 `ssh-env` also sends `COLORTERM`, `TERM_PROGRAM`, and `TERM_PROGRAM_VERSION`
 and sets `COLORTERM=truecolor` for the SSH process. When `ssh-terminfo` is
-enabled, the wrapper checks `paramux +ssh-cache` for the resolved
+enabled, the wrapper checks `paramux ssh-cache` for the resolved
 `user@hostname` from `ssh -G`; cached hosts use `TERM=xterm-ghostty`.
 
 PowerShell intentionally does not auto-install remote terminfo. The POSIX
@@ -175,6 +175,6 @@ notifications.
 When `shell-integration-features` includes `ssh-terminfo`, the Bash integration
 wraps `ssh` to install the `xterm-ghostty` terminfo entry on remote hosts using
 local `infocmp` plus remote `tic`. Successful installs are cached through
-`paramux +ssh-cache`, preferring `$GHOSTTY_BIN_DIR/paramux` and falling
+`paramux ssh-cache`, preferring `$GHOSTTY_BIN_DIR/paramux` and falling
 back to a `paramux` found on `PATH`. If the cache helper is unavailable, SSH
 still attempts installation but may repeat it on later connections.

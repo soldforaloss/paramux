@@ -24,7 +24,7 @@ pub const Options = struct {
     }
 };
 
-/// The `uninstall` command reverses `paramux +install` for the folder
+/// The `uninstall` command reverses `paramux install` for the folder
 /// containing this executable:
 ///
 ///   * removes the folder from the user `PATH`

@@ -127,7 +127,7 @@ pub fn commandMatchesExe(command: []const u8, exe_path: []const u8) bool {
 }
 
 /// The exe the verbs should launch: always the GUI `paramux.exe`. When the
-/// caller is the console launcher (`paramux.com`, e.g. `paramux +install`),
+/// caller is the console launcher (`paramux.com`, e.g. `paramux install`),
 /// the sibling `paramux.exe` is used so Explorer launches never flash a
 /// console window. Falls back to the running image if no sibling exists
 /// (unusual dev layouts). Caller owns the result.

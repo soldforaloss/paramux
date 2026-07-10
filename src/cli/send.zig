@@ -31,12 +31,12 @@ const PerformSendFn = *const fn (
 /// Send exact UTF-8 input to a pane in a running paramux instance.
 ///
 /// The default target is the focused pane. Use `--surface-id=<id>` with a pane
-/// id from `paramux +list-windows` for exact routing. The payload is one CLI
+/// id from `paramux list-windows` for exact routing. The payload is one CLI
 /// argument, so quote text containing spaces. Unlike clipboard paste, the bytes
 /// are delivered exactly as supplied.
 ///
-///   * `paramux +send "echo hello"`
-///   * `paramux +send --surface-id=42 "echo hello"`
+///   * `paramux send "echo hello"`
+///   * `paramux send --surface-id=42 "echo hello"`
 pub fn run(alloc: Allocator) !u8 {
     var iter = try args.argsIterator(alloc);
     defer iter.deinit();

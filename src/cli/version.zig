@@ -12,7 +12,7 @@ const event_backend_label = "  - event backend : ";
 pub const Options = struct {};
 
 /// The `version` command is used to display information about paramux. Recognized as
-/// either `+version` or `--version`.
+/// either `version` or `--version`.
 pub fn run(alloc: Allocator) !u8 {
     _ = alloc;
     var buffer: [1024]u8 = undefined;

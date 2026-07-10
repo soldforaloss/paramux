@@ -74,7 +74,7 @@ const ansi_keys = [_]AnsiKey{
 /// paramux theme (which is just a config file: `palette`, `background`,
 /// `foreground`, etc.). Print it and redirect it into a theme file, e.g.:
 ///
-///     paramux +import-theme settings.json --scheme="One Half Dark" > OneHalfDark
+///     paramux import-theme settings.json --scheme="One Half Dark" > OneHalfDark
 ///
 /// The input may be a Windows Terminal `settings.json` (which has a top-level
 /// `schemes` array — use `--scheme` to pick one, or omit it if there is exactly

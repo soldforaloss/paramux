@@ -21,7 +21,7 @@ pub fn reportStateInitError(err: anyerror) !void {
         error.InvalidAction => try stderr.print(
             "Error: unknown CLI action specified. CLI actions are specified with\n" ++
                 "the '+' character.\n\n" ++
-                "All valid CLI actions can be listed with `paramux +help`\n",
+                "All valid CLI actions can be listed with `paramux help`\n",
             .{},
         ),
 
@@ -54,14 +54,14 @@ fn formatCliActionFailureMessage(
         if (err == error.ActionHelpOutputUnavailable) {
             return std.fmt.bufPrint(
                 buf,
-                "paramux +{s} could not write help text. Launch it from Command Prompt, PowerShell, or Windows Terminal, or redirect the output to a file.\n",
+                "paramux {s} could not write help text. Launch it from Command Prompt, PowerShell, or Windows Terminal, or redirect the output to a file.\n",
                 .{@tagName(action)},
             ) catch "paramux CLI action failed.\n";
         }
         if (err == error.InvalidHandle and cli.ghostty.requiresTerminalUi(action)) {
             return std.fmt.bufPrint(
                 buf,
-                "paramux +{s} needs an interactive terminal. Launch it from Command Prompt, PowerShell, or Windows Terminal instead of starting paramux.exe detached from a console.\n",
+                "paramux {s} needs an interactive terminal. Launch it from Command Prompt, PowerShell, or Windows Terminal instead of starting paramux.exe detached from a console.\n",
                 .{@tagName(action)},
             ) catch "paramux CLI action failed.\n";
         }
@@ -69,7 +69,7 @@ fn formatCliActionFailureMessage(
 
     return std.fmt.bufPrint(
         buf,
-        "paramux +{s} failed: {s}\n",
+        "paramux {s} failed: {s}\n",
         .{ @tagName(action), @errorName(err) },
     ) catch "paramux CLI action failed.\n";
 }
@@ -146,7 +146,7 @@ test "cli invalid handle errors get a visible terminal hint" {
         try std.testing.expect(std.mem.indexOf(u8, message, "interactive terminal") != null);
     } else {
         try std.testing.expectEqualStrings(
-            "paramux +boo failed: InvalidHandle\n",
+            "paramux boo failed: InvalidHandle\n",
             message,
         );
     }
@@ -162,7 +162,7 @@ test "cli help output failures get a text output hint" {
         try std.testing.expect(std.mem.indexOf(u8, message, "interactive terminal") == null);
     } else {
         try std.testing.expectEqualStrings(
-            "paramux +boo failed: ActionHelpOutputUnavailable\n",
+            "paramux boo failed: ActionHelpOutputUnavailable\n",
             message,
         );
     }

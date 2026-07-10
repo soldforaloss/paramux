@@ -25,11 +25,11 @@ Ghostty documentation to current Paramux behavior.
 - `v0.1.0-paramux.8` is public, portable, prerelease-only, and unsigned.
 - Its ZIP is feature- and branding-complete: Paramux README, completions, and
   VERSIONINFO, plus the agent-hooks payload, config presets, and the
-  `+send`/`+send-key` verbs. It carries the 2026-07-10 UI/UX overhaul
+  `send`/`send-key` verbs. It carries the 2026-07-10 UI/UX overhaul
   (toolbar tooltips, split-down/settings buttons, pane drag-and-drop,
   settings theme picker, merge/zoom/equalize menu actions, first-run hints,
   the optional Explorer context-menu entry) plus the CLI lifecycle verbs
-  (`+install`, `+uninstall [--purge]`, checksum-verified `+update`) — the
+  (`install`, `uninstall [--purge]`, checksum-verified `update`) — the
   first release the CLI can update FROM. The earlier `v0.1.0-paramux.4`
   build is a superseded legacy test artifact.
 - The release contains `paramux-0.1.0-paramux.8-windows-x64-portable.zip` and
@@ -55,25 +55,25 @@ Ghostty documentation to current Paramux behavior.
   and taskbar attention behavior.
 - Hook examples under `contrib/paramux/hooks/`, including a ready-to-merge
   Claude Code settings example.
-- A console-independent `paramux +notify` path that targets the pane identified
+- A console-independent `paramux notify` path that targets the pane identified
   by its injected `PARAMUX_SURFACE_ID`.
 
 ### Local control surface
 
-- `paramux +list-windows` reports the `paramux.windows.v2` schema with window,
+- `paramux list-windows` reports the `paramux.windows.v2` schema with window,
   tab, and pane IDs plus structural/focus state.
-- `paramux +perform-action` forwards reviewed keybinding actions to the running
+- `paramux perform-action` forwards reviewed keybinding actions to the running
   instance.
-- `paramux +read-pane` returns the current viewport text for a target pane.
-- `paramux +send` writes one bounded UTF-8 payload to a focused or explicitly
-  selected pane, and `paramux +send-key` sends one key from a closed key set.
+- `paramux read-pane` returns the current viewport text for a target pane.
+- `paramux send` writes one bounded UTF-8 payload to a focused or explicitly
+  selected pane, and `paramux send-key` sends one key from a closed key set.
 - Sensitive methods use a per-instance token supplied through `PARAMUX_TOKEN`
   inside panes or the token file under `%LOCALAPPDATA%\paramux` for external
   Paramux CLI clients.
-- `+list-windows` remains unauthenticated for structural discovery.
-- The generic `+perform-action` allowlist rejects terminal-input,
-  arbitrary-file helper, and crash actions. Dedicated `+send` and
-  `+send-key` methods provide the token-gated terminal-input path.
+- `list-windows` remains unauthenticated for structural discovery.
+- The generic `perform-action` allowlist rejects terminal-input,
+  arbitrary-file helper, and crash actions. Dedicated `send` and
+  `send-key` methods provide the token-gated terminal-input path.
 
 ### Terminal core inherited from Ghostty
 
@@ -124,7 +124,7 @@ is periodic and scoped to the pane's child process tree.
 
 ### Agent integrations
 
-The Paramux attention protocol and `+notify` command are complete. The
+The Paramux attention protocol and `notify` command are complete. The
 portable package includes concrete Claude Code settings, Codex hooks, a Gemini
 CLI extension, and an OpenCode plugin. Their lifecycle events differ, so each
 adapter maps only events its agent exposes. Run `install-paramux.cmd` first,
@@ -132,10 +132,10 @@ then install the relevant adapter and restart that agent.
 
 ### Update paths
 
-The portable install updates itself: `paramux +update` fetches the newest
+The portable install updates itself: `paramux update` fetches the newest
 GitHub release (prereleases included), verifies the portable ZIP's SHA-256
 against the published checksum file, and swaps the files in place while
-preserving configuration. `paramux +install` / `paramux +uninstall` wire and
+preserving configuration. `paramux install` / `paramux uninstall` wire and
 un-wire the folder (PATH, `PARAMUX_HOME`, Explorer context menu, agent
 hooks). The separate checksum- and Authenticode-gated installer updater in
 the codebase targets a future stable signed release and is not a current
@@ -163,7 +163,7 @@ child-HWND lifetime, focus, and repaint semantics.
   verification remains outstanding.
 - **No package-manager channel.** Any old Winghostty WinGet or Scoop identifiers
   belong to the predecessor project and do not install Paramux.
-- **CLI-driven portable updates.** `paramux +update` applies a
+- **CLI-driven portable updates.** `paramux update` applies a
   checksum-verified newer release in place; there is no background
   auto-update, and windows must be closed while it runs.
 - **Local-only crash capture.** Windows can write `.dmp` files for

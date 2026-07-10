@@ -11,12 +11,12 @@ const Pager = @import("Pager.zig");
 pub const Options = struct {
     /// The config option to explain. For example:
     ///
-    ///   paramux +explain-config --option=font-size
+    ///   paramux explain-config --option=font-size
     option: ?[]const u8 = null,
 
     /// The keybind action to explain. For example:
     ///
-    ///   paramux +explain-config --keybind=copy_to_clipboard
+    ///   paramux explain-config --keybind=copy_to_clipboard
     keybind: ?[]const u8 = null,
 
     pub fn deinit(self: Options) void {
@@ -35,10 +35,10 @@ pub const Options = struct {
 ///
 /// Examples:
 ///
-///   paramux +explain-config font-size
-///   paramux +explain-config copy_to_clipboard
-///   paramux +explain-config --option=font-size
-///   paramux +explain-config --keybind=copy_to_clipboard
+///   paramux explain-config font-size
+///   paramux explain-config copy_to_clipboard
+///   paramux explain-config --option=font-size
+///   paramux explain-config --keybind=copy_to_clipboard
 ///
 /// Flags:
 ///
@@ -78,9 +78,9 @@ pub fn run(alloc: Allocator) !u8 {
         var stderr: std.fs.File = .stderr();
         var buffer: [4096]u8 = undefined;
         var stderr_writer = stderr.writer(&buffer);
-        try stderr_writer.interface.writeAll("Usage: paramux +explain-config <option>\n");
-        try stderr_writer.interface.writeAll("       paramux +explain-config --option=<option>\n");
-        try stderr_writer.interface.writeAll("       paramux +explain-config --keybind=<action>\n");
+        try stderr_writer.interface.writeAll("Usage: paramux explain-config <option>\n");
+        try stderr_writer.interface.writeAll("       paramux explain-config --option=<option>\n");
+        try stderr_writer.interface.writeAll("       paramux explain-config --keybind=<action>\n");
         try stderr_writer.end();
         return 1;
     };

@@ -7,7 +7,7 @@
             "type": "command",
             "command": "__PARAMUX_EXECUTABLE__?RUN_INSTALL_PARAMUX_PS1",
             "args": [
-              "+notify",
+              "notify",
               "--state=working",
               "Claude Code is working"
             ]
@@ -23,7 +23,7 @@
             "type": "command",
             "command": "__PARAMUX_EXECUTABLE__?RUN_INSTALL_PARAMUX_PS1",
             "args": [
-              "+notify",
+              "notify",
               "--state=waiting",
               "Claude Code needs your input"
             ]
@@ -38,7 +38,7 @@
             "type": "command",
             "command": "__PARAMUX_EXECUTABLE__?RUN_INSTALL_PARAMUX_PS1",
             "args": [
-              "+notify",
+              "notify",
               "--state=done",
               "Claude Code finished responding"
             ]
@@ -53,7 +53,7 @@
             "type": "command",
             "command": "__PARAMUX_EXECUTABLE__?RUN_INSTALL_PARAMUX_PS1",
             "args": [
-              "+notify",
+              "notify",
               "--state=error",
               "Claude Code stopped with an error"
             ]
