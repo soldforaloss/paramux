@@ -47,5 +47,5 @@ generated bundle changes together.
 The page intentionally stays static: local React production UMD files, a
 precompiled bundle, and no runtime JSX compiler. Google Fonts provide
 Bricolage Grotesque and JetBrains Mono. Release copy is pinned to the verified
-private prerelease instead of making an unauthenticated GitHub API request that
-cannot see a private repository or prereleases.
+prerelease instead of making a GitHub API request at page load; the pin keeps
+the page truthful and reviewable.
