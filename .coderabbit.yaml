@@ -31,15 +31,21 @@ reviews:
     - path: "site/index.html"
       instructions: |
         Google Fonts and manual bundle/style query-string cache busting are intentional for the static Cloudflare Pages deploy. Flag them only when the referenced assets or cache-bust values are stale or broken.
-    - path: "site/components/install/**"
+    - path: "site/components/release/**"
       instructions: |
-        Install commands are guarded by scripts/check-site-copy.ps1. Do not replace the WinGet/Scoop command hierarchy when that check passes.
-    - path: "site/components/hero/version-chip-color.jsx"
+        Review install copy against the current Paramux distribution contract: private unsigned x64 portable prerelease v0.1.0-paramux.4 with install-paramux.cmd. Flag any claim that a signed installer, WinGet, Scoop, ARM64, or a public stable channel is already available.
+    - path: "site/components/hero/release-chip.jsx"
       instructions: |
-        This is public static client code on Cloudflare Pages. Do not suggest embedding GitHub tokens in the browser; the intended release lookup behavior is unauthenticated fetch with sessionStorage caching, timeout, and explicit rate-limit bail-out.
+        The Paramux repository and current release are private. Never suggest embedding GitHub tokens in browser code, and flag claims that an unauthenticated client-side request can discover the private prerelease.
+    - path: "site/components/heroes.jsx"
+      instructions: |
+        Keep the release CTA pinned to the explicitly documented private prerelease tag; do not switch it to releases/latest or a public-download claim.
+    - path: "site/components/why/product-facts.jsx"
+      instructions: |
+        Keep current shipped capabilities separate from planned signing, installer, ARM64, WinGet, Scoop, and public-release work.
     - path: "**/*.zig"
       instructions: |
-        This repository is winghostty, a Windows-focused Ghostty fork. Review against amanthanvi/winghostty, not ghostty-org/ghostty. Do not suggest reintroducing the removed macos/ Xcode app or src/apprt/gtk runtime. Prefer minimal Zig changes, targeted `zig build test -Dtest-filter=<name>` validation, and `zig fmt` on touched Zig files.
+        This repository is Paramux, a native Windows terminal derived from Winghostty and Ghostty. Review against soldforaloss/paramux, not either predecessor repository. Keep upstream Ghostty names only where they identify retained protocols, resources, or libghostty-vt. Do not suggest reintroducing the removed macos/ Xcode app or src/apprt/gtk runtime. Prefer minimal Zig changes, targeted `zig build test -Dtest-filter=<name>` validation, and `zig fmt` on touched Zig files.
     - path: "src/apprt/win32*.zig"
       instructions: |
         Win32 UI fixes should preserve child HWND invalidation, split-pane focus tracking, and repaint coalescing semantics documented in AGENTS.md. Flag stale paint, lifetime, and message-ordering regressions over stylistic nits.

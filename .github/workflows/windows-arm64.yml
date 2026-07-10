@@ -3,7 +3,7 @@ name: Windows ARM64
 on:
   push:
     branches:
-      - main
+      - paramux
   pull_request: {}
   workflow_dispatch: {}
 
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref_name != 'main' && github.ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.ref_name != 'paramux' && github.ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -20,7 +20,7 @@ jobs:
     runs-on: windows-11-arm
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-      WINGHOSTTY_CI_VERSION: 0.0.1
+      PARAMUX_CI_VERSION: 0.0.1
       ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}\.zig-global-cache
 
     steps:
@@ -35,6 +35,7 @@ jobs:
       - name: Verify native ARM64 runner
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           Write-Host "PROCESSOR_ARCHITECTURE=$env:PROCESSOR_ARCHITECTURE"
           Write-Host "PROCESSOR_ARCHITEW6432=$env:PROCESSOR_ARCHITEW6432"
           Write-Host "Process architecture=$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture)"
@@ -48,6 +49,7 @@ jobs:
       - name: Run ARM64 Zig tests
         shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           zig build test -Dtest-filter=win32 -Dtarget=aarch64-windows-msvc -Dcpu=baseline
           zig build test -Dtest-filter=scroll -Dtarget=aarch64-windows-msvc -Dcpu=baseline
           zig build test -Dtest-filter=keybind -Dtarget=aarch64-windows-msvc -Dcpu=baseline
@@ -58,23 +60,25 @@ jobs:
         timeout-minutes: 20
         run: >
           ./scripts/build-package-windows.ps1
-          -Version $env:WINGHOSTTY_CI_VERSION
+          -Version $env:PARAMUX_CI_VERSION
           -Architecture arm64
 
       - name: Run ARM64 CLI smoke
         shell: pwsh
         run: |
-          $versionText = & .\zig-out\bin\winghostty.com +version | Out-String
+          $PSNativeCommandUseErrorActionPreference = $true
+          $versionText = & .\zig-out\bin\paramux.com +version | Out-String
           Write-Host $versionText
           if ($versionText -notmatch "Build Config") {
-            throw "winghostty.com +version did not print the expected version output."
+            throw "paramux.com +version did not print the expected version output."
           }
 
       - name: Run packaged ARM64 CLI smoke
         shell: pwsh
         run: |
-          $portableRoot = Join-Path $PWD "dist/artifacts/winghostty-$env:WINGHOSTTY_CI_VERSION-windows-arm64/winghostty"
-          $portableCommand = Join-Path $portableRoot "winghostty.com"
+          $PSNativeCommandUseErrorActionPreference = $true
+          $portableRoot = Join-Path $PWD "dist/artifacts/paramux-$env:PARAMUX_CI_VERSION-windows-arm64/paramux"
+          $portableCommand = Join-Path $portableRoot "paramux.com"
           if (-not (Test-Path -LiteralPath $portableCommand)) {
             throw "Missing packaged ARM64 command shim: $portableCommand"
           }
@@ -82,7 +86,7 @@ jobs:
           $versionText = & $portableCommand +version | Out-String
           Write-Host $versionText
           if ($versionText -notmatch "Build Config") {
-            throw "Packaged winghostty.com +version did not print the expected version output."
+            throw "Packaged paramux.com +version did not print the expected version output."
           }
 
           $themesText = & $portableCommand +list-themes | Out-String

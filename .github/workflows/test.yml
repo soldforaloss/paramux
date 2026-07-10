@@ -6,7 +6,7 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref_name != 'main' && github.ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.ref_name != 'paramux' && github.ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -18,11 +18,33 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      # NOTE: the marketing/landing-page copy checks (scripts/check-site-copy.ps1
-      # and scripts/check-release-copy.ps1) are intentionally NOT run here. They
-      # enforce a public marketing site + winget/Scoop package listings that
-      # paramux does not have yet (private fork). Re-enable them once the public
-      # site and package manifests exist and their expected copy is real.
+      - name: Package manager metadata contract
+        shell: pwsh
+        run: test/windows/package-package-managers.ps1
+
+      - name: Release safety contract
+        shell: pwsh
+        run: test/windows/release-safety-contract.ps1
+
+      - name: Verify generated site bundle
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          npm ci --prefix site
+          npm run build --prefix site
+          git diff --exit-code -- site/bundle.js
+
+      - name: Paramux release copy contract
+        shell: pwsh
+        run: scripts/check-release-copy.ps1
+
+      - name: Paramux site copy contract
+        shell: pwsh
+        run: scripts/check-site-copy.ps1
+
+      - name: Agent hook adapter contract
+        shell: pwsh
+        run: test/agent-hook-adapters.ps1
 
       - name: Setup Zig
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
@@ -41,11 +63,29 @@ jobs:
       - name: Keybind tests
         run: zig build test -Dtest-filter=keybind
 
+      - name: Paramux regression tests
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          zig build test -Dtest-filter=paramux
+          zig build test -Dtest-filter=branding
+          zig build test -Dtest-filter=automation-input
+          zig build test -Dtest-filter=send
+
       - name: Build
         run: zig build
 
-      - name: Build executable
-        run: zig build -Demit-exe=true
+      - name: Build release package inputs
+        # Flags must stay in sync with scripts/build-package-windows.ps1: the
+        # packaging step below runs check-windows-x64-baseline.ps1, whose
+        # correctness premise is a -Dcpu=baseline build.
+        run: zig build -Demit-exe=true -Demit-lib-vt=true -Doptimize=ReleaseFast -Dtarget=x86_64-windows-msvc -Dcpu=baseline "-Dversion-string=0.0.1"
+
+      - name: Package and verify x64 portable build
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          scripts/package-windows.ps1 -Version 0.0.1 -Architecture x64 -SkipBuild -SkipInstaller
+          test/windows/package-portable-cli.ps1 -Version 0.0.1 -Architecture x64 -SkipPackage
 
       - name: Build ARM64 executable
         env:

@@ -79,7 +79,7 @@ stdenv.mkDerivation (finalAttrs: {
   '';
 
   meta = {
-    homepage = "https://github.com/amanthanvi/winghostty";
+    homepage = "https://github.com/soldforaloss/paramux";
     license = lib.licenses.mit;
     platforms = zig_0_15.meta.platforms;
   };

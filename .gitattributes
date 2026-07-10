@@ -32,6 +32,10 @@ Makefile text eol=lf
 *.rc -text
 *.manifest -text
 
+# Generated site bundle - CI rebuilds it and diffs against the committed
+# copy, so its line endings must be deterministic on every runner config.
+site/bundle.js text eol=lf
+
 # Binary files
 *.png binary
 *.ico binary
