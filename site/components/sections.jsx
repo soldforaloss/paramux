@@ -1,4 +1,4 @@
 export { FeatureGrid } from './features/feature-grid.jsx';
 export { Footer } from './footer/footer.jsx';
-export { InstallBlock } from './install/install-block.jsx';
-export { WhyFork } from './why/why-fork.jsx';
+export { ReleaseBlock } from './release/release-block.jsx';
+export { ProductFacts } from './why/product-facts.jsx';

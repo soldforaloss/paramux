@@ -1,7 +1,7 @@
 import { FEATURE_GLYPHS } from './feature-glyphs.jsx';
 
 export function FeatureCard({ feature }) {
-  const glyph = FEATURE_GLYPHS[feature.k] || FEATURE_GLYPHS.compat;
+  const glyph = FEATURE_GLYPHS[feature.k] || FEATURE_GLYPHS.workspaces;
 
   return (
     <article className="wg-feature-card" data-feature={feature.k}>

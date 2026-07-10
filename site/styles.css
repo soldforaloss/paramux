@@ -60,11 +60,6 @@ body {
   --primary-border: color-mix(in srgb, var(--wg-blue) 55%, oklch(0.34 0.05 265));
   --shadow: 0 32px 80px oklch(0.05 0.02 265 / 0.55), 0 0 0 1px oklch(1 0 0 / 0.05);
   --ambient-strength: 0.72;
-  --wg-install-clip: polygon(0 0,
-      calc(100% - 1px) 0,
-      100% 1px,
-      100% 100%,
-      0 100%);
 }
 
 :root[data-theme="light"] {
@@ -234,6 +229,17 @@ code {
   flex-shrink: 0;
 }
 
+.wg-paramux-mark {
+  display: block;
+  flex-shrink: 0;
+  color: var(--fg);
+}
+
+.wg-paramux-mark__cursor {
+  transform-origin: center;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
 .wg-wordmark img {
   display: block;
 }
@@ -270,6 +276,20 @@ code {
   min-height: 60px;
 }
 
+.wg-topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wg-topbar__status {
+  color: var(--label);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
 .wg-chip-link,
 .wg-theme-toggle,
 .wg-button {
@@ -299,31 +319,9 @@ code {
   padding: 0;
 }
 
-.wg-theme-toggle__mark {
-  display: none;
-}
-
-.wg-theme-toggle__ghost {
-  display: block;
-}
-
-.wg-theme-toggle__body {
-  fill: var(--toggle-ghost);
-  transition: fill 0.32s ease;
-}
-
-.wg-theme-toggle__glyph {
-  fill: var(--toggle-glyph);
-  transition: fill 0.32s ease;
-}
-
-.wg-theme-toggle__glyphs {
-  transform-origin: 13.36px 13.36px;
-  transition: transform 0.18s cubic-bezier(0.45, 0, 0.55, 1);
-}
-
-.wg-theme-toggle.is-blinking .wg-theme-toggle__glyphs {
-  transform: scaleY(0.06);
+.wg-theme-toggle.is-blinking .wg-paramux-mark__cursor {
+  opacity: 0.24;
+  transform: scaleX(0.08);
 }
 
 .wg-theme-toggle:hover {
@@ -629,7 +627,7 @@ code {
 .wg-hero__actions {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
-  align-items: start;
+  align-items: stretch;
   justify-content: center;
   align-self: center;
   gap: 14px;
@@ -650,116 +648,70 @@ code {
   min-height: 220px;
 }
 
-.wg-install-lane {
+.wg-release {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  justify-content: center;
   min-width: 0;
-  width: 100%;
-  max-width: 100%;
+  padding: 9px 14px 10px;
+  border: 1px solid color-mix(in srgb, var(--wg-yellow) 20%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent-yellow-soft) 18%, var(--surface));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--fg) 4%, transparent);
 }
 
-.wg-install-panel {
+.wg-release__headline,
+.wg-release__facts {
   display: flex;
-  justify-content: center;
-  min-width: 0;
-  width: 100%;
-  max-width: 100%;
-}
-
-.wg-install-frame {
-  position: relative;
-  isolation: isolate;
-  display: block;
-  min-width: 0;
-  width: 100%;
-  max-width: 100%;
-  padding-bottom: 19px;
-}
-
-.wg-install-fluid {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-}
-
-.wg-install-fluid__pill,
-.wg-install-fluid__tab {
-  position: absolute;
-  background: color-mix(in srgb, var(--accent-green-soft) 18%, var(--surface-soft));
-  border: 1px solid color-mix(in srgb, var(--wg-green) 18%, var(--line));
-  border-radius: 12px;
-}
-
-.wg-install-fluid__pill {
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 42px;
-  border-radius: 12px 12px 12px 0;
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--fg) 4%, transparent),
-    0 0 22px color-mix(in srgb, var(--wg-green) 5%, transparent);
-}
-
-.wg-install-fluid__tab {
-  bottom: 1px;
-  left: 0;
-  width: 110px;
-  height: 19px;
-  border-top: 0;
-  border-radius: 0 0 10px 10px;
-  clip-path: var(--wg-install-clip);
-}
-
-.wg-install-tabs {
-  position: absolute;
-  left: 0;
-  bottom: 1px;
-  z-index: 2;
-  width: 110px;
-  height: 19px;
-  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 0;
-  margin: 0;
-  padding: 0 4px;
-  border: 0;
-  border-radius: 0 0 10px 10px;
-  clip-path: var(--wg-install-clip);
-  background: transparent;
-  min-inline-size: 0;
+  flex-wrap: wrap;
+}
+
+.wg-release__headline {
+  gap: 8px;
+  font-family: var(--mono);
+}
+
+.wg-release__signal {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--wg-yellow);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--wg-yellow) 45%, transparent);
+}
+
+.wg-release__label {
+  color: var(--label);
+  font-size: 9px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.wg-release__headline strong {
+  color: var(--fg);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.wg-release__facts {
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.wg-release__facts span {
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: color-mix(in srgb, var(--fg) 72%, transparent);
   font-family: var(--mono);
   font-size: 9px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  box-sizing: border-box;
 }
 
-.wg-install-tabs button {
-  margin: 0;
-  padding: 3px 9px;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
+.wg-release p {
+  margin: 6px 0 0;
   color: var(--label);
-  font: inherit;
-  line-height: 1.25;
-  cursor: pointer;
-  transition: background 0.15s ease-out, color 0.15s ease-out;
-}
-
-.wg-install-tabs button.is-active {
-  background: color-mix(in srgb, var(--wg-blue) 10%, var(--surface-strong));
-  color: var(--fg);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--wg-blue) 22%, transparent);
-}
-
-.wg-install-tabs button:focus-visible {
-  outline: 0;
-  box-shadow: 0 0 0 2px currentcolor;
+  font-size: 10px;
+  line-height: 1.35;
 }
 
 .wg-button {
@@ -793,100 +745,6 @@ code {
 .wg-button--secondary:hover {
   background: var(--surface);
   text-decoration: none;
-}
-
-.wg-install {
-  position: relative;
-  z-index: 1;
-  display: inline-grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-rows: 42px;
-  align-items: center;
-  width: 100%;
-  max-width: 100%;
-  min-height: 42px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  font-family: var(--mono);
-  font-size: 13px;
-  overflow: visible;
-}
-
-.wg-install__sigil,
-.wg-install__command,
-.wg-install__copy {
-  grid-row: 1;
-}
-
-.wg-install__sigil,
-.wg-install__command,
-.wg-install__copy {
-  display: flex;
-  align-items: center;
-  position: relative;
-  z-index: 2;
-}
-
-.wg-install__sigil {
-  grid-column: 1;
-  padding: 0 2px 0 14px;
-  color: var(--accent-green-muted);
-  user-select: none;
-}
-
-.wg-install__command {
-  grid-column: 2;
-  grid-row: 1;
-  margin: 0;
-  padding: 0 2px 0 6px;
-  color: var(--fg);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font: inherit;
-}
-
-.wg-install__copy {
-  grid-column: 3;
-  grid-row: 1;
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  margin: 0 6px 0 2px;
-  padding: 0;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: color-mix(in srgb, var(--fg) 58%, transparent);
-  cursor: pointer;
-  transition: background 0.15s ease-out, color 0.15s ease-out;
-}
-
-.wg-install__copy:hover {
-  background: color-mix(in srgb, var(--fg) 8%, var(--surface-strong));
-  color: var(--fg);
-}
-
-.wg-install__copy.is-copied {
-  color: var(--wg-green);
-}
-
-.wg-install__copy.is-failed {
-  color: var(--wg-red);
-}
-
-.wg-install__copy:focus-visible {
-  outline: 2px solid currentcolor;
-  outline-offset: 2px;
-}
-
-.wg-install__copy-icon {
-  display: block;
 }
 
 .wg-terminal {
@@ -991,8 +849,116 @@ code {
   background: var(--close-hover-fg);
 }
 
+.wg-terminal__workspace {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.72fr) minmax(0, 1.8fr);
+  min-height: 270px;
+}
+
+.wg-mission-sidebar {
+  min-width: 0;
+  border-right: 1px solid var(--chip-border);
+  background: color-mix(in srgb, var(--surface) 84%, #000 16%);
+}
+
+.wg-mission-sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--chip-border);
+  color: var(--label);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wg-mission-sidebar__rows {
+  padding: 6px;
+}
+
+.wg-agent-row {
+  --agent-color: var(--label);
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 49px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+}
+
+.wg-agent-row.is-active {
+  border-color: color-mix(in srgb, var(--agent-color) 34%, var(--line));
+  background: color-mix(in srgb, var(--agent-color) 7%, var(--surface-strong));
+  box-shadow: inset 2px 0 0 var(--agent-color);
+}
+
+.wg-agent-row[data-state="working"] {
+  --agent-color: var(--wg-blue);
+}
+
+.wg-agent-row[data-state="waiting"] {
+  --agent-color: var(--wg-yellow);
+}
+
+.wg-agent-row[data-state="done"] {
+  --agent-color: var(--wg-green);
+}
+
+.wg-agent-row[data-state="error"] {
+  --agent-color: var(--wg-red);
+}
+
+.wg-agent-row__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--agent-color);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--agent-color) 42%, transparent);
+}
+
+.wg-agent-row__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  font-family: var(--mono);
+}
+
+.wg-agent-row__copy strong,
+.wg-agent-row__copy span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.wg-agent-row__copy strong {
+  color: color-mix(in srgb, var(--fg) 90%, transparent);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.wg-agent-row__copy span {
+  color: var(--label);
+  font-size: 8px;
+}
+
+.wg-agent-row__state {
+  color: color-mix(in srgb, var(--agent-color) 64%, var(--fg));
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .wg-terminal__body {
-  min-height: 360px;
+  min-width: 0;
+  min-height: 270px;
   padding: 22px 24px;
   overflow: hidden;
   text-align: left;
@@ -1000,6 +966,24 @@ code {
   font-size: 13px;
   line-height: 1.65;
   color: var(--fg);
+}
+
+.wg-terminal__pane-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -6px 0 22px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid color-mix(in srgb, var(--wg-yellow) 16%, var(--line));
+  color: var(--label);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.wg-terminal__pane-state {
+  color: var(--accent-yellow-muted);
 }
 
 .wg-terminal__body p {
@@ -1029,6 +1013,18 @@ code {
 
 .wg-terminal__line--accent {
   color: var(--fg);
+}
+
+.wg-terminal__line--fg {
+  color: var(--fg);
+}
+
+.wg-terminal__line--waiting {
+  color: var(--accent-yellow-muted);
+}
+
+.wg-terminal__line--done {
+  color: var(--accent-green-muted);
 }
 
 .wg-terminal__live {
@@ -1119,27 +1115,27 @@ code {
   transition: background 0.18s, border-color 0.18s, transform 0.18s;
 }
 
-.wg-feature-card[data-feature="gpu"] {
+.wg-feature-card[data-feature="workspaces"] {
   grid-column: span 5;
 }
 
-.wg-feature-card[data-feature="native"] {
+.wg-feature-card[data-feature="sidebar"] {
   grid-column: span 4;
 }
 
-.wg-feature-card[data-feature="compat"] {
+.wg-feature-card[data-feature="attention"] {
   grid-column: span 3;
 }
 
-.wg-feature-card[data-feature="config"] {
+.wg-feature-card[data-feature="automation"] {
   grid-column: span 4;
 }
 
-.wg-feature-card[data-feature="libghostty"] {
+.wg-feature-card[data-feature="gpu"] {
   grid-column: span 4;
 }
 
-.wg-feature-card[data-feature="oss"] {
+.wg-feature-card[data-feature="ghostty"] {
   grid-column: span 4;
 }
 
@@ -1356,7 +1352,7 @@ code {
     grid-column: span 3;
   }
 
-  .wg-feature-card[data-feature="gpu"] {
+  .wg-feature-card[data-feature="workspaces"] {
     grid-column: span 6;
   }
 
@@ -1432,25 +1428,39 @@ code {
     width: 100%;
   }
 
-  .wg-install-lane {
+  .wg-release {
     width: 100%;
-    max-width: 100%;
   }
 
-  .wg-install {
-    font-size: 11px;
+  .wg-terminal__workspace {
+    grid-template-columns: 1fr;
   }
 
-  .wg-install__command {
-    line-height: 42px;
+  .wg-mission-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--chip-border);
+  }
+
+  .wg-mission-sidebar__rows {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2px;
+  }
+
+  .wg-agent-row {
+    min-width: 0;
+  }
+
+  .wg-agent-row__state {
+    display: none;
   }
 
   .wg-hero__terminal .wg-terminal__body {
-    min-height: 34px;
-    max-height: 34px;
-    padding: 10px 16px;
-    font-size: 12px;
-    line-height: 1.5;
+    min-height: 190px;
+    max-height: none;
+    padding: 18px;
+    font-size: 11px;
+    line-height: 1.55;
   }
 
   .wg-feature-card p {
@@ -1458,7 +1468,7 @@ code {
   }
 
   .wg-terminal__body {
-    min-height: 360px;
+    min-height: 190px;
     padding: 18px 18px 20px;
   }
 

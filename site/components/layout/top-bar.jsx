@@ -1,14 +1,17 @@
-import { WinghosttyToggle } from '../mark/winghostty-toggle.jsx';
-import { WinghosttyWordmark } from '../mark/winghostty-wordmark.jsx';
+import { ParamuxToggle } from '../mark/paramux-toggle.jsx';
+import { ParamuxWordmark } from '../mark/paramux-wordmark.jsx';
 
 export function TopBar({ theme, setTheme }) {
   return (
     <header className="wg-topbar">
       <div className="wg-container wg-topbar__inner">
-        <a href="/" className="wg-wordmark-link" aria-label="Winghostty home">
-          <WinghosttyWordmark size={24} theme={theme} />
+        <a href="/" className="wg-wordmark-link" aria-label="Paramux home">
+          <ParamuxWordmark size={24} />
         </a>
-        <WinghosttyToggle theme={theme} onToggle={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
+        <div className="wg-topbar__actions">
+          <span className="wg-topbar__status">private preview</span>
+          <ParamuxToggle theme={theme} onToggle={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
+        </div>
       </div>
     </header>
   );

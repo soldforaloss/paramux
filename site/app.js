@@ -1,7 +1,7 @@
 (function () {
   var root = document.documentElement;
   var toggle = document.getElementById("theme-toggle");
-  var storageKey = "wg-theme";
+  var storageKey = "paramux-theme";
 
   function applyTheme(theme) {
     root.setAttribute("data-theme", theme);

@@ -3,24 +3,30 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Winghostty — Ghostty, finally on Windows</title>
+  <title>Paramux — Parallel coding agents on Windows</title>
+  <meta name="description" content="Paramux is a native Windows command center for parallel coding agents, with split workspaces, live pane metadata, four-state attention, and local automation on Ghostty's GPU terminal core." />
+  <meta name="application-name" content="Paramux" />
+  <meta name="theme-color" content="#16161e" />
+  <meta property="og:title" content="Paramux — Every agent, in sight." />
+  <meta property="og:description" content="A native Windows command center for parallel coding agents." />
+  <meta property="og:type" content="website" />
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
   <link rel="shortcut icon" href="assets/favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preload" as="script" href="vendor/react.production.min.js" />
   <link rel="preload" as="script" href="vendor/react-dom.production.min.js" />
-  <link rel="preload" as="script" href="bundle.js?v=2026-05-30-10" />
+  <link rel="preload" as="script" href="bundle.js?v=2026-07-09-1" />
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'" />
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" /></noscript>
-  <link rel="stylesheet" href="styles.css?v=2026-05-30-10" />
+  <link rel="stylesheet" href="styles.css?v=2026-07-09-1" />
   <script>
     (function () {
       try {
-        var t = localStorage.getItem('wg-theme') || 'dark';
-        document.documentElement.setAttribute('data-theme', t);
-      } catch (e) {}
+        var theme = localStorage.getItem('paramux-theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (error) {}
     })();
   </script>
 </head>
@@ -28,6 +34,6 @@
   <div id="root"></div>
   <script defer src="vendor/react.production.min.js"></script>
   <script defer src="vendor/react-dom.production.min.js"></script>
-  <script defer src="bundle.js?v=2026-05-30-10"></script>
+  <script defer src="bundle.js?v=2026-07-09-1"></script>
 </body>
 </html>

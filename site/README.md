@@ -1,59 +1,51 @@
-# winghostty site
+# Paramux site
 
-This directory is the Cloudflare Pages payload for `winghostty.com`.
+This directory is the static marketing payload for Paramux, a native Windows
+command center for running coding agents in parallel.
 
-The landing page intentionally follows the original `Winghostty Marketing Site.zip`
-runtime shape:
+## Source layout
 
-- `index.html` - archive-derived page shell
-- `bundle.js` - precompiled browser entrypoint used by the landing page
-- `build.md` - notes from the original archive about the bundle workflow
-- `components/` - archive JSX references kept for design/source parity
-- `assets/` - SVG brand assets carried over from the archive
-- `404.html`, `styles.css`, `app.js` - standalone static extras already present in this repo
-- `_redirects` - canonical host redirect for `www` to apex
+- `index.html` — production page shell and metadata
+- `main.jsx` — React entrypoint
+- `components/` — editable JSX source
+- `styles.css` — shared dark/light visual system
+- `bundle.js` — precompiled browser bundle loaded by `index.html`
+- `assets/` — Paramux brand assets and favicon
+- `404.html`, `app.js` — standalone not-found page and theme helper
 
-## Source of truth
+## Product truth
 
-Marketing copy in this directory must be checked against:
+Marketing copy must stay aligned with the repository source of truth:
 
 - [README.md](../README.md)
-- [docs/status.md](../docs/status.md)
-- [docs/getting-started.md](../docs/getting-started.md)
+- [docs/paramux/capability-parity.md](../docs/paramux/capability-parity.md)
+- [docs/paramux/paramux-prd.md](../docs/paramux/paramux-prd.md)
 
-If those files and the site disagree, tighten the wording until the claim is defensible.
+Current distribution is deliberately narrow: private, unsigned Windows x64
+portable prerelease `v0.1.0-paramux.4` in `soldforaloss/paramux`. There is no
+public WinGet or Scoop package, signed installer, or verified ARM64 release yet.
 
-## Guardrails
+Ghostty and Winghostty may be named only as technical lineage. Paramux is the
+product, executable, configuration directory, and user-facing identity.
 
-From the repository root, run the copy checks before shipping site edits:
+## Build and checks
+
+From `site/`:
 
 ```powershell
-pwsh -File scripts/check-site-copy.ps1
-pwsh -File scripts/check-release-copy.ps1
+npm run build
+npm run doctor
+npm run doctor:score
 ```
 
-The checks fail on known bad claims and regressions, including:
+`npm run build` uses the repository bundler at
+`../scripts/build-site-bundle.mjs` and writes `bundle.js`. Commit source and
+generated bundle changes together.
 
-- package-manager install commands that are not officially published yet
-- DirectX or D3D wording for the shipping Windows renderer
-- wrong config-path variants under `%APPDATA%`
-- silent-update wording or stale claims about missing signing
-- parity overclaims
+## Runtime shape
 
-React UMD, Google Fonts (Bricolage Grotesque + JetBrains Mono), and the GitHub
-Releases version fetch are intentional for the static Pages payload. After JSX
-edits, run `node scripts/build-site-bundle.mjs` from the repo root.
-
-## Cloudflare Pages
-
-Project settings for v1:
-
-- Production branch: `main`
-- Build command: `exit 0`
-- Build output directory: `site`
-- Custom domains: `winghostty.com` and `www.winghostty.com`
-
-Recommended follow-up in Pages:
-
-- Keep preview deployments enabled for PRs.
-- Set build watch paths to `site/*` so app-only changes do not redeploy the marketing site.
+The page intentionally stays static: local React production UMD files, a
+precompiled bundle, and no runtime JSX compiler. Google Fonts provide
+Bricolage Grotesque and JetBrains Mono. Release copy is pinned to the verified
+private prerelease instead of making an unauthenticated GitHub API request that
+cannot see a private repository or prereleases.

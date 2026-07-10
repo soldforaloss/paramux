@@ -3,14 +3,14 @@
 import { HeroColorPop } from './heroes.jsx';
 import { SectionLabel } from './layout/section-label.jsx';
 import { TopBar } from './layout/top-bar.jsx';
-import { FeatureGrid, Footer, WhyFork } from './sections.jsx';
+import { FeatureGrid, Footer, ProductFacts } from './sections.jsx';
 
 const { useEffect, useState } = React;
 const EDIT_MODE_MESSAGE_TYPES = new Set(['__activate_edit_mode', '__deactivate_edit_mode']);
 
 function getStoredTheme() {
   try {
-    return localStorage.getItem('wg-theme') || 'dark';
+    return localStorage.getItem('paramux-theme') || 'dark';
   } catch (e) {
     return 'dark';
   }
@@ -18,7 +18,7 @@ function getStoredTheme() {
 
 function setStoredTheme(theme) {
   try {
-    localStorage.setItem('wg-theme', theme);
+    localStorage.setItem('paramux-theme', theme);
   } catch (e) {}
 }
 
@@ -77,7 +77,7 @@ export function App() {
           data-accent="blue"
           style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 640px' }}
         >
-          <SectionLabel num="01" title="What you get" />
+          <SectionLabel num="01" title="The command center" />
           <FeatureGrid />
         </div>
 
@@ -86,12 +86,12 @@ export function App() {
           data-accent="yellow"
           style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 540px' }}
         >
-          <SectionLabel num="02" title="Why a fork?" />
-          <WhyFork />
+          <SectionLabel num="02" title="What ships now" />
+          <ProductFacts />
         </div>
 
         <div className="wg-container" style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 220px' }}>
-          <Footer theme={theme} />
+          <Footer />
         </div>
       </main>
     </>
