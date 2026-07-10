@@ -64,8 +64,8 @@ if ($LASTEXITCODE -ne 0) {
 & $shellHarness `
     -Shell cmd `
     -BinDir $portableRoot `
-    -Arguments @('+help') `
-    -ExpectedText 'Usage: paramux [+action] [options]'
+    -Arguments @('help') `
+    -ExpectedText 'Usage: paramux [action] [options]'
 
 & $shellHarness `
     -Shell powershell `

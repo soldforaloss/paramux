@@ -1,7 +1,7 @@
 param(
     [switch] $Rebuild,
     [switch] $ResetState,
-    [string] $CliAction = '+help',
+    [string] $CliAction = 'help',
     [string] $CommandText = '',
     [string] $ExePathOverride = '',
     [switch] $RunBooFirst,

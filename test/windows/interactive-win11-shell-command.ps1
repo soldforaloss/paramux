@@ -142,7 +142,7 @@ Remove-Item -LiteralPath $cmdResolvedPath, $cmdHelpPath, $cmdVersionPath, $cmdBo
 @(
     '@echo off'
     "where paramux > `"$cmdResolvedPath`" || exit /b 1"
-    "paramux +help > `"$cmdHelpPath`" || exit /b 1"
+    "paramux help > `"$cmdHelpPath`" || exit /b 1"
     "paramux +version > `"$cmdVersionPath`" || exit /b 1"
     "paramux +boo --help > `"$cmdBooHelpPath`" || exit /b 1"
     "paramux +list-keybinds > `"$cmdKeybindsPath`" || exit /b 1"
@@ -163,7 +163,7 @@ if ($cmdResolved.Count -lt 1) {
 if (-not $cmdResolved[0].Equals($expectedCommandPath, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "cmd resolved unexpected first paramux command: $($cmdResolved[0])"
 }
-Assert-Contains -Text (Get-RequiredTextFile -Path $cmdHelpPath) -Expected 'Usage: paramux [+action] [options]' -Label 'cmd +help'
+Assert-Contains -Text (Get-RequiredTextFile -Path $cmdHelpPath) -Expected 'Usage: paramux [action] [options]' -Label 'cmd help'
 Assert-Contains -Text (Get-RequiredTextFile -Path $cmdVersionPath) -Expected 'Build Config' -Label 'cmd +version'
 Assert-Contains -Text (Get-RequiredTextFile -Path $cmdBooHelpPath) -Expected 'The `boo` command is used to display the project animation in the terminal.' -Label 'cmd +boo --help'
 Assert-Contains -Text (Get-RequiredTextFile -Path $cmdKeybindsPath) -Expected 'keybind = ctrl+shift+,=reload_config' -Label 'cmd +list-keybinds'
@@ -193,7 +193,7 @@ Remove-Item -LiteralPath $psResolvedPath, $psHelpPath, $psVersionPath, $psBooHel
 @(
     '$resolved = (Get-Command paramux).Source'
     "Set-Content -LiteralPath '$psResolvedLiteral' -Value `$resolved -Encoding ASCII"
-    '$help = paramux +help | Out-String'
+    '$help = paramux help | Out-String'
     'if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }'
     "Set-Content -LiteralPath '$psHelpLiteral' -Value `$help -Encoding UTF8"
     '$version = paramux +version | Out-String'
@@ -223,7 +223,7 @@ $psResolved = (Get-RequiredTextFile -Path $psResolvedPath).Trim()
 if (-not $psResolved.Equals($expectedCommandPath, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "PowerShell resolved unexpected paramux command: $psResolved"
 }
-Assert-Contains -Text (Get-RequiredTextFile -Path $psHelpPath) -Expected 'Usage: paramux [+action] [options]' -Label 'PowerShell +help'
+Assert-Contains -Text (Get-RequiredTextFile -Path $psHelpPath) -Expected 'Usage: paramux [action] [options]' -Label 'PowerShell help'
 Assert-Contains -Text (Get-RequiredTextFile -Path $psVersionPath) -Expected 'Build Config' -Label 'PowerShell +version'
 Assert-Contains -Text (Get-RequiredTextFile -Path $psBooHelpPath) -Expected 'The `boo` command is used to display the project animation in the terminal.' -Label 'PowerShell +boo --help'
 Assert-Contains -Text (Get-RequiredTextFile -Path $psKeybindsPath) -Expected 'keybind = ctrl+shift+,=reload_config' -Label 'PowerShell +list-keybinds'
