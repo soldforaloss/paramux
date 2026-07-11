@@ -719,6 +719,7 @@ const CTX_TAB_CLOSE: usize = 4021;
 const CTX_TAB_CLOSE_OTHERS: usize = 4022;
 const CTX_TAB_MOVE_LEFT: usize = 4023;
 const CTX_TAB_MOVE_RIGHT: usize = 4024;
+const CTX_NEW_TERMINAL_AUTO: usize = 4029;
 const CTX_HELP_GETTING_STARTED: usize = 4025;
 const CTX_HELP_SHORTCUTS: usize = 4026;
 const CTX_HELP_DOCS: usize = 4027;
@@ -1386,6 +1387,7 @@ const help_shortcuts_text: LPCWSTR = blk: {
     @setEvalBranchQuota(20_000);
     break :blk std.unicode.utf8ToUtf16LeStringLiteral(
         "New workspace\tCtrl+Shift+T\n" ++
+            "New terminal (auto-placed)\tCtrl+Shift+D\n" ++
             "Split right\tCtrl+Shift+O\n" ++
             "Split down\tCtrl+Shift+E\n" ++
             "Close pane\tCtrl+Shift+W\n\n" ++
@@ -10343,13 +10345,32 @@ const Host = struct {
         if (source_surface_id) |surface_id| {
             if (self.app.findSurfaceById(surface_id)) |surface| {
                 runUiActionOrLog("deferred new tab dispatch failed", self.app.performAction(.{ .surface = surface.core() }, .new_tab, {}));
+                self.applyTwoColumnDefault();
                 return;
             }
         }
 
         if (self.activeSurface()) |surface| {
             runUiActionOrLog("deferred new tab dispatch failed", self.app.performAction(.{ .surface = surface.core() }, .new_tab, {}));
+            self.applyTwoColumnDefault();
         }
+    }
+
+    /// UI-created workspaces default to two columns: after the new
+    /// workspace's first pane exists, split it right and hand focus back
+    /// to the left pane so the user starts in the natural first slot.
+    /// (Keybind/`-e`/IPC creation paths stay single-pane on purpose —
+    /// agent launchers must not spawn stray shells.)
+    fn applyTwoColumnDefault(self: *Host) void {
+        const tab = self.activeTab() orelse return;
+        if (tab.leafCount() != 1) return;
+        const first = tab.focusedSurface() orelse return;
+        runUiActionOrLog(
+            "workspace second column failed",
+            self.app.performAction(.{ .surface = first.core() }, .new_split, .right),
+        );
+        self.app.activateSurface(first);
+        self.invalidateSidebar();
     }
 
     /// Scroll the visible window by `delta` wheel units (120 = one line).
@@ -12693,6 +12714,70 @@ const Host = struct {
         }
     }
 
+    /// The (+) button's creation chooser: adding a terminal to the
+    /// current workspace and opening a new workspace are different
+    /// intentions, so the button asks instead of guessing (mis-clicking
+    /// into a new workspace was the old failure mode).
+    fn showNewMenu(self: *Host) void {
+        const hwnd = self.hwnd orelse return;
+        const button = self.new_tab_hwnd orelse return;
+        var rect: RECT = undefined;
+        if (GetWindowRect(button, &rect) == 0) return;
+
+        const menu = CreatePopupMenu() orelse return;
+        defer _ = DestroyMenu(menu);
+
+        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TERMINAL_AUTO, std.unicode.utf8ToUtf16LeStringLiteral("New Terminal in This Workspace\tCtrl+Shift+D"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New Workspace\tCtrl+Shift+T"));
+
+        _ = SetForegroundWindow(hwnd);
+        const cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTALIGN | TPM_TOPALIGN, rect.left, rect.bottom, 0, hwnd, null);
+        _ = PostMessageW(hwnd, WM_NULL, 0, 0);
+
+        if (self.hwnd == null) return;
+        if (cmd <= 0) return;
+        switch (@as(usize, @intCast(cmd))) {
+            CTX_NEW_TERMINAL_AUTO => self.addTerminalAutoPlaced(),
+            CTX_NEW_TAB => self.postDeferredNewTab(),
+            else => {},
+        }
+    }
+
+    /// Add a terminal to the active workspace with tiling placement:
+    /// split the LARGEST pane along its LONGER side. One pane becomes
+    /// two columns; a third stacks inside a column; a fourth completes
+    /// the 2x2 grid — no thought required from the user.
+    fn addTerminalAutoPlaced(self: *Host) void {
+        const tab = self.activeTab() orelse return;
+        const content = self.paneLayoutRect() catch return;
+        const w_px: f32 = @floatFromInt(@max(1, content.right - content.left));
+        const h_px: f32 = @floatFromInt(@max(1, content.bottom - content.top));
+        const alloc = self.app.core_app.alloc;
+
+        var sp = tab.tree.spatial(alloc) catch return;
+        defer sp.deinit(alloc);
+
+        var best: ?*Surface = null;
+        var best_area: f32 = -1;
+        var best_dir: apprt.action.SplitDirection = .right;
+        var it = tab.tree.iterator();
+        while (it.next()) |entry| {
+            const slot = sp.slots[entry.handle.idx()];
+            const slot_w = @as(f32, @floatCast(slot.width)) * w_px;
+            const slot_h = @as(f32, @floatCast(slot.height)) * h_px;
+            const area = slot_w * slot_h;
+            if (area <= best_area) continue;
+            best_area = area;
+            best = entry.view;
+            best_dir = if (slot_w >= slot_h) .right else .down;
+        }
+        const target = best orelse return;
+        runUiActionOrLog(
+            "auto-placed terminal failed",
+            self.app.performAction(.{ .surface = target.core() }, .new_split, best_dir),
+        );
+    }
+
     /// The (?) help button's menu: first-steps text, the keyboard cheat
     /// sheet, the online docs, and version info — the "I'm lost" button.
     fn showHelpMenu(self: *Host) void {
@@ -14818,85 +14903,22 @@ const Host = struct {
     }
 
     fn syncTabButtons(self: *Host) !bool {
-        const hwnd = self.hwnd orelse return false;
+        _ = self.hwnd orelse return false;
         try self.ensureChromeButtons();
-        var rect: RECT = undefined;
-        if (GetClientRect(hwnd, &rect) == 0) {
-            return windows.unexpectedError(windows.kernel32.GetLastError());
-        }
-        const width = @max(0, rect.right - rect.left);
-        const right_buttons_width = self.rightButtonsWidth();
-        const caption_buttons_w = self.captionButtonsWidth();
-        const tab_area_width = @max(1, width - right_buttons_width - caption_buttons_w);
-        const tab_range = visibleTabRange(self.tabs.items.len, self.active_tab, tab_area_width);
-        const visible_count = @max(@as(i32, 1), @as(i32, @intCast(tab_range.count)));
-        const button_width = @max(1, @divTrunc(tab_area_width, visible_count));
-        const label_max_len = hostTabLabelMaxLen(button_width);
-        for (self.tabs.items, 0..) |*tab, i| {
-            const surface = tab.focusedSurface() orelse continue;
-            const title = if (surface.effectiveTitle()) |value| value else null;
-            const active = i == self.active_tab;
-            const pane_count = tab.leafCount();
-            const show_pane_count = shouldShowPaneCount(button_width, pane_count);
-            const title_unchanged = if (title) |value|
-                ownedStringEquals(tab.cached_button_title, value)
-            else
-                tab.cached_button_title == null;
-            const label_inputs_unchanged = tab.button_hwnd != null and
-                tab.button_label_cache_valid and
-                title_unchanged and
-                tab.cached_button_index == i and
-                tab.cached_button_active == active and
-                tab.cached_button_pane_count == pane_count and
-                tab.cached_button_label_max_len == label_max_len and
-                tab.cached_button_show_pane_count == show_pane_count;
-            if (label_inputs_unchanged) continue;
-            const label = try buildTabButtonLabel(
-                self.app.core_app.alloc,
-                title,
-                i,
-                active,
-                pane_count,
-                label_max_len,
-                show_pane_count,
-            );
-            defer self.app.core_app.alloc.free(label);
-            if (tab.button_hwnd == null) {
-                try appendOwnedString(self.app.core_app.alloc, &tab.cached_button_label, label);
-                const label_w = try std.unicode.utf8ToUtf16LeAllocZ(self.app.core_app.alloc, label);
-                defer self.app.core_app.alloc.free(label_w);
-                tab.button_hwnd = CreateWindowExW(
-                    0,
-                    prompt_button_class,
-                    label_w.ptr,
-                    WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
-                    0,
-                    0,
-                    100,
-                    host_tab_height - 8,
-                    hwnd,
-                    @ptrFromInt(1000 + i),
-                    self.app.hinstance,
-                    null,
-                ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
-                self.subclassButton(tab.button_hwnd.?, &tabButtonProc, &tab.button_prev_proc);
-            } else if (!ownedStringEquals(tab.cached_button_label, label)) {
-                try appendOwnedString(self.app.core_app.alloc, &tab.cached_button_label, label);
-                const label_w = try std.unicode.utf8ToUtf16LeAllocZ(self.app.core_app.alloc, label);
-                defer self.app.core_app.alloc.free(label_w);
-                _ = SetWindowTextW(tab.button_hwnd.?, label_w.ptr);
+        // Sidebar-first chrome: the unified workspace sidebar is the
+        // primary navigation surface, so the horizontal strip renders
+        // no per-workspace buttons. Destroy any that exist (e.g. from
+        // a layout created before this policy) so state converges.
+        var changed = false;
+        for (self.tabs.items) |*tab| {
+            if (tab.button_hwnd != null) {
+                destroySubclassedWindow(&tab.button_hwnd, &tab.button_prev_proc);
+                tab.button_placement = .{};
+                tab.button_label_cache_valid = false;
+                changed = true;
             }
-            try appendOwnedString(self.app.core_app.alloc, &tab.cached_button_title, title);
-            tab.cached_button_index = i;
-            tab.cached_button_active = active;
-            tab.cached_button_pane_count = pane_count;
-            tab.cached_button_label_max_len = label_max_len;
-            tab.cached_button_show_pane_count = show_pane_count;
-            tab.button_label_cache_valid = true;
         }
-        var chrome_changed = false;
-        if (!self.layoutChromeForRect(rect, &chrome_changed)) return chrome_changed;
-        return chrome_changed;
+        return changed;
     }
 
     fn syncChromeButtons(self: *Host) !void {
@@ -15526,19 +15548,26 @@ const Host = struct {
 
                     // "N · title (panes)" — the ordinal is the workspace's
                     // stable visible address (ctrl+N jumps to it).
-                    const title: []const u8 = title: {
-                        if (tab.focusedSurface()) |fs| {
-                            if (fs.tab_title_override) |value| break :title value;
-                            if (fs.effectiveTitle()) |value| break :title value;
-                        }
-                        break :title "workspace";
-                    };
+                    // Headers carry the workspace's own identity — a
+                    // stable ordinal (the ctrl+N address) and its RENAMED
+                    // title if one was set. They never echo the focused
+                    // pane's title; that lives on the pane rows below.
+                    const override: ?[]const u8 = if (tab.focusedSurface()) |fs|
+                        fs.tab_title_override
+                    else
+                        null;
                     var label_buf: [192]u8 = undefined;
                     const pane_count = tab.leafCount();
-                    const label = if (pane_count > 1)
-                        (std.fmt.bufPrint(&label_buf, "{d} \u{00B7} {s}  ({d})", .{ row.tab_index + 1, title, pane_count }) catch title)
+                    const label: []const u8 = if (override) |name|
+                        (if (pane_count > 1)
+                            (std.fmt.bufPrint(&label_buf, "{d} \u{00B7} {s}  ({d})", .{ row.tab_index + 1, name, pane_count }) catch name)
+                        else
+                            (std.fmt.bufPrint(&label_buf, "{d} \u{00B7} {s}", .{ row.tab_index + 1, name }) catch name))
                     else
-                        (std.fmt.bufPrint(&label_buf, "{d} \u{00B7} {s}", .{ row.tab_index + 1, title }) catch title);
+                        (if (pane_count > 1)
+                            (std.fmt.bufPrint(&label_buf, "Workspace {d}  ({d})", .{ row.tab_index + 1, pane_count }) catch "Workspace")
+                        else
+                            (std.fmt.bufPrint(&label_buf, "Workspace {d}", .{row.tab_index + 1}) catch "Workspace"));
                     drawPaletteRowText(hdc, label, .{
                         .left = rect.left + pad,
                         .top = row.y + self.scaled(8),
@@ -22015,7 +22044,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                         return 0;
                     },
                     1904 => {
-                        v.postDeferredNewTab();
+                        v.showNewMenu();
                         return 0;
                     },
                     1905 => {

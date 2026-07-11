@@ -6053,6 +6053,15 @@ pub const Keybinds = struct {
                 .{ .new_split = .down },
             );
 
+            // New terminal with automatic placement (splits the focused
+            // pane along its longer side; the (+) menu's largest-pane
+            // variant lives in the UI).
+            try self.set.put(
+                alloc,
+                .{ .key = .{ .unicode = 'd' }, .mods = .{ .ctrl = true, .shift = true } },
+                .{ .new_split = .auto },
+            );
+
             // MRU toggles (tmux `prefix l` / `prefix ;`): bounce between
             // your two working workspaces / panes at constant cost.
             try self.set.putFlags(
