@@ -84,7 +84,7 @@ path today.
 
 The current test build is
 [`v0.1.0-paramux.9`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.9),
-published 2026-07-10 for Windows x64:
+published 2026-07-11 for Windows x64:
 
 - [`paramux-0.1.0-paramux.9-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.9/paramux-0.1.0-paramux.9-windows-x64-portable.zip)
 - [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.9/SHA256SUMS-windows-x64.txt)
