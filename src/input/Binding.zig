@@ -543,6 +543,15 @@ pub const Action = union(enum) {
     /// Go to the last tab.
     last_tab,
 
+    /// Toggle to the most recently used tab — a constant-cost bounce
+    /// between your two working tabs (tmux's `prefix l`).
+    recent_tab,
+
+    /// Jump to the pane with the most recent unhandled attention state
+    /// (an agent waiting for input, done, or errored), switching tabs if
+    /// needed. Turns agent notifications into a work queue.
+    goto_attention,
+
     /// Go to the tab with the specific index, starting from 1.
     ///
     /// If the tab number is higher than the number of tabs,
@@ -1014,6 +1023,10 @@ pub const Action = union(enum) {
         down,
         right,
 
+        /// The most recently focused split in the tab — a constant-cost
+        /// toggle between your two working panes (tmux's `prefix ;`).
+        recent,
+
         pub fn parse(input: []const u8) !SplitFocusDirection {
             return std.meta.stringToEnum(SplitFocusDirection, input) orelse {
                 // For backwards compatibility we map "top" and "bottom" onto the enum
@@ -1382,7 +1395,9 @@ pub const Action = union(enum) {
             .previous_tab,
             .next_tab,
             .last_tab,
+            .recent_tab,
             .goto_tab,
+            .goto_attention,
             .move_tab,
             .toggle_tab_overview,
             .new_split,

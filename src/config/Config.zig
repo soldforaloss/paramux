@@ -6052,6 +6052,29 @@ pub const Keybinds = struct {
                 .{ .key = .{ .unicode = 'e' }, .mods = .{ .ctrl = true, .shift = true } },
                 .{ .new_split = .down },
             );
+
+            // MRU toggles (tmux `prefix l` / `prefix ;`): bounce between
+            // your two working workspaces / panes at constant cost.
+            try self.set.putFlags(
+                alloc,
+                .{ .key = .{ .unicode = 'l' }, .mods = .{ .ctrl = true, .alt = true } },
+                .{ .recent_tab = {} },
+                .{ .performable = true },
+            );
+            try self.set.putFlags(
+                alloc,
+                .{ .key = .{ .unicode = ';' }, .mods = .{ .ctrl = true, .alt = true } },
+                .{ .goto_split = .recent },
+                .{ .performable = true },
+            );
+            // Jump to the newest pane asking for attention (agent waiting,
+            // done, or errored) anywhere in the window.
+            try self.set.putFlags(
+                alloc,
+                .{ .key = .{ .unicode = 'u' }, .mods = .{ .ctrl = true, .alt = true } },
+                .{ .goto_attention = {} },
+                .{ .performable = true },
+            );
             try self.set.putFlags(
                 alloc,
                 .{ .key = .{ .unicode = '[' }, .mods = .{ .ctrl = true, .alt = true } },

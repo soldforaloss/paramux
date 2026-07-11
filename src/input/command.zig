@@ -504,7 +504,24 @@ fn actionCommands(action: Action.Key) []const Command {
                 .title = "Focus Split: Down",
                 .description = "Focus the split below, if it exists.",
             },
+            .{
+                .action = .{ .goto_split = .recent },
+                .title = "Focus Split: Recent",
+                .description = "Toggle to the most recently focused split in this workspace.",
+            },
         },
+
+        .recent_tab => comptime &.{.{
+            .action = .recent_tab,
+            .title = "Focus Workspace: Recent",
+            .description = "Toggle to the most recently used workspace.",
+        }},
+
+        .goto_attention => comptime &.{.{
+            .action = .goto_attention,
+            .title = "Jump to Attention",
+            .description = "Focus the pane with the most recent agent notification (waiting, done, or error).",
+        }},
 
         .goto_window => comptime &.{
             .{

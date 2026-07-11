@@ -137,6 +137,10 @@ pub const Action = union(Key) {
     /// Jump to a specific split.
     goto_split: GotoSplit,
 
+    /// Jump to the pane with the most recent unhandled attention state
+    /// (agent waiting / done / error), across every tab of the window.
+    goto_attention,
+
     /// Jump to next/previous window.
     goto_window: GotoWindow,
 
@@ -366,6 +370,7 @@ pub const Action = union(Key) {
         move_tab,
         goto_tab,
         goto_split,
+        goto_attention,
         goto_window,
         resize_split,
         equalize_splits,
@@ -517,6 +522,9 @@ pub const GotoSplit = enum(c_int) {
     down,
     right,
 
+    /// The most recently focused split in the tab (MRU toggle).
+    recent,
+
     test "ghostty.h GotoSplit" {
         try lib.checkGhosttyHEnum(GotoSplit, "GHOSTTY_GOTO_SPLIT_");
     }
@@ -577,6 +585,8 @@ pub const GotoTab = enum(c_int) {
     previous = -1,
     next = -2,
     last = -3,
+    /// The most recently used tab (MRU toggle).
+    recent = -4,
     _,
 
     // TODO: check non-exhaustive enums

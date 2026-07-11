@@ -1355,7 +1355,7 @@ const host_overlay_surface_title_label_utf8 = "Window title:";
 const host_overlay_tab_title_label_utf8 = "Tab title:";
 const host_overlay_command_palette_label = std.unicode.utf8ToUtf16LeStringLiteral("Command:");
 const host_tab_new_button_label = std.unicode.utf8ToUtf16LeStringLiteral("+");
-const tooltip_new_tab = std.unicode.utf8ToUtf16LeStringLiteral("New tab (Ctrl+Shift+T)\nRight-click: new window \u{00B7} Middle-click: split");
+const tooltip_new_tab = std.unicode.utf8ToUtf16LeStringLiteral("New workspace (Ctrl+Shift+T)\nRight-click: new window \u{00B7} Middle-click: split");
 const tooltip_split_right = std.unicode.utf8ToUtf16LeStringLiteral("Split right (Ctrl+Shift+O)");
 const tooltip_split_down = std.unicode.utf8ToUtf16LeStringLiteral("Split down (Ctrl+Shift+E)");
 const tooltip_settings = std.unicode.utf8ToUtf16LeStringLiteral("Settings (Ctrl+,)");
@@ -1370,7 +1370,7 @@ const help_getting_started_text: LPCWSTR = blk: {
             "1. Each pane is its own terminal. Type any command —\n" ++
             "    for example an AI agent like \"claude\".\n\n" ++
             "2. Add panes with the toolbar buttons:\n" ++
-            "    +  new tab       \u{25EB}  split right       \u{229F}  split down\n\n" ++
+            "    +  new workspace   \u{25EB}  split right       \u{229F}  split down\n\n" ++
             "3. The left sidebar lists your panes. Click a row to\n" ++
             "    focus it, drag it onto another pane to rearrange,\n" ++
             "    hover it and click \u{2715} to close.\n\n" ++
@@ -1385,14 +1385,17 @@ const help_getting_started_text: LPCWSTR = blk: {
 const help_shortcuts_text: LPCWSTR = blk: {
     @setEvalBranchQuota(20_000);
     break :blk std.unicode.utf8ToUtf16LeStringLiteral(
-        "New tab\tCtrl+Shift+T\n" ++
+        "New workspace\tCtrl+Shift+T\n" ++
             "Split right\tCtrl+Shift+O\n" ++
             "Split down\tCtrl+Shift+E\n" ++
             "Close pane\tCtrl+Shift+W\n\n" ++
+            "Recent workspace (toggle)\tCtrl+Alt+L\n" ++
+            "Recent pane (toggle)\tCtrl+Alt+;\n" ++
+            "Jump to attention\tCtrl+Alt+U\n" ++
             "Focus next / previous pane\tCtrl+Alt+] / [\n" ++
             "Focus pane by direction\tCtrl+Alt+Arrows\n" ++
             "Resize pane\tCtrl+Alt+Shift+Arrows\n" ++
-            "Zoom pane (fill the tab)\tCtrl+Shift+Enter\n\n" ++
+            "Zoom pane (fill the workspace)\tCtrl+Shift+Enter\n\n" ++
             "Copy / Paste\tCtrl+Shift+C / V\n" ++
             "Find\tCtrl+Shift+F\n" ++
             "Command palette\tCtrl+Shift+P\n" ++
@@ -3615,6 +3618,9 @@ pub const App = struct {
     /// Future chrome gates read this directly; no runtime config flag,
     /// per §12 Q1.
     os_build: u32 = 0,
+    /// Monotonic counter behind per-surface `attention_seq` stamps —
+    /// the ordering `goto_attention` uses for "most recent unread".
+    attention_seq_counter: u64 = 0,
     /// Top-level switch for the integrated-titlebar path
     /// (`WM_NCCALCSIZE` / `WM_NCHITTEST` state machine). Derived
     /// from the Win11 build floor via `shouldUseIntegratedTitlebar`;
@@ -5605,6 +5611,10 @@ pub const App = struct {
                 return try self.gotoTab(target, value);
             },
 
+            .goto_attention => {
+                return try self.gotoAttention(target);
+            },
+
             .toggle_tab_overview => {
                 if (self.findSurfaceForTarget(target)) |surface| {
                     return try surface.toggleTabOverview();
@@ -6940,6 +6950,11 @@ pub const App = struct {
         const host = surface.host orelse return;
         const tab_info = self.findTabForSurface(surface) orelse return;
         const previous_surface = host.activeSurface();
+        // Record the outgoing tab for the recent_tab MRU toggle — this
+        // is where new-tab creation and cross-tab activation both land.
+        if (host.active_tab != tab_info.index and host.active_tab < host.tabs.items.len) {
+            host.recent_tab_id = host.tabs.items[host.active_tab].id;
+        }
         host.active_tab = tab_info.index;
         surface.syncSharedHostWindowState(previous_surface);
         host.prepareActiveTabVisibility(tab_info.index);
@@ -6971,7 +6986,7 @@ pub const App = struct {
                 surface.window_visible,
                 surface.window_focused,
             );
-            if (found.tab.focused != handle) found.tab.focused = handle;
+            found.tab.setFocusedHandle(handle);
             if (!needs_host_sync) {
                 surface.presentWindow();
                 self.syncTaskbarProgressForHost(surface.host_id);
@@ -7069,7 +7084,7 @@ pub const App = struct {
                 found.host.active_tab,
                 surface.window_visible,
             );
-            if (found.tab.focused != handle) found.tab.focused = handle;
+            found.tab.setFocusedHandle(handle);
             if (!needs_host_sync) {
                 surface.setVisible(true);
                 self.syncTaskbarProgressForHost(surface.host_id);
@@ -7089,8 +7104,17 @@ pub const App = struct {
             found.index,
             handle,
         );
+        // Real keyboard focus is the authority for both MRU toggles:
+        // record the outgoing tab and pane here so every path (tab
+        // creation, splits, clicks, keybinds) feeds recent_tab /
+        // goto_split:recent.
+        if (found.host.active_tab != found.index and
+            found.host.active_tab < found.host.tabs.items.len)
+        {
+            found.host.recent_tab_id = found.host.tabs.items[found.host.active_tab].id;
+        }
         found.host.active_tab = found.index;
-        found.tab.focused = handle;
+        found.tab.setFocusedHandle(handle);
         return changed;
     }
 
@@ -7203,6 +7227,25 @@ pub const App = struct {
     fn gotoSplitFallback(self: *App, target: apprt.Target, to: apprt.action.GotoSplit) !bool {
         const current = self.findSurfaceForTarget(target) orelse return false;
         const found = self.findTabForSurface(current) orelse return false;
+
+        // MRU toggle: bounce to the pane focused before this one. Goes
+        // through activateSurface so the toggle re-records and a second
+        // press bounces back.
+        if (to == .recent) {
+            const recent_id = found.tab.recent_surface_id orelse return false;
+            const recent = found.tab.findSurfaceByCoreId(recent_id) orelse return false;
+            if (recent == current) return false;
+            if (found.tab.tree.zoomed != null) {
+                if (found.tab.findHandle(recent)) |h| {
+                    found.tab.tree.zoom(h);
+                    found.host.layout() catch {};
+                }
+            }
+            self.activateSurface(recent);
+            found.host.invalidateSidebar();
+            return true;
+        }
+
         const from = found.tab.findHandle(current) orelse found.tab.focused;
         const goto: SplitTreeSurface.Goto = switch (to) {
             .previous => .previous_wrapped,
@@ -7211,9 +7254,10 @@ pub const App = struct {
             .right => .{ .spatial = .right },
             .up => .{ .spatial = .up },
             .down => .{ .spatial = .down },
+            .recent => unreachable, // handled above
         };
         const next_handle = (try found.tab.tree.goto(self.core_app.alloc, from, goto)) orelse return false;
-        found.tab.focused = next_handle;
+        found.tab.setFocusedHandle(next_handle);
         const next_surface = found.tab.focusedSurface() orelse return false;
         self.activateSurface(next_surface);
         return true;
@@ -7223,7 +7267,7 @@ pub const App = struct {
         return switch (to) {
             .previous => .previous,
             .next => .next,
-            .up, .down, .left, .right => null,
+            .up, .down, .left, .right, .recent => null,
         };
     }
 
@@ -7339,12 +7383,69 @@ pub const App = struct {
         if (self.windows.items.len == 0) return false;
         const current = self.findSurfaceForTarget(target) orelse self.windows.items[0];
         const found = self.findTabForSurface(current) orelse return false;
+
+        // MRU toggle: bounce to the tab used before this one.
+        // activateTabIndex re-records the outgoing tab, so a second
+        // press bounces back.
+        if (goto == .recent) {
+            const host = found.host;
+            const recent_id = host.recent_tab_id orelse return false;
+            for (host.tabs.items, 0..) |*tab, i| {
+                if (tab.id != recent_id) continue;
+                if (i == host.active_tab) return false;
+                return host.activateTabIndex(i);
+            }
+            return false;
+        }
+
         const desired = desiredTabIndex(found.host.tabs.items.len, found.index, goto) orelse return false;
         const current_idx = found.index;
         if (desired == current_idx) return false;
+        // Record for the recent_tab toggle: this path activates via
+        // activateSurface, which does not go through activateTabIndex.
+        found.host.recent_tab_id = found.host.tabs.items[current_idx].id;
         const tab = &found.host.tabs.items[desired];
         const surface = tab.focusedSurface() orelse return false;
         self.activateSurface(surface);
+        return true;
+    }
+
+    /// Jump to the pane with the newest unhandled attention state
+    /// (waiting / done / error) anywhere in the surface's window,
+    /// switching tabs and moving the zoom if needed.
+    fn gotoAttention(self: *App, target: apprt.Target) !bool {
+        if (self.windows.items.len == 0) return false;
+        const current = self.findSurfaceForTarget(target) orelse self.windows.items[0];
+        const found = self.findTabForSurface(current) orelse return false;
+        const host = found.host;
+
+        var best: ?*Surface = null;
+        var best_tab: usize = 0;
+        var best_seq: u64 = 0;
+        for (host.tabs.items, 0..) |*tab, ti| {
+            var it = tab.tree.iterator();
+            while (it.next()) |entry| {
+                const surface = entry.view;
+                if (!surface.attention_state.isAlerting()) continue;
+                if (surface.attention_seq < best_seq) continue;
+                best = surface;
+                best_seq = surface.attention_seq;
+                best_tab = ti;
+            }
+        }
+        const surface = best orelse return false;
+        if (best_tab != host.active_tab) _ = host.activateTabIndex(best_tab);
+        const tab = &host.tabs.items[best_tab];
+        if (tab.tree.zoomed != null) {
+            if (tab.findHandle(surface)) |handle| {
+                if (tab.tree.zoomed.? != handle) {
+                    tab.tree.zoom(handle);
+                    host.layout() catch {};
+                }
+            }
+        }
+        self.activateSurface(surface);
+        host.invalidateSidebar();
         return true;
     }
 
@@ -8939,6 +9040,11 @@ const Tab = struct {
     id: u32,
     tree: SplitTreeSurface,
     focused: SplitTreeSurface.Node.Handle = .root,
+    /// Core-surface id of the pane focused before the current one —
+    /// the `goto_split:recent` toggle target. Ids (not handles) so
+    /// structural rebuilds can't dangle it; ids of closed panes just
+    /// stop resolving.
+    recent_surface_id: ?u64 = null,
     button_hwnd: ?HWND = null,
     button_prev_proc: ?*const anyopaque = null,
     cached_button_title: ?[:0]const u8 = null,
@@ -8974,6 +9080,15 @@ const Tab = struct {
             .leaf => |surface| surface,
             .split => null,
         };
+    }
+
+    /// Move focus to `handle`, remembering the outgoing pane for the
+    /// `goto_split:recent` MRU toggle. User-visible focus changes should
+    /// go through here rather than assigning `focused` directly.
+    fn setFocusedHandle(self: *Tab, handle: SplitTreeSurface.Node.Handle) void {
+        if (self.focused == handle) return;
+        if (self.focusedSurface()) |prev| self.recent_surface_id = prev.core().id;
+        self.focused = handle;
     }
 
     fn findHandle(self: *const Tab, surface: *Surface) ?SplitTreeSurface.Node.Handle {
@@ -9212,6 +9327,9 @@ const Host = struct {
     /// Scroll offset (px) of the unified sidebar tree when it outgrows
     /// the window. Clamped by `clampSidebarScroll`.
     sidebar_scroll: i32 = 0,
+    /// Tab id (not index — indices shift on reorder/close) of the
+    /// previously active tab; the `recent_tab` toggle target.
+    recent_tab_id: ?u32 = null,
     banner_kind: HostBannerKind = .none,
     banner_text: ?[:0]const u8 = null,
     update_open_rect: RECT = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 },
@@ -10664,6 +10782,10 @@ const Host = struct {
     fn activateTabIndex(self: *Host, index: usize) bool {
         if (index >= self.tabs.items.len) return false;
         if (self.active_tab != index) {
+            // Record the outgoing tab for the `recent_tab` MRU toggle.
+            if (self.active_tab < self.tabs.items.len) {
+                self.recent_tab_id = self.tabs.items[self.active_tab].id;
+            }
             // Hide inactive tab HWNDs/search controls before the active
             // index changes so rapid Ctrl+Tab repeats don't leave previous
             // tab toolbar fragments painted over the next tab.
@@ -12299,8 +12421,8 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_STRING, CTX_FIND, std.unicode.utf8ToUtf16LeStringLiteral("Find...\tCtrl+Shift+F"));
         _ = AppendMenuW(menu, MF_STRING, CTX_COMMAND_PALETTE, std.unicode.utf8ToUtf16LeStringLiteral("Command Palette\tCtrl+Shift+P"));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
-        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New Tab\tCtrl+Shift+T"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_OVERVIEW, std.unicode.utf8ToUtf16LeStringLiteral("Tabs / Workspaces..."));
+        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New Workspace\tCtrl+Shift+T"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_OVERVIEW, std.unicode.utf8ToUtf16LeStringLiteral("Workspaces..."));
 
         // Split directions as direct, top-level items (not a buried submenu) so
         // creating a split is discoverable, with the keyboard shortcut shown so
@@ -12400,16 +12522,16 @@ const Host = struct {
         const menu = CreatePopupMenu() orelse return;
         defer _ = DestroyMenu(menu);
 
-        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_RENAME, std.unicode.utf8ToUtf16LeStringLiteral("Rename Tab"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_RENAME, std.unicode.utf8ToUtf16LeStringLiteral("Rename Workspace"));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
-        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_MOVE_LEFT, std.unicode.utf8ToUtf16LeStringLiteral("Move Tab Left"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_MOVE_RIGHT, std.unicode.utf8ToUtf16LeStringLiteral("Move Tab Right"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_MOVE_LEFT, std.unicode.utf8ToUtf16LeStringLiteral("Move Workspace Left"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_MOVE_RIGHT, std.unicode.utf8ToUtf16LeStringLiteral("Move Workspace Right"));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
 
         // Only allow closing if there's more than one tab
         const close_flag: UINT = if (self.tabs.items.len > 1) MF_STRING else MF_GRAYED;
-        _ = AppendMenuW(menu, close_flag, CTX_TAB_CLOSE, std.unicode.utf8ToUtf16LeStringLiteral("Close Tab"));
-        _ = AppendMenuW(menu, if (self.tabs.items.len > 1) MF_STRING else MF_GRAYED, CTX_TAB_CLOSE_OTHERS, std.unicode.utf8ToUtf16LeStringLiteral("Close Other Tabs"));
+        _ = AppendMenuW(menu, close_flag, CTX_TAB_CLOSE, std.unicode.utf8ToUtf16LeStringLiteral("Close Workspace"));
+        _ = AppendMenuW(menu, if (self.tabs.items.len > 1) MF_STRING else MF_GRAYED, CTX_TAB_CLOSE_OTHERS, std.unicode.utf8ToUtf16LeStringLiteral("Close Other Workspaces"));
 
         // Position below the tab button
         var rect: RECT = undefined;
@@ -12480,8 +12602,8 @@ const Host = struct {
 
         // Utility items. Split lives here too (not just the right-click menu) so
         // the one obvious "more actions" control advertises how to split a pane.
-        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New Tab\tCtrl+Shift+T"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_OVERVIEW, std.unicode.utf8ToUtf16LeStringLiteral("Tabs / Workspaces..."));
+        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New Workspace\tCtrl+Shift+T"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_OVERVIEW, std.unicode.utf8ToUtf16LeStringLiteral("Workspaces..."));
         _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_RIGHT, std.unicode.utf8ToUtf16LeStringLiteral("Split Right\tCtrl+Shift+O"));
         _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_DOWN, std.unicode.utf8ToUtf16LeStringLiteral("Split Down\tCtrl+Shift+E"));
         const pane_count = if (self.activeTab()) |tab| tab.leafCount() else 1;
@@ -21925,8 +22047,9 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                 for (v.tabs.items, 0..) |*tab, i| {
                     if (child_hwnd) |child| {
                         if (tab.button_hwnd == child) {
-                            v.active_tab = i;
-                            if (tab.focusedSurface()) |surface| v.app.activateSurface(surface);
+                            // Through activateTabIndex so visibility prep,
+                            // layout, and the recent-tab MRU all happen.
+                            _ = v.activateTabIndex(i);
                             return 0;
                         }
                     }
@@ -22276,6 +22399,9 @@ fn desiredTabIndex(total: usize, current: usize, goto: apprt.action.GotoTab) ?us
         .previous => if (current == 0) total - 1 else current - 1,
         .next => (current + 1) % total,
         .last => total - 1,
+        // MRU jump needs host state, not index math — handled in
+        // `gotoTab` before this is called.
+        .recent => null,
         _ => blk: {
             // Numeric goto_tab values are documented as 1-based; clamp
             // overshoot to the last tab (see input.Binding.Action.goto_tab).
@@ -22492,7 +22618,7 @@ fn closeSurfaceMenuLabel(pane_count: usize) [*:0]const u16 {
     return if (pane_count > 1)
         std.unicode.utf8ToUtf16LeStringLiteral("Close Pane\tCtrl+Shift+W")
     else
-        std.unicode.utf8ToUtf16LeStringLiteral("Close Tab\tCtrl+Shift+W");
+        std.unicode.utf8ToUtf16LeStringLiteral("Close Workspace\tCtrl+Shift+W");
 }
 
 fn zoomPaneMenuLabel(zoomed: bool) [*:0]const u16 {
@@ -23998,6 +24124,9 @@ pub const Surface = struct {
     /// status dot color + taskbar flash; reset to `.none` when the pane is
     /// focused (viewing acknowledges it).
     attention_state: AttentionState = .none,
+    /// Monotonic stamp of when this pane last entered an alerting
+    /// attention state; `goto_attention` jumps to the highest.
+    attention_seq: u64 = 0,
     taskbar_progress: ?win32_taskbar_progress.ProgressReport = null,
     inspector_visible: bool = false,
     paint_pending: bool = false,
@@ -24240,6 +24369,11 @@ pub const Surface = struct {
                     const prev_focused = tab.focused;
                     tab.tree = next_tree;
                     tab.focused = tab.findHandle(self) orelse focus_handle;
+                    // The split source is the pane the user was on — the
+                    // goto_split:recent toggle target. Recorded here since
+                    // this creation-time focus set predates any
+                    // activateSurface/noteSurfaceFocused recording.
+                    tab.recent_surface_id = @constCast(opts.clone_state_from.?).core().id;
                     split_rollback = .{
                         .tab = tab,
                         .tree = prev_tree,
@@ -27460,6 +27594,10 @@ pub const Surface = struct {
         if (self.attention_state == state) return;
         self.attention_state = state;
         if (state.isAlerting()) {
+            // Stamp recency so goto_attention can jump to the NEWEST
+            // unhandled pane (the cmux "most recent unread" queue).
+            self.app.attention_seq_counter += 1;
+            self.attention_seq = self.app.attention_seq_counter;
             if (self.host) |host| host.flashForAttention();
         }
         self.invalidateStatusBarState();
@@ -36340,7 +36478,7 @@ test "win32 tab overview parser accepts one-based tab numbers" {
 test "win32 close surface menu names the visible scope" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
-    const expected_tab = std.unicode.utf8ToUtf16LeStringLiteral("Close Tab\tCtrl+Shift+W");
+    const expected_tab = std.unicode.utf8ToUtf16LeStringLiteral("Close Workspace\tCtrl+Shift+W");
     try std.testing.expectEqualSlices(
         u16,
         expected_tab[0..expected_tab.len],
