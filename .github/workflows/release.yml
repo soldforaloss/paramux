@@ -1,14 +1,12 @@
 name: Release
 
 on:
-  push:
-    tags:
-      # Plain-semver release tags only (e.g. v1.3.100). The signed-release +
-      # WinGet/Scoop pipeline needs plain X.Y.Z and configured signing secrets,
-      # so it must NOT fire on the private prerelease tags (v*-paramux.N), which
-      # are published manually via `gh release create`.
-      - "v[0-9]+.[0-9]+.[0-9]+"
-      - "!v*-*"
+  # Manual-only. Releases use plain-semver tags (v0.1.1, v0.1.2, ...)
+  # from v0.1.1 onward and are published via `gh release create`; this
+  # signed-release + WinGet/Scoop pipeline still needs signing secrets
+  # and package-manager vars that are not configured, so a tag-push
+  # trigger would only produce a guaranteed-failing run per release.
+  # Re-add a tags trigger when the signing/distribution secrets exist.
   workflow_dispatch:
     inputs:
       version:
