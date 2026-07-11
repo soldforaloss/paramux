@@ -89,14 +89,17 @@ published 2026-07-11 for Windows x64:
 - [`paramux-0.1.0-paramux.9-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.9/paramux-0.1.0-paramux.9-windows-x64-portable.zip)
 - [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.9/SHA256SUMS-windows-x64.txt)
 
-This build adds CLI lifecycle management (`install`, `uninstall`,
-checksum-verified in-place `update`) on top of the `v0.1.0-paramux.6`
-UI/UX overhaul (five-button toolbar with tooltips, drag-and-drop pane
-rearrangement, settings theme picker, merge/zoom/equalize actions,
-first-run hints, and the Explorer "Open in Paramux" entry). It is the
-first release the CLI can update FROM: future releases apply with
-`paramux update`. Earlier prereleases are superseded
-(`v0.1.0-paramux.4` remains a legacy test artifact).
+This build makes the CLI plain-spoken (`paramux update`, not
+`paramux +update` — the old spelling still works), turns the sidebar
+into an always-complete map of every workspace and pane so no running
+agent can leave the screen, and adds MRU navigation: toggle between
+your two recent workspaces (`Ctrl+Alt+L`) or panes (`Ctrl+Alt+;`), and
+jump straight to the newest agent notification (`Ctrl+Alt+U`). It sits
+on top of the `v0.1.0-paramux.8` settings-window overhaul and confirm-
+dialog fixes. Releases from `v0.1.0-paramux.7` onward apply with
+`paramux update`; earlier prereleases are superseded
+(`v0.1.0-paramux.4` remains a legacy test artifact). This is the last
+release under the `-paramux.N` naming — the next is plain `v0.1.1`.
 
 1. Download both the portable ZIP and `SHA256SUMS-windows-x64.txt`.
 2. Before extracting or running anything, compare the ZIP's digest with the
@@ -148,7 +151,7 @@ bundle a software renderer.
 
 The visible title-bar controls are intentionally enough to get started:
 
-- `+` opens a tab.
+- `+` opens a workspace.
 - The two split buttons next to `+` create a pane to the right or below
   (hover any button for its shortcut).
 - The gear opens Settings — pick a theme from the searchable swatch list,
@@ -165,11 +168,13 @@ Useful defaults:
 
 | Action | Binding |
 | --- | --- |
-| New tab | `Ctrl+Shift+T` |
+| New workspace | `Ctrl+Shift+T` |
 | Split right / down | `Ctrl+Shift+O` / `Ctrl+Shift+E` |
 | Focus previous / next pane | `Ctrl+Alt+[` / `Ctrl+Alt+]` |
+| Recent workspace / pane (toggle) | `Ctrl+Alt+L` / `Ctrl+Alt+;` |
+| Jump to newest agent notification | `Ctrl+Alt+U` |
 | Resize focused pane | `Ctrl+Alt+Shift+Arrow` |
-| Next / previous tab | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
+| Next / previous workspace | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
 | Command palette | `Ctrl+Shift+P` |
 | Find in scrollback | `Ctrl+Shift+F` |
 | Copy / paste | `Ctrl+Shift+C` / `Ctrl+Shift+V` |
