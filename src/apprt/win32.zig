@@ -28,6 +28,7 @@ const win32_clipboard_html = @import("win32_clipboard_html.zig");
 const win32_undo = @import("win32_undo.zig");
 const win32_toast_winrt = @import("win32_toast_winrt.zig");
 const win32_taskbar_progress = @import("win32_taskbar_progress.zig");
+const win32_jump_list = @import("win32_jump_list.zig");
 const win32_powershell_install = @import("win32_powershell_install.zig");
 const win32_link_preview = @import("win32_link_preview.zig");
 const win32_quick_terminal = @import("win32_quick_terminal.zig");
@@ -657,8 +658,15 @@ const RESIZE_SETTLE_TIMER_INTERVAL_MS: UINT = 16;
 const RESIZE_SETTLE_REPAINT_TICKS: u8 = 12;
 // paramux FR-3: periodic refresh of each pane's listening TCP ports.
 const PORTS_TIMER_ID: UINT_PTR = 0x77684705; // "whgT5" in 32-bit hex
+/// Auto-dismisses transient info banners after a few seconds.
+const BANNER_TIMER_ID: UINT_PTR = 0x77684706;
+const banner_auto_dismiss_ms: UINT = 4000;
+/// Drives the subtle attention-dot pulse while any pane is alerting.
+const ATTENTION_PULSE_TIMER_ID: UINT_PTR = 0x77684707;
+const attention_pulse_interval_ms: UINT = 160;
 const PORTS_TIMER_INTERVAL_MS: UINT = 3000;
 const FW_NORMAL: i32 = 400;
+const FW_SEMIBOLD = 600;
 const DEFAULT_CHARSET: u8 = 1;
 const OUT_DEFAULT_PRECIS: u8 = 0;
 const CLIP_DEFAULT_PRECIS: u8 = 0;
@@ -3773,6 +3781,7 @@ pub const App = struct {
         applyPreferredAppDarkMode(self.os_build);
 
         self.initComApartment();
+        self.registerJumpList();
         self.taskbar_progress = win32_taskbar_progress.TaskbarProgress.init() catch |err| blk: {
             std.log.warn("taskbar progress init failed err={}; falling back to title-only progress", .{err});
             break :blk null;
@@ -6683,6 +6692,8 @@ pub const App = struct {
         host.current_dpi = GetDpiForWindow(hwnd);
         if (host.current_dpi == 0) host.current_dpi = 96;
         host.chrome_font = host.createChromeFont();
+        host.chrome_font_small = host.createChromeFontWith(12, FW_NORMAL);
+        host.chrome_font_semibold = host.createChromeFontWith(14, FW_SEMIBOLD);
         host.recreateTitlebarIconFonts();
         // paramux FR-3: poll each pane's listening ports every few seconds.
         _ = SetTimer(hwnd, PORTS_TIMER_ID, PORTS_TIMER_INTERVAL_MS, null);
@@ -7014,6 +7025,22 @@ pub const App = struct {
         }
         self.showHostSurface(surface, true);
         self.syncTaskbarProgressForHost(surface.host_id);
+    }
+
+    /// Register the taskbar jump-list tasks (New Window / Settings /
+    /// Attention Inbox). Best-effort; runs once at startup after COM init.
+    fn registerJumpList(self: *App) void {
+        const alloc = self.core_app.alloc;
+        const exe_path = std.fs.selfExePathAlloc(alloc) catch return;
+        defer alloc.free(exe_path);
+        const dir = std.fs.path.dirname(exe_path) orelse return;
+        const launcher = std.fs.path.join(alloc, &.{ dir, "paramux.com" }) catch return;
+        defer alloc.free(launcher);
+        const launcher_w = std.unicode.utf8ToUtf16LeAllocZ(alloc, launcher) catch return;
+        defer alloc.free(launcher_w);
+        const icon_w = std.unicode.utf8ToUtf16LeAllocZ(alloc, exe_path) catch return;
+        defer alloc.free(icon_w);
+        win32_jump_list.register(launcher_w, icon_w);
     }
 
     fn syncTaskbarProgressForHost(self: *App, host_id: u32) void {
@@ -9256,6 +9283,10 @@ const Host = struct {
     current_dpi: u32 = 96,
     pending_dpi_update: bool = false,
     chrome_font: ?*anyopaque = null, // HFONT, owned
+    /// 12px variant for secondary text (sidebar meta, hint strip).
+    chrome_font_small: ?*anyopaque = null, // HFONT, owned
+    /// Semibold 14px variant for workspace headers.
+    chrome_font_semibold: ?*anyopaque = null, // HFONT, owned
     titlebar_caption_icon_font: ?*anyopaque = null, // HFONT, owned
     titlebar_action_icon_font: ?*anyopaque = null, // HFONT, owned
 
@@ -9349,6 +9380,13 @@ const Host = struct {
     /// Tab id (not index — indices shift on reorder/close) of the
     /// previously active tab; the `recent_tab` toggle target.
     recent_tab_id: ?u32 = null,
+    /// Phase of the attention-dot pulse animation (advances while the
+    /// pulse timer runs; the timer only runs while a pane is alerting).
+    attention_pulse_phase: u8 = 0,
+    attention_pulse_active: bool = false,
+    /// Divider currently under the mouse — painted highlighted so the
+    /// grabbable strip is visible before you grab it.
+    hover_divider: ?win32_split_resize.Divider = null,
     banner_kind: HostBannerKind = .none,
     banner_text: ?[:0]const u8 = null,
     update_open_rect: RECT = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 },
@@ -10560,6 +10598,8 @@ const Host = struct {
         if (self.overlay_brush) |brush| _ = DeleteObject(brush);
         if (self.edit_brush) |brush| _ = DeleteObject(brush);
         if (self.chrome_font) |font| _ = DeleteObject(font);
+        if (self.chrome_font_small) |font| _ = DeleteObject(font);
+        if (self.chrome_font_semibold) |font| _ = DeleteObject(font);
         if (self.titlebar_caption_icon_font) |font| _ = DeleteObject(font);
         if (self.titlebar_action_icon_font) |font| _ = DeleteObject(font);
         self.clearStructuralHistory(.host_destroy);
@@ -11423,6 +11463,63 @@ const Host = struct {
         self.banner_kind = next_kind;
         try appendOwnedString(self.app.core_app.alloc, &self.banner_text, text);
         self.invalidateBannerText();
+
+        // Transient info toasts dismiss themselves; errors persist until
+        // the user acts (or a new banner replaces them).
+        if (self.hwnd) |hwnd| {
+            if (next_kind == .info) {
+                _ = SetTimer(hwnd, BANNER_TIMER_ID, banner_auto_dismiss_ms, null);
+            } else {
+                _ = KillTimer(hwnd, BANNER_TIMER_ID);
+            }
+        }
+    }
+
+    fn tickBannerAutoDismiss(self: *Host) void {
+        if (self.hwnd) |hwnd| _ = KillTimer(hwnd, BANNER_TIMER_ID);
+        if (self.banner_kind != .info) return;
+        self.setBanner(.info, null) catch {};
+    }
+
+    /// Start the pulse timer if any pane is alerting; it kills itself
+    /// once nothing alerts anymore.
+    fn ensureAttentionPulse(self: *Host) void {
+        if (self.attention_pulse_active) return;
+        const hwnd = self.hwnd orelse return;
+        if (SetTimer(hwnd, ATTENTION_PULSE_TIMER_ID, attention_pulse_interval_ms, null) != 0) {
+            self.attention_pulse_active = true;
+        }
+    }
+
+    fn tickAttentionPulse(self: *Host) void {
+        var any_alerting = false;
+        for (self.tabs.items) |*tab| {
+            var it = tab.tree.iterator();
+            while (it.next()) |leaf| {
+                if (leaf.view.attention_state.isAlerting()) {
+                    any_alerting = true;
+                    break;
+                }
+            }
+            if (any_alerting) break;
+        }
+        if (!any_alerting) {
+            if (self.hwnd) |hwnd| _ = KillTimer(hwnd, ATTENTION_PULSE_TIMER_ID);
+            self.attention_pulse_active = false;
+            self.attention_pulse_phase = 0;
+            self.invalidateSidebar();
+            return;
+        }
+        self.attention_pulse_phase +%= 1;
+        self.invalidateSidebar();
+    }
+
+    /// Dot-radius delta for the current pulse phase: a slow breathe,
+    /// only for alerting states.
+    fn attentionPulseDelta(self: *Host, alerting: bool) i32 {
+        if (!alerting or !self.attention_pulse_active) return 0;
+        const table = [_]i32{ 0, 1, 2, 2, 1, 0 };
+        return self.scaled(table[self.attention_pulse_phase % table.len]);
     }
 
     fn clearUpdateActionRects(self: *Host) void {
@@ -12283,9 +12380,13 @@ const Host = struct {
     }
 
     fn createChromeFont(self: *Host) ?*anyopaque {
+        return self.createChromeFontWith(14, FW_NORMAL);
+    }
+
+    fn createChromeFontWith(self: *Host, height_px: i32, weight: i32) ?*anyopaque {
         var lf: LOGFONTW = .{};
-        lf.lfHeight = -self.scaled(14);
-        lf.lfWeight = FW_NORMAL;
+        lf.lfHeight = -self.scaled(height_px);
+        lf.lfWeight = weight;
 
         // Try config font family first
         if (self.app.config.@"window-title-font-family") |family| {
@@ -12299,7 +12400,8 @@ const Host = struct {
             ncm.cbSize = @sizeOf(NONCLIENTMETRICSW);
             if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, @sizeOf(NONCLIENTMETRICSW), @ptrCast(&ncm), 0) != 0) {
                 lf = ncm.lfMessageFont;
-                lf.lfHeight = -self.scaled(14);
+                lf.lfHeight = -self.scaled(height_px);
+                lf.lfWeight = weight;
                 lf.lfQuality = CLEARTYPE_QUALITY;
             }
         }
@@ -12337,6 +12439,10 @@ const Host = struct {
     fn recreateChromeFont(self: *Host) void {
         if (self.chrome_font) |old| _ = DeleteObject(old);
         self.chrome_font = self.createChromeFont();
+        if (self.chrome_font_small) |old| _ = DeleteObject(old);
+        self.chrome_font_small = self.createChromeFontWith(12, FW_NORMAL);
+        if (self.chrome_font_semibold) |old| _ = DeleteObject(old);
+        self.chrome_font_semibold = self.createChromeFontWith(14, FW_SEMIBOLD);
         self.recreateTitlebarIconFonts();
         // Send WM_SETFONT to child controls
         if (self.chrome_font) |font| {
@@ -14483,7 +14589,26 @@ const Host = struct {
     /// paramux M3: flash the taskbar button + caption until the window comes
     /// to the foreground, so a background pane raising attention is noticed.
     /// No-op if this window is already foreground.
+    /// Track the divider under the mouse; repaint on enter/leave so the
+    /// grabbable strip shows itself before you grab it.
+    fn setHoverDivider(self: *Host, next: ?win32_split_resize.Divider) void {
+        const same = blk: {
+            const a = self.hover_divider orelse break :blk next == null;
+            const b = next orelse break :blk false;
+            break :blk a.node_index == b.node_index and
+                a.orientation == b.orientation and
+                a.line == b.line;
+        };
+        if (same) return;
+        self.hover_divider = next;
+        if (self.hwnd) |hwnd| {
+            self.chrome_repaint_dirty = true;
+            _ = InvalidateRect(hwnd, null, 0);
+        }
+    }
+
     fn flashForAttention(self: *Host) void {
+        self.ensureAttentionPulse();
         const hwnd = self.hwnd orelse return;
         if (GetForegroundWindow()) |fg| {
             if (fg == hwnd) return;
@@ -15688,6 +15813,8 @@ const Host = struct {
                 .workspace_header => {
                     const active_ws = row.tab_index == self.active_tab;
                     const tab = &self.tabs.items[row.tab_index];
+                    const prev_hdr_font: ?HGDIOBJ = if (self.chrome_font_semibold) |f| SelectObject(hdc, f) else null;
+                    defer if (prev_hdr_font) |f| { _ = SelectObject(hdc, f); };
                     if (active_ws) {
                         fillSolidRect(hdc, .{ .left = rect.left, .top = row.y, .right = rect.right - border, .bottom = row_bottom }, theme.button_active_bg);
                         fillSolidRect(hdc, .{ .left = rect.left, .top = row.y, .right = rect.left + stripe_w, .bottom = row_bottom }, theme.accent);
@@ -15742,7 +15869,7 @@ const Host = struct {
                             attention = AttentionState.max(attention, entry.view.attention_state);
                         }
                         if (attention != .none) {
-                            const d = self.scaled(9);
+                            const d = self.scaled(9) + self.attentionPulseDelta(attention.isAlerting());
                             const cx = rect.right - border - self.scaled(13);
                             const cy = row.y + @divTrunc(row.h, 2);
                             const dot_rect = RECT{ .left = cx - @divTrunc(d, 2), .top = cy - @divTrunc(d, 2), .right = cx + @divTrunc(d, 2), .bottom = cy + @divTrunc(d, 2) };
@@ -15805,12 +15932,16 @@ const Host = struct {
                                     (std.fmt.bufPrint(&meta_buf, "{s}{s}", .{ cwd, ports_seg }) catch cwd);
                             } else std.mem.trimLeft(u8, ports_seg, " ");
                         };
-                        if (secondary.len > 0) drawPaletteRowText(hdc, secondary, .{
-                            .left = rect.left + pad + indent,
-                            .top = row.y + half - self.scaled(2),
-                            .right = text_right,
-                            .bottom = row_bottom - self.scaled(2),
-                        }, if (dim or hidden_by_zoom) theme.text_disabled else theme.text_secondary);
+                        if (secondary.len > 0) {
+                            const prev_meta_font: ?HGDIOBJ = if (self.chrome_font_small) |f| SelectObject(hdc, f) else null;
+                            defer if (prev_meta_font) |f| { _ = SelectObject(hdc, f); };
+                            drawPaletteRowText(hdc, secondary, .{
+                                .left = rect.left + pad + indent,
+                                .top = row.y + half - self.scaled(2),
+                                .right = text_right,
+                                .bottom = row_bottom - self.scaled(2),
+                            }, if (dim or hidden_by_zoom) theme.text_disabled else theme.text_secondary);
+                        }
                     }
 
                     if (hovered) {
@@ -15827,7 +15958,7 @@ const Host = struct {
                         // paramux FR-4: status dot colored by the pane's
                         // attention state (blue/amber/green/red).
                         if (surface.attention_state != .none) {
-                            const d = self.scaled(9);
+                            const d = self.scaled(9) + self.attentionPulseDelta(surface.attention_state.isAlerting());
                             const cx = rect.right - border - self.scaled(13);
                             const cy = row.y + @divTrunc(row.h, 2);
                             const dot_rect = RECT{ .left = cx - @divTrunc(d, 2), .top = cy - @divTrunc(d, 2), .right = cx + @divTrunc(d, 2), .bottom = cy + @divTrunc(d, 2) };
@@ -16445,6 +16576,28 @@ const Host = struct {
         // paramux FR-4: paint the pane gutter + focus/attention rings. Panes are
         // laid out inset by `host_pane_gutter` (paneLayoutRect), so this runs for
         // single-pane tabs too — every pane gets a full-perimeter ring. Skip when
+        // Hovered divider: a soft accent strip in the gutter, painted
+        // under the focus/attention rings.
+        if (self.hover_divider) |div| {
+            const half = self.scaled(2);
+            const fill = blendColorRGB(theme.chrome_bg, theme.accent, 0.45);
+            const div_rect: RECT = switch (div.orientation) {
+                .horizontal => .{
+                    .left = div.line - half,
+                    .top = div.span_lo,
+                    .right = div.line + half,
+                    .bottom = div.span_hi,
+                },
+                .vertical => .{
+                    .left = div.span_lo,
+                    .top = div.line - half,
+                    .right = div.span_hi,
+                    .bottom = div.line + half,
+                },
+            };
+            fillSolidRect(hdc, div_rect, fill);
+        }
+
         // a pane is zoomed (it fills the whole content area, no gutter to ring).
         if (paint_content) {
             if (self.activeTab()) |active_tab| {
@@ -16679,12 +16832,14 @@ const Host = struct {
                 .bottom = status_y + self.scaled(14),
             };
             _ = SetTextColor(hdc, theme.text_secondary);
+            const prev_hint_font: ?HGDIOBJ = if (self.chrome_font_small) |f| SelectObject(hdc, f) else null;
             drawTextWz(
                 hdc,
                 self.currentHintTextW(),
                 &hint_rect,
                 DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
             );
+            if (prev_hint_font) |f| _ = SelectObject(hdc, f);
             _ = SetTextColor(hdc, theme.text_primary);
         }
         var status_x: i32 = self.scaled(16);
@@ -21838,6 +21993,14 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                 if (host) |v| v.tickPorts();
                 return 0;
             }
+            if (wParam == BANNER_TIMER_ID) {
+                if (host) |v| v.tickBannerAutoDismiss();
+                return 0;
+            }
+            if (wParam == ATTENTION_PULSE_TIMER_ID) {
+                if (host) |v| v.tickAttentionPulse();
+                return 0;
+            }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
         WM_DRAWITEM => {
@@ -22458,6 +22621,12 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                 };
                 v.setHoveredQuickSlot(v.quickSlotProfileIndexAtPoint(point));
                 v.setSidebarHoverRow(v.sidebarRowIndexAt(point.x, point.y));
+                v.setHoverDivider(
+                    if (v.pane_drag.armed or v.pane_drag.dragging or v.split_resize.active)
+                        null
+                    else
+                        v.dividerAtPoint(point.x, point.y),
+                );
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
@@ -22466,6 +22635,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
             if (host) |v| {
                 v.setHoveredQuickSlot(null);
                 v.setSidebarHoverRow(null);
+                v.setHoverDivider(null);
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
