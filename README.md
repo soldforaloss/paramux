@@ -83,33 +83,32 @@ path today.
 ## Try the current prerelease
 
 The current test build is
-[`v0.1.1`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.1),
+[`v0.1.2`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.2),
 published 2026-07-13 for Windows x64:
 
-- [`paramux-0.1.1-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.1/paramux-0.1.1-windows-x64-portable.zip)
-- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.1/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.2-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.2/paramux-0.1.2-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.2/SHA256SUMS-windows-x64.txt)
 
-This build makes the sidebar the whole navigation story — the top tab
-strip is gone, workspace headers read cleanly ("Workspace 1" instead of
-echoing the pane title), the `+` button asks whether you want a new
-workspace or a new terminal here, and added terminals auto-tile
-(two columns first, then the largest pane splits along its longer
-side). The agent integrations got a matching upgrade: waiting panes now
-show the agent's *real* request text, a session that exits clears its
-row instead of sticking on "working", and the new `paramux doctor
---fire` verifies your Claude Code / Codex / Gemini / OpenCode wiring
-end to end. It sits on top of `v0.1.0-paramux.9`'s bare CLI verbs,
-always-complete sidebar, and MRU navigation. This is the first release
-under the plain-semver naming scheme; releases from `v0.1.0-paramux.7`
-onward apply with `paramux update` (`v0.1.0-paramux.4` remains a legacy
-test artifact).
+This build is the command-center release: `Ctrl+Alt+I` opens the
+**attention inbox** — every pane that needs you, newest first, with the
+agent's actual request text, Enter to jump. Right-click a pane row for
+its **recent activity** timeline ("14:02 working → 14:09 waiting —
+Allow git push?"). A contextual **hint strip** in the status bar
+teaches the shortcuts that matter right now, transient toasts dismiss
+themselves, alerting attention dots breathe, the divider under your
+cursor lights up before you grab it, the chrome gained a real type
+hierarchy, and the taskbar icon's right-click menu has real tasks (New
+Window / Settings / Attention Inbox). It sits on top of `v0.1.1`'s
+sidebar-first chrome and agent-integration upgrade. Releases from
+`v0.1.0-paramux.7` onward apply with `paramux update`
+(`v0.1.0-paramux.4` remains a legacy test artifact).
 
 1. Download both the portable ZIP and `SHA256SUMS-windows-x64.txt`.
 2. Before extracting or running anything, compare the ZIP's digest with the
    release checksum:
 
 ```powershell
-Get-FileHash .\paramux-0.1.1-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\paramux-0.1.2-windows-x64-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 
