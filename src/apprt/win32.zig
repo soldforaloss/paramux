@@ -7098,12 +7098,12 @@ pub const App = struct {
     }
 
     fn handleToastActivation(self: *App, activation: win32_toast_activation.ActivationTarget) bool {
-        if (activation.action) |action| switch (action) {
-            .focus => {},
-        };
-
         const surface = self.resolveToastActivationSurface(activation) orelse return false;
         surface.present();
+        if (activation.action) |action| switch (action) {
+            .focus => {},
+            .inbox => if (surface.host) |host| host.showAttentionInbox(),
+        };
         return true;
     }
 
@@ -8422,6 +8422,17 @@ pub const App = struct {
             .{ exited.exit_code, seconds },
         );
         defer self.core_app.alloc.free(message);
+
+        // Watchdog: a dead pane must never sit on a stale attention
+        // state ("working" forever after a crash). Flag it through the
+        // normal attention system so the sidebar, inbox, and activity
+        // timeline all show what happened - red for failures, green
+        // for clean exits.
+        if (self.findSurfaceForTarget(target)) |surface| {
+            surface.setLastNotification("", message) catch {};
+            surface.setAttentionState(if (exited.exit_code == 0) .done else .@"error");
+        }
+
         if (try self.showHostBanner(target, .info, message)) return;
         try self.showInfoMessage(target, "paramux", message);
     }

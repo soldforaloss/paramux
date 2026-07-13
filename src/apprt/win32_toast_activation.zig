@@ -16,15 +16,20 @@ const scheme = "wgh://activate?";
 
 pub const Action = enum {
     focus,
+    /// Open the attention inbox after focusing (the toast's
+    /// "Open Inbox" button).
+    inbox,
 
     fn fromString(s: []const u8) ?Action {
         if (std.mem.eql(u8, s, "focus")) return .focus;
+        if (std.mem.eql(u8, s, "inbox")) return .inbox;
         return null;
     }
 
     fn toString(self: Action) []const u8 {
         return switch (self) {
             .focus => "focus",
+            .inbox => "inbox",
         };
     }
 };

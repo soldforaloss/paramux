@@ -306,7 +306,16 @@ fn buildToastXml(alloc: Allocator, title: []const u8, body: []const u8, severity
     xmlEscape(writer, title) catch return error.OutOfMemory;
     writer.writeAll("</text><text>") catch return error.OutOfMemory;
     xmlEscape(writer, body) catch return error.OutOfMemory;
-    writer.writeAll("</text></binding></visual></toast>") catch return error.OutOfMemory;
+    writer.writeAll("</text></binding></visual>") catch return error.OutOfMemory;
+    // Actionable toasts: "Open Inbox" activates the app with the inbox
+    // action appended to the launch target; "Dismiss" is handled by the
+    // system without waking the app.
+    if (launch) |l| {
+        writer.writeAll("<actions><action content=\"Open Inbox\" activationType=\"foreground\" arguments=\"") catch return error.OutOfMemory;
+        xmlEscape(writer, l) catch return error.OutOfMemory;
+        writer.writeAll("&amp;action=inbox\"/><action content=\"Dismiss\" activationType=\"system\" arguments=\"dismiss\"/></actions>") catch return error.OutOfMemory;
+    }
+    writer.writeAll("</toast>") catch return error.OutOfMemory;
 
     const utf8 = buf.written();
     const utf16_len = std.unicode.calcUtf16LeLen(utf8) catch return error.InvalidUtf8;
