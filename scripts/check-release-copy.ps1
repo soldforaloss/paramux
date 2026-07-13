@@ -188,10 +188,10 @@ function Test-RemoteReleasePayload {
 
 $readme = Get-Text -RelativePath "README.md"
 $version = $null
-if ($null -ne $readme -and $readme -match 'releases/tag/v([0-9]+\.[0-9]+\.[0-9]+-[A-Za-z0-9.-]+)') {
+if ($null -ne $readme -and $readme -match 'releases/tag/v([0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?)') {
     $version = $Matches[1]
 } else {
-    Add-Failure "README.md: could not find an explicitly tagged semantic prerelease."
+    Add-Failure "README.md: could not find an explicitly tagged semantic release."
 }
 
 Forbid-Contains -Needle "releases/latest" -Reason "The prerelease must use an explicit, reviewable tag."
