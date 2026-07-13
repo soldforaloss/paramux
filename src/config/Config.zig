@@ -1425,6 +1425,13 @@ scrollbar: Scrollbar = .system,
 /// Specify this multiple times to configure multiple link matchers.
 link: RepeatableLink = .{},
 
+/// The editor command used when a clicked link is an existing absolute
+/// file path (optionally with a `:line` or `:line:col` suffix). The
+/// matched text is appended as one quoted argument. The default targets
+/// VS Code's goto syntax; set to your editor's equivalent, or empty to
+/// always use the system opener.
+@"open-file-command": [:0]const u8 = "code --goto",
+
 /// Enable URL matching. URLs are matched on hover with control (Linux) or
 /// command (macOS) pressed and open using the default system application for
 /// the linked URL.

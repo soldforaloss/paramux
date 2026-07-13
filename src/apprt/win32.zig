@@ -1340,6 +1340,12 @@ const host_class_name = std.unicode.utf8ToUtf16LeStringLiteral("paramux.win32.ho
 const palette_list_class_name = std.unicode.utf8ToUtf16LeStringLiteral("paramux.win32.palette_list");
 const scrollbar_class_name = std.unicode.utf8ToUtf16LeStringLiteral("paramux.win32.scrollbar");
 const pane_drop_preview_class_name = std.unicode.utf8ToUtf16LeStringLiteral("paramux.win32.pane_drop_preview");
+const pane_peek_class_name = std.unicode.utf8ToUtf16LeStringLiteral("paramux.win32.pane_peek");
+const WM_MOUSEHOVER: UINT = 0x02A1;
+const TME_HOVER: u32 = 0x0001;
+const pane_peek_hover_ms: u32 = 450;
+const pane_peek_max_lines: usize = 9;
+const pane_peek_width: i32 = 460;
 
 /// Palette list row height at 96 DPI. Scaled via `Host.scaled` at paint.
 const palette_row_height: i32 = 36;
@@ -3568,6 +3574,7 @@ pub const App = struct {
     palette_list_class_atom: ATOM = 0,
     scrollbar_class_atom: ATOM = 0,
     pane_drop_preview_class_atom: ATOM = 0,
+    pane_peek_class_atom: ATOM = 0,
     /// Guard so the first-run marker file is probed at most once per
     /// process (the hint itself is once per INSTALL via the marker).
     first_run_hint_done: bool = false,
@@ -6430,6 +6437,18 @@ pub const App = struct {
         }
     }
 
+    fn ensurePanePeekClass(self: *App) !void {
+        if (self.pane_peek_class_atom != 0) return;
+        var wc: WNDCLASSEXW = std.mem.zeroes(WNDCLASSEXW);
+        wc.cbSize = @sizeOf(WNDCLASSEXW);
+        wc.lpfnWndProc = &panePeekProc;
+        wc.hInstance = self.hinstance;
+        wc.lpszClassName = pane_peek_class_name;
+        const atom = RegisterClassExW(&wc);
+        if (atom == 0) return windows.unexpectedError(windows.kernel32.GetLastError());
+        self.pane_peek_class_atom = atom;
+    }
+
     fn ensurePaneDropPreviewClass(self: *App) !void {
         if (self.pane_drop_preview_class_atom != 0) return;
 
@@ -7912,11 +7931,50 @@ pub const App = struct {
     }
 
     fn openUrl(self: *App, url: []const u8) !void {
+        // File-path links: "C:\repo\src\main.zig:123" (line/column
+        // suffixes optional) opens in the configured editor at that
+        // line instead of the shell opener. Any failure falls through
+        // to the normal opener so links never go dead.
+        if (self.openFilePathInEditor(url)) return;
+
         const url_w = try std.unicode.utf8ToUtf16LeAllocZ(self.core_app.alloc, url);
         defer self.core_app.alloc.free(url_w);
 
         const result = ShellExecuteW(null, shell_open, url_w.ptr, null, null, SW_SHOW);
         if (@intFromPtr(result) <= 32) return error.OpenUrlFailed;
+    }
+
+    /// If `text` is an existing absolute file path with an optional
+    /// :line(:col) suffix, launch `open-file-command` on it ("code
+    /// --goto" by default, VS Code's file:line:col syntax). Returns
+    /// true when the editor launch was attempted successfully.
+    fn openFilePathInEditor(self: *App, text: []const u8) bool {
+        const parsed = parseFilePathClick(text) orelse return false;
+        // Only existing files route to the editor; everything else is
+        // the opener's business.
+        std.fs.cwd().access(parsed.path, .{}) catch return false;
+
+        const alloc = self.core_app.alloc;
+        const command = self.config.@"open-file-command";
+        if (command.len == 0) return false;
+        var it = std.mem.tokenizeScalar(u8, command, ' ');
+        const exe = it.next() orelse return false;
+        const rest = std.mem.trim(u8, it.rest(), " ");
+
+        const params = std.fmt.allocPrint(alloc, "{s}{s}\"{s}\"", .{
+            rest,
+            if (rest.len > 0) " " else "",
+            text,
+        }) catch return false;
+        defer alloc.free(params);
+
+        const exe_w = std.unicode.utf8ToUtf16LeAllocZ(alloc, exe) catch return false;
+        defer alloc.free(exe_w);
+        const params_w = std.unicode.utf8ToUtf16LeAllocZ(alloc, params) catch return false;
+        defer alloc.free(params_w);
+
+        const result = ShellExecuteW(null, shell_open, exe_w.ptr, params_w.ptr, null, SW_HIDE);
+        return @intFromPtr(result) > 32;
     }
 
     fn openConfig(self: *App) !void {
@@ -9398,6 +9456,11 @@ const Host = struct {
     /// Divider currently under the mouse — painted highlighted so the
     /// grabbable strip is visible before you grab it.
     hover_divider: ?win32_split_resize.Divider = null,
+    /// Floating pane-peek window (hover a sidebar row to preview the
+    /// pane's last lines without focusing it) + its owned text.
+    peek_hwnd: ?HWND = null,
+    peek_text: ?[]u8 = null,
+    peek_row: ?usize = null,
     banner_kind: HostBannerKind = .none,
     banner_text: ?[:0]const u8 = null,
     update_open_rect: RECT = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 },
@@ -10647,6 +10710,11 @@ const Host = struct {
         destroySubclassedWindowWithPrev(&self.overflow_hwnd, chrome_prev);
         destroyChildWindow(&self.tooltip_hwnd);
         destroyChildWindow(&self.pane_drop_preview_hwnd);
+        destroyChildWindow(&self.peek_hwnd);
+        if (self.peek_text) |t| {
+            self.app.core_app.alloc.free(t);
+            self.peek_text = null;
+        }
 
         destroyChildWindow(&self.palette_list_hwnd);
 
@@ -13359,6 +13427,88 @@ const Host = struct {
             if (rect.contains(x, y)) return .{ .surface = entry.view, .rect = rect };
         }
         return null;
+    }
+
+    /// Show the hover peek for the pane row at `row_index`: the pane's
+    /// last non-empty lines in a floating card beside the sidebar.
+    fn showPanePeek(self: *Host, row_index: usize, row: SidebarRow) void {
+        const hwnd = self.hwnd orelse return;
+        const surface = row.surface orelse return;
+        const alloc = self.app.core_app.alloc;
+
+        const full = self.app.readPaneText(.{ .surface_id = surface.core().id }, alloc) catch return;
+        defer alloc.free(full);
+
+        // Tail: the last few non-empty lines, each column-capped.
+        var lines_buf: [pane_peek_max_lines][]const u8 = undefined;
+        var count: usize = 0;
+        var it = std.mem.splitBackwardsScalar(u8, full, '\n');
+        while (it.next()) |raw| {
+            const line = std.mem.trimRight(u8, raw, " \r");
+            if (line.len == 0) continue;
+            lines_buf[count] = line[0..@min(line.len, 90)];
+            count += 1;
+            if (count >= pane_peek_max_lines) break;
+        }
+        if (count == 0) return;
+
+        var text = std.ArrayList(u8).initCapacity(alloc, 1024) catch return;
+        defer text.deinit(alloc);
+        var i: usize = count;
+        while (i > 0) {
+            i -= 1;
+            text.appendSlice(alloc, lines_buf[i]) catch return;
+            if (i > 0) text.append(alloc, '\n') catch return;
+        }
+
+        if (self.peek_text) |old_text| alloc.free(old_text);
+        self.peek_text = alloc.dupe(u8, text.items) catch null;
+        if (self.peek_text == null) return;
+        self.peek_row = row_index;
+
+        if (self.peek_hwnd == null) {
+            self.app.ensurePanePeekClass() catch return;
+            self.peek_hwnd = CreateWindowExW(
+                WS_EX_LAYERED,
+                pane_peek_class_name,
+                std.unicode.utf8ToUtf16LeStringLiteral(""),
+                WS_CHILD,
+                0,
+                0,
+                10,
+                10,
+                hwnd,
+                null,
+                self.app.hinstance,
+                null,
+            );
+            const h = self.peek_hwnd orelse return;
+            _ = SetWindowLongPtrW(h, GWLP_USERDATA, @as(LONG_PTR, @intCast(@intFromPtr(self))));
+            _ = SetLayeredWindowAttributes(h, 0, 242, LWA_ALPHA);
+        }
+        const h = self.peek_hwnd orelse return;
+
+        const content = self.contentRect() catch return;
+        const line_h = self.scaled(17);
+        const height = self.scaled(16) + line_h * @as(i32, @intCast(count));
+        const width = self.scaled(pane_peek_width);
+        var top = row.y;
+        if (top + height > content.bottom) top = @max(content.top, content.bottom - height);
+        _ = SetWindowPos(
+            h,
+            null,
+            content.left + self.scaled(6),
+            top,
+            width,
+            height,
+            SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        );
+        _ = InvalidateRect(h, null, 1);
+    }
+
+    fn hidePanePeek(self: *Host) void {
+        self.peek_row = null;
+        if (self.peek_hwnd) |h| _ = ShowWindow(h, SW_HIDE);
     }
 
     fn ensurePaneDropPreview(self: *Host) ?HWND {
@@ -19232,6 +19382,58 @@ fn paletteListProc(
 /// child of the Host filled with the theme accent (alpha comes from
 /// `SetLayeredWindowAttributes` at creation). Mouse input never reaches it
 /// — the Host holds capture for the whole drag.
+fn panePeekProc(
+    hwnd: HWND,
+    msg: UINT,
+    wParam: WPARAM,
+    lParam: LPARAM,
+) callconv(.winapi) LRESULT {
+    switch (msg) {
+        WM_ERASEBKGND => return 1,
+        WM_PAINT => {
+            const raw = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+            var ps: PAINTSTRUCT = undefined;
+            const hdc = BeginPaint(hwnd, &ps) orelse return 0;
+            defer _ = EndPaint(hwnd, &ps);
+            if (raw == 0) return 0;
+            const host: *Host = @ptrFromInt(@as(usize, @intCast(raw)));
+            const theme = &host.app.resolved_theme;
+
+            var rect: RECT = undefined;
+            if (GetClientRect(hwnd, &rect) == 0) return 0;
+            fillSolidRect(hdc, rect, blendColorRGB(theme.chrome_bg, theme.text_primary, 0.04));
+            // 1px border.
+            fillSolidRect(hdc, .{ .left = rect.left, .top = rect.top, .right = rect.right, .bottom = rect.top + 1 }, theme.chrome_border);
+            fillSolidRect(hdc, .{ .left = rect.left, .top = rect.bottom - 1, .right = rect.right, .bottom = rect.bottom }, theme.chrome_border);
+            fillSolidRect(hdc, .{ .left = rect.left, .top = rect.top, .right = rect.left + 1, .bottom = rect.bottom }, theme.chrome_border);
+            fillSolidRect(hdc, .{ .left = rect.right - 1, .top = rect.top, .right = rect.right, .bottom = rect.bottom }, theme.chrome_border);
+
+            const text = host.peek_text orelse return 0;
+            _ = SetBkMode(hdc, TRANSPARENT);
+            _ = SetTextColor(hdc, theme.text_secondary);
+            const prev_font: ?HGDIOBJ = if (host.chrome_font_small) |f| SelectObject(hdc, f) else null;
+            defer if (prev_font) |f| {
+                _ = SelectObject(hdc, f);
+            };
+
+            const line_h = host.scaled(17);
+            var y: i32 = host.scaled(8);
+            var lines = std.mem.splitScalar(u8, text, '\n');
+            while (lines.next()) |line| {
+                drawPaletteRowText(hdc, line, .{
+                    .left = rect.left + host.scaled(10),
+                    .top = y,
+                    .right = rect.right - host.scaled(10),
+                    .bottom = y + line_h,
+                }, theme.text_secondary);
+                y += line_h;
+            }
+            return 0;
+        },
+        else => return DefWindowProcW(hwnd, msg, wParam, lParam),
+    }
+}
+
 fn paneDropPreviewProc(
     hwnd: HWND,
     msg: UINT,
@@ -22519,6 +22721,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
             if (host) |v| {
                 const mx = signedLowWord(lParamBits(lParam));
                 const my = signedHighWord(lParamBits(lParam));
+                v.hidePanePeek();
                 if (v.sidebarRowIndexAt(mx, my)) |row_index| {
                     const row = v.sidebarRowByIndex(row_index) orelse return 0;
                     // Click on the row's hover close button closes the
@@ -22621,9 +22824,9 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                 }
                 var track: TRACKMOUSEEVENT = .{
                     .cbSize = @sizeOf(TRACKMOUSEEVENT),
-                    .dwFlags = TME_LEAVE,
+                    .dwFlags = TME_LEAVE | TME_HOVER,
                     .hwndTrack = hwnd,
-                    .dwHoverTime = 0,
+                    .dwHoverTime = pane_peek_hover_ms,
                 };
                 _ = TrackMouseEvent(&track);
                 const point = POINT{
@@ -22631,7 +22834,11 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     .y = signedHighWord(lParamBits(lParam)),
                 };
                 v.setHoveredQuickSlot(v.quickSlotProfileIndexAtPoint(point));
-                v.setSidebarHoverRow(v.sidebarRowIndexAt(point.x, point.y));
+                const next_hover_row = v.sidebarRowIndexAt(point.x, point.y);
+                if (v.peek_row != null and (next_hover_row == null or next_hover_row.? != v.peek_row.?)) {
+                    v.hidePanePeek();
+                }
+                v.setSidebarHoverRow(next_hover_row);
                 v.setHoverDivider(
                     if (v.pane_drag.armed or v.pane_drag.dragging or v.split_resize.active)
                         null
@@ -22642,11 +22849,27 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
 
+        WM_MOUSEHOVER => {
+            if (host) |v| hover: {
+                if (v.pane_drag.armed or v.pane_drag.dragging or v.split_resize.active) break :hover;
+                const point = POINT{
+                    .x = signedLowWord(lParamBits(lParam)),
+                    .y = signedHighWord(lParamBits(lParam)),
+                };
+                const row_index = v.sidebarRowIndexAt(point.x, point.y) orelse break :hover;
+                const row = v.sidebarRowByIndex(row_index) orelse break :hover;
+                if (row.kind != .pane) break :hover;
+                v.showPanePeek(row_index, row);
+            }
+            return 0;
+        },
+
         WM_MOUSELEAVE => {
             if (host) |v| {
                 v.setHoveredQuickSlot(null);
                 v.setSidebarHoverRow(null);
                 v.setHoverDivider(null);
+                v.hidePanePeek();
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
@@ -22668,6 +22891,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                         if (point.x >= 0 and point.x < content.left and
                             point.y >= content.top and point.y < content.bottom)
                         {
+                            v.hidePanePeek();
                             const notches: i32 = @divTrunc(@as(i32, signedHighWord(wParam)), 120);
                             v.sidebar_scroll -= notches * v.scaled(host_sidebar_row_height);
                             v.clampSidebarScroll();
@@ -24321,6 +24545,43 @@ fn parseAttentionState(title: [:0]const u8) struct { state: AttentionState, titl
         };
     }
     return .{ .state = .waiting, .title = title };
+}
+
+const FilePathClick = struct {
+    path: []const u8,
+    line: ?u32 = null,
+};
+
+/// Parse "C:\dir\file.zig:123:7" shapes: an absolute Windows path with
+/// up to two numeric suffixes. Returns null for URLs and relative text.
+fn parseFilePathClick(text: []const u8) ?FilePathClick {
+    if (text.len < 4) return null;
+    if (!std.ascii.isAlphabetic(text[0]) or text[1] != ':' or (text[2] != '\\' and text[2] != '/')) return null;
+
+    var path = text;
+    var line: ?u32 = null;
+    // Strip up to two trailing :digits groups (line, then column).
+    var pass: usize = 0;
+    while (pass < 2) : (pass += 1) {
+        const idx = std.mem.lastIndexOfScalar(u8, path, ':') orelse break;
+        if (idx <= 2) break; // the drive colon
+        const digits = path[idx + 1 ..];
+        if (digits.len == 0) break;
+        const value = std.fmt.parseInt(u32, digits, 10) catch break;
+        line = value;
+        path = path[0..idx];
+    }
+    if (path.len < 4) return null;
+    return .{ .path = path, .line = line };
+}
+
+test "parseFilePathClick strips line/column suffixes" {
+    const t = std.testing;
+    try t.expectEqualStrings("C:\\repo\\a.zig", parseFilePathClick("C:\\repo\\a.zig:12:3").?.path);
+    try t.expectEqual(@as(?u32, 12), parseFilePathClick("C:\\repo\\a.zig:12:3").?.line);
+    try t.expectEqualStrings("C:\\repo\\a.zig", parseFilePathClick("C:\\repo\\a.zig").?.path);
+    try t.expect(parseFilePathClick("https://example.com:443") == null);
+    try t.expect(parseFilePathClick("relative\\path.txt") == null);
 }
 
 /// "now", "5m", "2h", "3d" - coarse relative age for inbox/timeline rows.
