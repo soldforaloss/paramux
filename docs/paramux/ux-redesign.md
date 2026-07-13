@@ -114,6 +114,50 @@ still on screen, labeled, one click away. That failure mode is dead.
 - Cross-workspace pane move (drag a row onto another workspace header).
 - Duplicate pane/workspace inheriting cwd.
 
+## Next horizon (adopted 2026-07-13)
+
+Ten improvements toward industry-leading, sequenced. Quick wins first —
+they compound and make shipped features discoverable:
+
+1. **Contextual hint strip** (the zellij lesson): one line showing the
+   3-4 most useful actions for the CURRENT state (normal, confirm,
+   drag, prefix armed). Dismissible once internalized.
+2. **Agent Mission Control**: a panel (Ctrl+Alt+I) listing every pane
+   with an unhandled waiting/done/error state, newest first, with real
+   message text and Enter-to-jump. The visible queue behind
+   goto_attention.
+3. **Pane activity timeline**: persist recent state transitions per
+   pane (time + text) and show them on the sidebar row — answers
+   "what happened while I wasn't looking".
+4. **Direct pane drag** (Alt+drag a pane body to swap) and
+   cross-workspace row drag (drop a row on another workspace header
+   to move the pane there).
+
+Structural differentiators (v0.2 headliners):
+
+5. **Session restore** — workspaces/panes/cwds/titles survive
+   relaunch, honest "Session restored" banner. Windows Terminal has
+   nothing here; the open wedge on the platform.
+6. **Git worktree workspaces** — "New workspace from branch…" creates
+   a worktree and opens the workspace in it. THE parallel-agent
+   workflow, native and visual.
+7. **Project layouts** — `.paramux/layout` + `paramux open .` spawns a
+   pre-arranged agent fleet per project (tmuxinator, but Windows-native
+   and Explorer-integrated).
+8. **Broadcast input mode** — type to all panes in a workspace, with an
+   unmistakable indicator. Fleet-operations primitive.
+
+Respect-earners (credibility):
+
+9. **Performance receipts** — published reproducible benchmarks
+   (cold start, input latency, memory/pane) vs Windows Terminal and
+   Alacritty, plus CI perf budgets that fail on regression.
+10. **Signed installer + WinGet/Scoop** + a 90-second demo GIF in the
+    README. `winget install paramux` is table stakes for traction.
+
+Recommended order: 1 → 2 → 3, then 10, then 5 → 6 → 7, with 4 and 8
+slotted between and 9 running continuously.
+
 ## Non-goals (unchanged from the PRD)
 
 No Electron/WebView rendering, no A2A messaging, no cloud/SSH scope creep.
