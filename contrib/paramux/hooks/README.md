@@ -22,8 +22,15 @@ the CLI falls back to an OSC 777 notification through the pane's `CONOUT$`.
 | `waiting` | amber | the agent needs your input       | yes     |
 | `done`    | green | the agent finished               | yes     |
 | `error`   | red   | the agent errored                | yes     |
+| `none`    | —     | clears any prior state           | no      |
 
-A plain `notify "msg"` with no `--state` defaults to `waiting`.
+A plain `notify "msg"` with no `--state` defaults to `waiting` — which is
+also all the hookless OSC fallback can convey; the full color language
+needs the adapters below. Every adapter maps its tool's `SessionEnd` to
+`none` so an exited or killed CLI never leaves a stale "working" row.
+With `--message-from-stdin`, `notify` reads the hook's JSON payload from
+stdin and shows its real `message` text (for example *which* tool wants
+approval), falling back to the positional message.
 
 Run `install-paramux.cmd` before installing these adapters. It adds Paramux to
 `PATH`, sets the absolute `PARAMUX_HOME` used by copied plugins, and replaces
@@ -45,11 +52,13 @@ template while it still contains
 `__PARAMUX_EXECUTABLE__?RUN_INSTALL_PARAMUX_PS1`. The settings map:
 
 - `UserPromptSubmit` to `working`
-- `Notification` to `waiting`, limited to
-  `permission_prompt|elicitation_dialog` (the 60-second `idle_prompt`
-  notification is deliberately excluded so it cannot overwrite a `done` pane)
+- `PermissionRequest` and `Elicitation` to `waiting`, showing the real
+  request text via `--message-from-stdin` (these first-class events
+  replace the older `Notification` matcher; the 60-second `idle_prompt`
+  notification still cannot overwrite a `done` pane)
 - `Stop` to `done`
-- `StopFailure` to `error`
+- `StopFailure` to `error`, with the payload's error text
+- `SessionEnd` to `none` (clears the row when the session exits)
 
 ## Codex CLI
 
@@ -74,11 +83,13 @@ if (Test-Path "$HOME\.codex\hooks.json") {
 ```
 
 Restart Codex, then review and trust the commands through `/hooks`. The adapter
-maps `UserPromptSubmit` to `working`, `PermissionRequest` to `waiting`, and
-`Stop` to `done`. Codex has no stable generic turn-error event, so this adapter
-does not guess at an `error` transition. The helper emits exactly `{}` on
-stdout after a successful notification because Codex `Stop` parses hook stdout
-as JSON. The legacy `notify` config is completion-only and is not used here.
+maps `UserPromptSubmit` to `working`, `PermissionRequest` to `waiting` (showing
+the payload's real request text when present), `Stop` to `done`, and
+`SessionEnd` to `none` so an exited session clears its row. Codex has no stable
+generic turn-error event, so this adapter does not guess at an `error`
+transition. The helper emits exactly `{}` on stdout after a successful
+notification because Codex `Stop` parses hook stdout as JSON. The legacy
+`notify` config is completion-only and is not used here.
 
 ## Gemini CLI
 
@@ -90,10 +101,12 @@ gemini extensions install .\gemini-paramux
 
 Restart Gemini after installation so the extension inherits `PARAMUX_HOME`.
 The extension maps `BeforeAgent` to
-`working`, `Notification` with matcher `ToolPermission` to `waiting`, and
-`AfterAgent` to `done`. Its bounded helper validates stdin and emits exactly
-`{}` on successful completion. Gemini has no stable generic agent-error event,
-so the extension does not infer one from individual tool failures.
+`working`, `Notification` with matcher `ToolPermission` to `waiting` (showing
+the payload's real request text when present), `AfterAgent` to `done`, and
+`SessionEnd` to `none` so an exited session clears its row. Its bounded helper
+validates stdin and emits exactly `{}` on successful completion. Gemini has no
+stable generic agent-error event, so the extension does not infer one from
+individual tool failures.
 
 ## OpenCode
 
@@ -105,6 +118,23 @@ the absolute `PARAMUX_HOME\paramux.com` path with a no-shell child process and
 maps `session.status` busy/idle to `working`/`done`, `permission.asked` to `waiting`,
 and `session.error` to `error`. A same-session idle event after an error is
 ignored so it cannot immediately overwrite the red error state.
+
+## Diagnostics
+
+`paramux doctor` verifies the whole pipeline: `PARAMUX_HOME`, Node on
+`PATH` (the Codex/Gemini adapters need it), that the packaged hook files
+no longer contain installer placeholders, and that each tool's own config
+actually references the paramux hooks. Run it inside a pane with `--fire`
+to send live test signals through the real IPC route and watch the
+sidebar cycle working → waiting → done → clear:
+
+```
+paramux doctor --fire
+```
+
+Every attention signal the running paramux accepts over IPC is also
+logged (`attention signal received ...`), so "did the hook fire?" is
+answerable from the paramux log output.
 
 ## Manual test
 

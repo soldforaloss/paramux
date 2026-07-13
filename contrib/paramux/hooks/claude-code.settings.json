@@ -15,9 +15,8 @@
         ]
       }
     ],
-    "Notification": [
+    "PermissionRequest": [
       {
-        "matcher": "permission_prompt|elicitation_dialog",
         "hooks": [
           {
             "type": "command",
@@ -25,6 +24,23 @@
             "args": [
               "notify",
               "--state=waiting",
+              "--message-from-stdin",
+              "Claude Code needs your approval"
+            ]
+          }
+        ]
+      }
+    ],
+    "Elicitation": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__PARAMUX_EXECUTABLE__?RUN_INSTALL_PARAMUX_PS1",
+            "args": [
+              "notify",
+              "--state=waiting",
+              "--message-from-stdin",
               "Claude Code needs your input"
             ]
           }
@@ -55,7 +71,23 @@
             "args": [
               "notify",
               "--state=error",
+              "--message-from-stdin",
               "Claude Code stopped with an error"
+            ]
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__PARAMUX_EXECUTABLE__?RUN_INSTALL_PARAMUX_PS1",
+            "args": [
+              "notify",
+              "--state=none",
+              "Claude Code session ended"
             ]
           }
         ]

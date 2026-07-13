@@ -69,8 +69,8 @@ foreach ($eventProperty in $claudeSettings.hooks.PSObject.Properties) {
         }
     }
 }
-if ($claudeHandlerCount -ne 4) {
-    throw "Expected 4 Claude command hooks, found $claudeHandlerCount."
+if ($claudeHandlerCount -ne 6) {
+    throw "Expected 6 Claude command hooks, found $claudeHandlerCount."
 }
 
 $launcherCommand = "& '" + $codexLauncher.Replace("'", "''") + "'"
@@ -93,8 +93,8 @@ foreach ($eventProperty in $codexHooks.hooks.PSObject.Properties) {
         }
     }
 }
-if ($codexHandlerCount -ne 3) {
-    throw "Expected 3 Codex command hooks, found $codexHandlerCount."
+if ($codexHandlerCount -ne 4) {
+    throw "Expected 4 Codex command hooks, found $codexHandlerCount."
 }
 
 Write-JsonFile -Path $claudeSettingsPath -Value $claudeSettings

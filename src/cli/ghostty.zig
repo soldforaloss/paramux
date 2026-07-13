@@ -30,6 +30,7 @@ const import_theme = @import("import_theme.zig");
 const install = @import("install.zig");
 const uninstall = @import("uninstall.zig");
 const update = @import("update.zig");
+const doctor = @import("doctor.zig");
 
 pub const Action = @import("ghostty_action.zig").Action;
 
@@ -93,6 +94,7 @@ fn runMain(self: Action, alloc: Allocator) !u8 {
         .install => try install.run(alloc),
         .uninstall => try uninstall.run(alloc),
         .update => try update.run(alloc),
+        .doctor => try doctor.run(alloc),
     };
 }
 
@@ -129,6 +131,7 @@ pub fn options(comptime self: Action) type {
             .install => install.Options,
             .uninstall => uninstall.Options,
             .update => update.Options,
+            .doctor => doctor.Options,
         };
     }
 }

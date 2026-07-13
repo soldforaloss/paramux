@@ -91,6 +91,10 @@ pub const Action = enum {
     // release (checksum-verified).
     update,
 
+    // Diagnose the agent-hook pipeline: env, packaged hook files,
+    // per-tool wiring, and (with --fire) a live attention signal test.
+    doctor,
+
     pub fn detectSpecialCase(arg: []const u8) ?SpecialCase(Action) {
         // If we see a "-e" and we haven't seen a command yet, then
         // we are done looking for commands. This special case enables

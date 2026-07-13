@@ -17,10 +17,21 @@ pub const Options = struct {
     title: [:0]const u8 = "",
 
     /// An optional agent-attention state, set with `--state=<state>`, one of
-    /// `working`, `waiting`, `done`, or `error`. When set, paramux colors the
-    /// pane's sidebar row by this state (working=blue, waiting=amber,
-    /// done=green, error=red) instead of treating it as a plain notification.
+    /// `working`, `waiting`, `done`, `error`, or `none`. When set, paramux
+    /// colors the pane's sidebar row by this state (working=blue,
+    /// waiting=amber, done=green, error=red) instead of treating it as a
+    /// plain notification. `none` clears any prior state — agent SessionEnd
+    /// hooks use it so a killed or exited CLI can't leave a stale
+    /// "working" pane behind.
     state: []const u8 = "",
+
+    /// When set with `--message-from-stdin`, read the hook's JSON payload
+    /// from stdin and use its `message` string as the notification message,
+    /// falling back to the positional message when the payload has none.
+    /// This lets exec-form hook configs (Claude Code's settings.json, which
+    /// pipes the event payload to the command) show the REAL permission or
+    /// notification text without a wrapper script.
+    @"message-from-stdin": bool = false,
 
     /// Target a specific pane by its `list-windows` id instead of the pane
     /// this command runs in. Normally unset — the pane id is discovered from
@@ -57,6 +68,10 @@ pub const Options = struct {
         }
         if (lib.cutPrefix(u8, arg, "--state=")) |rest| {
             self.state = try alloc.dupe(u8, rest);
+            return;
+        }
+        if (std.mem.eql(u8, arg, "--message-from-stdin")) {
+            self.@"message-from-stdin" = true;
             return;
         }
         if (lib.cutPrefix(u8, arg, "--surface-id=")) |rest| {
@@ -138,7 +153,16 @@ pub fn run(alloc: Allocator) !u8 {
     // Reuse the arena the CLI parser created for our own allocations.
     const arena = opts._arena.?.allocator();
 
-    const message = try std.mem.join(arena, " ", opts._message.items);
+    const fallback_message = try std.mem.join(arena, " ", opts._message.items);
+
+    // Exec-form hooks (Claude Code) pipe the event payload JSON to us on
+    // stdin; surface its real `message` text when asked to. Any parse or
+    // read failure quietly keeps the positional fallback — a notification
+    // with a canned message beats no notification.
+    const message: []const u8 = if (opts.@"message-from-stdin") blk: {
+        const stdin_bytes = std.fs.File.stdin().readToEndAlloc(arena, 1024 * 1024) catch break :blk fallback_message;
+        break :blk extractHookMessage(arena, stdin_bytes) orelse fallback_message;
+    } else fallback_message;
 
     // When a state is given, encode it in the OSC 777 title as the paramux
     // marker `paramux.state:<state>` (parsed by the win32 apprt's
@@ -189,6 +213,62 @@ pub fn run(alloc: Allocator) !u8 {
     };
 
     return 0;
+}
+
+/// Extract a usable `message` string from a hook payload JSON object.
+/// Returns null for anything that isn't an object with a non-empty string
+/// `message` — callers fall back to their positional message. Control
+/// characters are stripped and the result is truncated so a hostile or
+/// giant payload can't distort the sidebar row.
+fn extractHookMessage(alloc: Allocator, bytes: []const u8) ?[]const u8 {
+    const trimmed = std.mem.trim(u8, bytes, &std.ascii.whitespace);
+    if (trimmed.len == 0) return null;
+    var parsed = std.json.parseFromSlice(std.json.Value, alloc, trimmed, .{}) catch return null;
+    defer parsed.deinit();
+    const obj = switch (parsed.value) {
+        .object => |o| o,
+        else => return null,
+    };
+    const raw = switch (obj.get("message") orelse return null) {
+        .string => |s| s,
+        else => return null,
+    };
+
+    const max_len = 300;
+    var out = std.ArrayList(u8).initCapacity(alloc, @min(raw.len, max_len)) catch return null;
+    for (raw) |ch| {
+        if (out.items.len >= max_len) break;
+        out.append(alloc, if (std.ascii.isControl(ch)) ' ' else ch) catch return null;
+    }
+    const result = std.mem.trim(u8, out.items, &std.ascii.whitespace);
+    if (result.len == 0) return null;
+    return alloc.dupe(u8, result) catch null;
+}
+
+test "notify extractHookMessage takes payload message and hardens it" {
+    const testing = std.testing;
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    try testing.expectEqualStrings(
+        "Allow Bash to run git push?",
+        extractHookMessage(alloc, "{\"hook_event_name\":\"PermissionRequest\",\"message\":\"Allow Bash to run git push?\"}").?,
+    );
+    // Control characters are flattened.
+    try testing.expectEqualStrings(
+        "a b",
+        extractHookMessage(alloc, "{\"message\":\"a\\nb\"}").?,
+    );
+    // Non-object, missing, non-string, or empty messages fall back.
+    try testing.expect(extractHookMessage(alloc, "[1,2]") == null);
+    try testing.expect(extractHookMessage(alloc, "{}") == null);
+    try testing.expect(extractHookMessage(alloc, "{\"message\":42}") == null);
+    try testing.expect(extractHookMessage(alloc, "{\"message\":\"  \"}") == null);
+    try testing.expect(extractHookMessage(alloc, "not json") == null);
+    // Oversized messages are truncated, not rejected.
+    const big = "{\"message\":\"" ++ "x" ** 500 ++ "\"}";
+    try testing.expectEqual(@as(usize, 300), extractHookMessage(alloc, big).?.len);
 }
 
 /// Read the `PARAMUX_SURFACE_ID` env var (decimal) injected into every pane, if

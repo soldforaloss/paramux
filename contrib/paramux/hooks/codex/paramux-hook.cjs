@@ -14,12 +14,35 @@ const EVENTS = Object.freeze({
   PermissionRequest: Object.freeze({
     state: "waiting",
     message: "Codex CLI needs your approval",
+    usePayloadMessage: true,
   }),
   Stop: Object.freeze({
     state: "done",
     message: "Codex CLI finished responding",
   }),
+  // Clears the pane state when the session ends, so an exited or killed
+  // CLI can never leave a stale "working" row behind.
+  SessionEnd: Object.freeze({
+    state: "none",
+    message: "Codex CLI session ended",
+  }),
 });
+
+const MAX_MESSAGE_CHARS = 300;
+
+// Prefer the hook payload's real message text (e.g. WHICH tool wants
+// approval) over the canned fallback, hardened against control characters
+// and oversized payloads. Keep in sync with the Gemini adapter.
+function resolveMessage(event, payload) {
+  if (!event.usePayloadMessage) return event.message;
+  const raw = payload.message;
+  if (typeof raw !== "string") return event.message;
+  const cleaned = raw
+    .replace(/[\u0000-\u001F\u007F]/g, " ")
+    .trim()
+    .slice(0, MAX_MESSAGE_CHARS);
+  return cleaned.length > 0 ? cleaned : event.message;
+}
 
 let inputBytes = 0;
 let inputTooLarge = false;
@@ -85,7 +108,7 @@ function run(payloadText) {
   }
   const child = spawnSync(
     executable,
-    ["notify", `--state=${event.state}`, event.message],
+    ["notify", `--state=${event.state}`, resolveMessage(event, payload)],
     {
       encoding: "utf8",
       maxBuffer: MAX_STDERR_BYTES,

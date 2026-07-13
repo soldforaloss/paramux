@@ -3264,6 +3264,13 @@ fn handleSetNotificationIpcClient(app: *App, pipe: windows.HANDLE) !void {
     defer app.core_app.alloc.free(payload.title);
     defer app.core_app.alloc.free(payload.body);
 
+    // Observability for the agent-hook pipeline: every accepted signal
+    // leaves a trace, so "did the hook fire?" is answerable from the log.
+    log.info("attention signal received title={s} target={}", .{
+        payload.title,
+        payload.target,
+    });
+
     requestSetNotification(app, payload.target, payload.title, payload.body) catch |err| {
         const status: u8 = switch (err) {
             error.NoAutomationTarget => ipc_ack_no_automation_target,

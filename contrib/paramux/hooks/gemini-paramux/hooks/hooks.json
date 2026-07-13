@@ -33,6 +33,17 @@
           }
         ]
       }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "call \"${extensionPath}/scripts/notify.cmd\"",
+            "timeout": 10000
+          }
+        ]
+      }
     ]
   }
 }

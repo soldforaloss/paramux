@@ -160,12 +160,18 @@ function Assert-HookCommand {
     param(
         $Hook,
         [string] $ExpectedState,
-        [string] $ExpectedMessage
+        [string] $ExpectedMessage,
+        [switch] $MessageFromStdin
     )
 
     Assert-Equal $Hook.type 'command' 'Claude hook type'
     Assert-Equal $Hook.command '__PARAMUX_EXECUTABLE__?RUN_INSTALL_PARAMUX_PS1' 'Claude hook template executable'
-    Assert-Sequence @($Hook.args) @('notify', "--state=$ExpectedState", $ExpectedMessage) 'Claude hook args'
+    $expectedArgs = if ($MessageFromStdin) {
+        @('notify', "--state=$ExpectedState", '--message-from-stdin', $ExpectedMessage)
+    } else {
+        @('notify', "--state=$ExpectedState", $ExpectedMessage)
+    }
+    Assert-Sequence @($Hook.args) $expectedArgs 'Claude hook args'
 }
 
 $claudePath = Join-Path $hooksRoot 'claude-code.settings.json'
@@ -202,18 +208,19 @@ Assert-True $installerSource.Contains('PARAMUX_HOME') 'Installer must persist PA
 
 $claude = Read-JsonFile $claudePath
 Assert-Sequence @($claude.PSObject.Properties.Name) @('hooks') 'Claude top-level keys'
-Assert-Sequence @($claude.hooks.PSObject.Properties.Name) @('UserPromptSubmit', 'Notification', 'Stop', 'StopFailure') 'Claude events'
+Assert-Sequence @($claude.hooks.PSObject.Properties.Name) @('UserPromptSubmit', 'PermissionRequest', 'Elicitation', 'Stop', 'StopFailure', 'SessionEnd') 'Claude events'
 Assert-HookCommand $claude.hooks.UserPromptSubmit[0].hooks[0] 'working' 'Claude Code is working'
-Assert-Equal $claude.hooks.Notification[0].matcher 'permission_prompt|elicitation_dialog' 'Claude Notification matcher'
-Assert-HookCommand $claude.hooks.Notification[0].hooks[0] 'waiting' 'Claude Code needs your input'
+Assert-HookCommand $claude.hooks.PermissionRequest[0].hooks[0] 'waiting' 'Claude Code needs your approval' -MessageFromStdin
+Assert-HookCommand $claude.hooks.Elicitation[0].hooks[0] 'waiting' 'Claude Code needs your input' -MessageFromStdin
 Assert-HookCommand $claude.hooks.Stop[0].hooks[0] 'done' 'Claude Code finished responding'
-Assert-HookCommand $claude.hooks.StopFailure[0].hooks[0] 'error' 'Claude Code stopped with an error'
+Assert-HookCommand $claude.hooks.StopFailure[0].hooks[0] 'error' 'Claude Code stopped with an error' -MessageFromStdin
+Assert-HookCommand $claude.hooks.SessionEnd[0].hooks[0] 'none' 'Claude Code session ended'
 
 $codex = Read-JsonFile $codexConfigPath
 Assert-Sequence @($codex.PSObject.Properties.Name) @('hooks') 'Codex top-level keys'
-Assert-Sequence @($codex.hooks.PSObject.Properties.Name) @('UserPromptSubmit', 'PermissionRequest', 'Stop') 'Codex events'
+Assert-Sequence @($codex.hooks.PSObject.Properties.Name) @('UserPromptSubmit', 'PermissionRequest', 'Stop', 'SessionEnd') 'Codex events'
 $codexPosixCommand = "printf '%s\n' 'Paramux Codex hooks require Windows and a configured portable install.' >&2; exit 1"
-foreach ($eventName in @('UserPromptSubmit', 'PermissionRequest', 'Stop')) {
+foreach ($eventName in @('UserPromptSubmit', 'PermissionRequest', 'Stop', 'SessionEnd')) {
     $handler = $codex.hooks.$eventName[0].hooks[0]
     Assert-Equal $handler.type 'command' "Codex $eventName hook type"
     Assert-Equal $handler.command $codexPosixCommand "Codex $eventName POSIX command"
@@ -225,9 +232,9 @@ $geminiManifest = Read-JsonFile $geminiManifestPath
 Assert-Equal $geminiManifest.name 'paramux-notifications' 'Gemini extension name'
 Assert-Equal $geminiManifest.version '1.0.0' 'Gemini extension version'
 $geminiHooks = Read-JsonFile $geminiHooksPath
-Assert-Sequence @($geminiHooks.hooks.PSObject.Properties.Name) @('BeforeAgent', 'Notification', 'AfterAgent') 'Gemini events'
+Assert-Sequence @($geminiHooks.hooks.PSObject.Properties.Name) @('BeforeAgent', 'Notification', 'AfterAgent', 'SessionEnd') 'Gemini events'
 Assert-Equal $geminiHooks.hooks.Notification[0].matcher 'ToolPermission' 'Gemini Notification matcher'
-foreach ($eventName in @('BeforeAgent', 'Notification', 'AfterAgent')) {
+foreach ($eventName in @('BeforeAgent', 'Notification', 'AfterAgent', 'SessionEnd')) {
     $handler = $geminiHooks.hooks.$eventName[0].hooks[0]
     Assert-Equal $handler.type 'command' "Gemini $eventName hook type"
     Assert-Equal $handler.command 'call "${extensionPath}/scripts/notify.cmd"' "Gemini $eventName command"
@@ -289,7 +296,7 @@ try {
     $configuredClaude = Read-JsonFile (Join-Path $trustedHooksRoot 'claude-code.settings.json')
     $configuredCodex = Read-JsonFile (Join-Path $trustedHooksRoot 'codex\hooks.json')
     $configuredParamux = Join-Path $trustedRoot 'paramux.com'
-    foreach ($eventName in @('UserPromptSubmit', 'Notification', 'Stop', 'StopFailure')) {
+    foreach ($eventName in @('UserPromptSubmit', 'PermissionRequest', 'Elicitation', 'Stop', 'StopFailure', 'SessionEnd')) {
         $handler = $configuredClaude.hooks.$eventName[0].hooks[0]
         Assert-Equal $handler.command $configuredParamux "Configured Claude $eventName absolute executable"
         Assert-True ([System.IO.Path]::IsPathRooted($handler.command)) "Configured Claude $eventName path must be absolute"
@@ -298,7 +305,7 @@ try {
     $windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
     Assert-True $configuredCodexCommand.StartsWith($windowsPowerShell) 'Configured Codex command must use absolute Windows PowerShell'
     Assert-True $configuredCodexCommand.Contains('-EncodedCommand') 'Configured Codex command must safely encode its trusted launcher path'
-    foreach ($eventName in @('UserPromptSubmit', 'PermissionRequest', 'Stop')) {
+    foreach ($eventName in @('UserPromptSubmit', 'PermissionRequest', 'Stop', 'SessionEnd')) {
         Assert-Equal $configuredCodex.hooks.$eventName[0].hooks[0].commandWindows $configuredCodexCommand "Configured Codex $eventName launcher"
     }
 
@@ -335,12 +342,12 @@ if (!["ENOENT", "EINVAL"].includes(result.error.code)) process.exit(94);
         Assert-True ($sourceCodexExitCode -ne 0) 'Unconfigured Codex template must fail'
         Assert-True (-not (Test-Path -LiteralPath $hostileLog)) 'Unconfigured Codex template must not resolve a cwd decoy'
 
-        foreach ($eventName in @('UserPromptSubmit', 'Notification', 'Stop', 'StopFailure')) {
+        foreach ($eventName in @('UserPromptSubmit', 'PermissionRequest', 'Elicitation', 'Stop', 'StopFailure', 'SessionEnd')) {
             $handler = $configuredClaude.hooks.$eventName[0].hooks[0]
-            $null = & $handler.command @($handler.args)
+            $null = '{"message":"probe"}' | & $handler.command @($handler.args)
             Assert-Equal $LASTEXITCODE 0 "Claude $eventName hostile-cwd execution"
         }
-        Assert-Equal (Read-FakeCalls $fakeLog).Count 4 'Claude absolute command smoke calls'
+        Assert-Equal (Read-FakeCalls $fakeLog).Count 6 'Claude absolute command smoke calls'
         Remove-Item -LiteralPath $fakeLog -Force
 
         $shellPayload = '{"hook_event_name":"Stop"}'
@@ -371,17 +378,24 @@ if (!["ENOENT", "EINVAL"].includes(result.error.code)) process.exit(94);
     }
 
     $codexCases = @(
-        @{ Event = 'UserPromptSubmit'; State = 'working'; Message = 'Codex CLI is working' },
-        @{ Event = 'PermissionRequest'; State = 'waiting'; Message = 'Codex CLI needs your approval' },
-        @{ Event = 'Stop'; State = 'done'; Message = 'Codex CLI finished responding' }
+        @{ Payload = @{ hook_event_name = 'UserPromptSubmit' }; State = 'working'; Message = 'Codex CLI is working' },
+        @{ Payload = @{ hook_event_name = 'PermissionRequest' }; State = 'waiting'; Message = 'Codex CLI needs your approval' },
+        # PermissionRequest passes the payload's real request text through.
+        @{ Payload = @{ hook_event_name = 'PermissionRequest'; message = 'Allow shell: git push?' }; State = 'waiting'; Message = 'Allow shell: git push?' },
+        # ... but a non-string payload message keeps the canned fallback.
+        @{ Payload = @{ hook_event_name = 'PermissionRequest'; message = 42 }; State = 'waiting'; Message = 'Codex CLI needs your approval' },
+        # UserPromptSubmit ignores payload text (working is not a question).
+        @{ Payload = @{ hook_event_name = 'UserPromptSubmit'; message = 'ignored' }; State = 'working'; Message = 'Codex CLI is working' },
+        @{ Payload = @{ hook_event_name = 'Stop' }; State = 'done'; Message = 'Codex CLI finished responding' },
+        @{ Payload = @{ hook_event_name = 'SessionEnd' }; State = 'none'; Message = 'Codex CLI session ended' }
     )
     foreach ($case in $codexCases) {
-        $result = Invoke-NodeHook $codexAdapterPath (ConvertTo-Json @{ hook_event_name = $case.Event } -Compress)
-        Assert-Equal $result.ExitCode 0 "Codex $($case.Event) exit code"
-        Assert-Equal $result.Stdout '{}' "Codex $($case.Event) stdout protocol"
+        $result = Invoke-NodeHook $codexAdapterPath (ConvertTo-Json $case.Payload -Compress)
+        Assert-Equal $result.ExitCode 0 "Codex $($case.Payload.hook_event_name) exit code"
+        Assert-Equal $result.Stdout '{}' "Codex $($case.Payload.hook_event_name) stdout protocol"
     }
     $calls = Read-FakeCalls $fakeLog
-    Assert-Equal $calls.Count 3 'Codex fake call count'
+    Assert-Equal $calls.Count $codexCases.Count 'Codex fake call count'
     for ($index = 0; $index -lt $codexCases.Count; $index++) {
         Assert-Sequence @($calls[$index].Arguments) @('notify', "--state=$($codexCases[$index].State)", $codexCases[$index].Message) "Codex call $index args"
     }
@@ -390,7 +404,10 @@ if (!["ENOENT", "EINVAL"].includes(result.error.code)) process.exit(94);
     $geminiCases = @(
         @{ Payload = @{ hook_event_name = 'BeforeAgent' }; State = 'working'; Message = 'Gemini CLI is working' },
         @{ Payload = @{ hook_event_name = 'Notification'; notification_type = 'ToolPermission' }; State = 'waiting'; Message = 'Gemini CLI needs your approval' },
-        @{ Payload = @{ hook_event_name = 'AfterAgent' }; State = 'done'; Message = 'Gemini CLI finished responding' }
+        # ToolPermission notifications pass the payload's request text through.
+        @{ Payload = @{ hook_event_name = 'Notification'; notification_type = 'ToolPermission'; message = 'Run shell command?' }; State = 'waiting'; Message = 'Run shell command?' },
+        @{ Payload = @{ hook_event_name = 'AfterAgent' }; State = 'done'; Message = 'Gemini CLI finished responding' },
+        @{ Payload = @{ hook_event_name = 'SessionEnd' }; State = 'none'; Message = 'Gemini CLI session ended' }
     )
     foreach ($case in $geminiCases) {
         $result = Invoke-NodeHook $geminiAdapterPath (ConvertTo-Json $case.Payload -Compress)
@@ -398,7 +415,7 @@ if (!["ENOENT", "EINVAL"].includes(result.error.code)) process.exit(94);
         Assert-Equal $result.Stdout '{}' "Gemini $($case.Payload.hook_event_name) stdout protocol"
     }
     $calls = Read-FakeCalls $fakeLog
-    Assert-Equal $calls.Count 3 'Gemini fake call count'
+    Assert-Equal $calls.Count $geminiCases.Count 'Gemini fake call count'
     for ($index = 0; $index -lt $geminiCases.Count; $index++) {
         Assert-Sequence @($calls[$index].Arguments) @('notify', "--state=$($geminiCases[$index].State)", $geminiCases[$index].Message) "Gemini call $index args"
     }
@@ -429,7 +446,7 @@ if (!["ENOENT", "EINVAL"].includes(result.error.code)) process.exit(94);
         Assert-True ($relativeHome.Stderr -match 'absolute path') "$adapterPath relative PARAMUX_HOME error"
         $env:PARAMUX_HOME = $trustedRoot
     }
-    Assert-Equal (Read-FakeCalls $fakeLog).Count 3 'Rejected payloads and paths must not call paramux'
+    Assert-Equal (Read-FakeCalls $fakeLog).Count $geminiCases.Count 'Rejected payloads and paths must not call paramux'
 
     $env:PARAMUX_FAKE_EXIT_CODE = '7'
     $failed = Invoke-NodeHook $codexAdapterPath '{"hook_event_name":"Stop"}'
