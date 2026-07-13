@@ -735,6 +735,8 @@ const CTX_HELP_DOCS: usize = 4027;
 const CTX_HELP_ABOUT: usize = 4028;
 const CTX_PROFILE_BASE: usize = 4100; // profile dropdown items: CTX_PROFILE_BASE + index
 const CTX_ATTENTION_BASE: usize = 4300; // attention inbox items: CTX_ATTENTION_BASE + index
+const CTX_FIND_PANES: usize = 4026;
+const CTX_FIND_RESULT_BASE: usize = 4400; // find-across-panes results: base + index
 const SEARCH_BG_ID: usize = 2100;
 const SEARCH_EDIT_ID: usize = 2101;
 const SEARCH_PREV_ID: usize = 2102;
@@ -12164,6 +12166,7 @@ const Host = struct {
         return switch (mode) {
             .none => null,
             .command_palette => null,
+            .find_panes => null,
             .profile => if (self.selectedProfile()) |profile|
                 self.app.core_app.alloc.dupe(u8, profile.key) catch null
             else
@@ -12242,6 +12245,12 @@ const Host = struct {
                 label_hwnd,
                 &self.cached_overlay_label,
                 host_overlay_tab_title_label_utf8,
+            ),
+            .find_panes => return try syncWindowTextUtf8Cached(
+                alloc,
+                label_hwnd,
+                &self.cached_overlay_label,
+                "Find in all panes",
             ),
             .command_palette => {
                 const text = std.mem.trim(u8, try overlayEditText(self), " \t\r\n");
@@ -12627,6 +12636,7 @@ const Host = struct {
     }
 
     fn showContextMenu(self: *Host, screen_x: i32, screen_y: i32) void {
+        @setEvalBranchQuota(20_000);
         const hwnd = self.hwnd orelse return;
         const menu = CreatePopupMenu() orelse return;
         defer _ = DestroyMenu(menu);
@@ -12642,6 +12652,7 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_STRING, CTX_SELECT_ALL, std.unicode.utf8ToUtf16LeStringLiteral("Select All"));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
         _ = AppendMenuW(menu, MF_STRING, CTX_FIND, std.unicode.utf8ToUtf16LeStringLiteral("Find...\tCtrl+Shift+F"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_FIND_PANES, std.unicode.utf8ToUtf16LeStringLiteral("Find in All Panes..."));
         _ = AppendMenuW(menu, MF_STRING, CTX_COMMAND_PALETTE, std.unicode.utf8ToUtf16LeStringLiteral("Command Palette\tCtrl+Shift+P"));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New Workspace\tCtrl+Shift+T"));
@@ -12770,6 +12781,11 @@ const Host = struct {
             CTX_NEW_WINDOW => {
                 runUiActionOrLog("context menu new window failed", self.app.performAction(.{ .surface = surface.core() }, .new_window, .{}));
             },
+            CTX_FIND_PANES => {
+                self.showOverlay(.find_panes, null) catch |err| {
+                    log.warn("find-across-panes overlay failed err={}", .{err});
+                };
+            },
             CTX_SETTINGS => {
                 runUiActionOrLog("context menu settings failed", self.app.openConfig());
             },
@@ -12849,6 +12865,94 @@ const Host = struct {
         const hwnd = self.hwnd orelse return;
         self.chrome_repaint_dirty = true;
         _ = InvalidateRect(hwnd, null, 0);
+    }
+
+    /// Search every pane's visible text for `query` (case-insensitive)
+    /// and present the matches as a jumpable menu: "2: claude - <line>".
+    fn runFindAcrossPanes(self: *Host, query: []const u8) void {
+        const alloc = self.app.core_app.alloc;
+        const hwnd = self.hwnd orelse return;
+
+        const Match = struct { tab_index: usize, surface: *Surface, line: [96]u8, line_len: usize };
+        var matches: [24]Match = undefined;
+        var n: usize = 0;
+
+        var lower_query_buf: [128]u8 = undefined;
+        if (query.len > lower_query_buf.len) return;
+        const lower_query = std.ascii.lowerString(&lower_query_buf, query);
+
+        outer: for (self.tabs.items, 0..) |*tab, ti| {
+            var it = tab.tree.iterator();
+            while (it.next()) |leaf| {
+                const text = self.app.readPaneText(
+                    .{ .surface_id = leaf.view.core().id },
+                    alloc,
+                ) catch continue;
+                defer alloc.free(text);
+
+                var lines = std.mem.splitScalar(u8, text, 10);
+                while (lines.next()) |raw| {
+                    const line = std.mem.trim(u8, raw, " \r");
+                    if (line.len == 0) continue;
+                    var lower_line_buf: [512]u8 = undefined;
+                    const cap = @min(line.len, lower_line_buf.len);
+                    const lower_line = std.ascii.lowerString(lower_line_buf[0..cap], line[0..cap]);
+                    if (std.mem.indexOf(u8, lower_line, lower_query) == null) continue;
+                    var m: Match = .{ .tab_index = ti, .surface = leaf.view, .line = undefined, .line_len = 0 };
+                    const keep = @min(line.len, m.line.len);
+                    @memcpy(m.line[0..keep], line[0..keep]);
+                    m.line_len = keep;
+                    matches[n] = m;
+                    n += 1;
+                    if (n >= matches.len) break :outer;
+                    break; // one match per pane keeps the list scannable
+                }
+            }
+        }
+
+        const menu = CreatePopupMenu() orelse return;
+        defer _ = DestroyMenu(menu);
+        if (n == 0) {
+            _ = AppendMenuW(menu, MF_GRAYED, 0, std.unicode.utf8ToUtf16LeStringLiteral("No matches in any pane"));
+        } else {
+            for (matches[0..n], 0..) |*m, idx| {
+                const title: []const u8 = if (m.surface.effectiveTitle()) |t| t else "shell";
+                const label_utf8 = std.fmt.allocPrint(alloc, "{d}: {s} - {s}", .{
+                    m.tab_index + 1,
+                    title[0..@min(title.len, 24)],
+                    m.line[0..m.line_len],
+                }) catch continue;
+                defer alloc.free(label_utf8);
+                const label_w = std.unicode.utf8ToUtf16LeAllocZ(alloc, label_utf8) catch continue;
+                defer alloc.free(label_w);
+                _ = AppendMenuW(menu, MF_STRING, CTX_FIND_RESULT_BASE + idx, label_w.ptr);
+            }
+        }
+
+        var pt = POINT{
+            .x = self.scaled(host_sidebar_width) + self.scaled(16),
+            .y = self.scaled(host_tab_height) + self.scaled(8),
+        };
+        _ = ClientToScreen(hwnd, &pt);
+        _ = SetForegroundWindow(hwnd);
+        const cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTALIGN | TPM_TOPALIGN, pt.x, pt.y, 0, hwnd, null);
+        _ = PostMessageW(hwnd, WM_NULL, 0, 0);
+        if (self.hwnd == null) return;
+        if (cmd <= 0) return;
+        const cmd_id = @as(usize, @intCast(cmd));
+        if (cmd_id < CTX_FIND_RESULT_BASE or cmd_id >= CTX_FIND_RESULT_BASE + matches.len) return;
+        const idx = cmd_id - CTX_FIND_RESULT_BASE;
+        if (idx >= n) return;
+        const chosen = &matches[idx];
+        if (chosen.tab_index >= self.tabs.items.len) return;
+        const tab = &self.tabs.items[chosen.tab_index];
+        const handle = tab.findHandle(chosen.surface) orelse return;
+        _ = self.activateSidebarRow(.{
+            .kind = .pane,
+            .tab_index = chosen.tab_index,
+            .surface = chosen.surface,
+            .handle = handle,
+        });
     }
 
     /// The attention inbox: every pane with an unhandled waiting/done/
@@ -14582,6 +14686,10 @@ const Host = struct {
                 if (self.tabs.items[self.active_tab].focusedSurface()) |next_surface| {
                     self.app.activateSurface(next_surface);
                 }
+            },
+            .find_panes => {
+                if (text.len == 0) return false;
+                self.runFindAcrossPanes(text);
             },
             .confirm => {
                 // Enter maps to Accept.
@@ -20505,6 +20613,7 @@ fn buildOverlayPaintLabelText(
     return switch (mode) {
         .none => try alloc.dupe(u8, ""),
         .surface_title => try alloc.dupe(u8, "Window title"),
+        .find_panes => try alloc.dupe(u8, "Find in all panes"),
         .tab_title => try alloc.dupe(u8, "Tab title"),
         .command_palette => try buildCommandPaletteOverlayLabel(alloc, palette, input_text),
         .profile => try alloc.dupe(u8, "Profile"),
@@ -20582,6 +20691,7 @@ fn buildOverlayAcceptLabel(
             if (search_total != null) break :blk try alloc.dupe(u8, "Find");
             break :blk try alloc.dupe(u8, "Find");
         },
+        .find_panes => try alloc.dupe(u8, "Search"),
         .surface_title, .tab_title => if (input_text.len == 0)
             try alloc.dupe(u8, "Close")
         else
@@ -20648,6 +20758,7 @@ fn buildOverlayHintText(
             break :blk try alloc.dupe(u8, "No matches yet. Keep typing to search live.");
         },
         .surface_title => try alloc.dupe(u8, "Apply a window title override for this host. Submit empty text to clear it."),
+        .find_panes => try alloc.dupe(u8, "Search the visible text of every pane in every workspace."),
         .tab_title => blk: {
             if (pane_count > 1) {
                 break :blk try std.fmt.allocPrint(
@@ -20705,6 +20816,7 @@ fn overlayCancelLabel(mode: HostOverlayMode) []const u8 {
         .none => "Cancel",
         .command_palette, .profile, .search, .tab_overview => "Close",
         .surface_title, .tab_title => "Cancel",
+        .find_panes => "Cancel",
         // Confirm overlays override this via the payload.
         .confirm => "Cancel",
     };

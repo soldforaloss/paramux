@@ -16,6 +16,9 @@ pub const HostOverlayMode = enum {
     surface_title,
     tab_title,
     tab_overview,
+    /// Find across every pane's visible text; commit shows a results
+    /// menu that jumps to the picked pane.
+    find_panes,
     /// Non-modal Accept/Cancel prompt. Carried by `Host.confirm_payload`
     /// which owns the title / body / button labels / severity and the
     /// accept + cancel callbacks. Replaces the previous `MessageBoxW`
@@ -475,7 +478,7 @@ pub fn overlayAccentColor(mode: HostOverlayMode, is_dark: bool) u32 {
         return switch (mode) {
             .command_palette => rgb(0, 90, 158),
             .profile => rgb(136, 60, 160),
-            .search => rgb(16, 124, 80),
+            .search, .find_panes => rgb(16, 124, 80),
             .surface_title, .tab_title => rgb(156, 112, 24),
             .tab_overview => rgb(102, 76, 180),
             // Destructive warning tone — muted red so the Accept
@@ -487,7 +490,7 @@ pub fn overlayAccentColor(mode: HostOverlayMode, is_dark: bool) u32 {
     return switch (mode) {
         .command_palette => rgb(116, 156, 224),
         .profile => rgb(192, 132, 214),
-        .search => rgb(118, 196, 158),
+        .search, .find_panes => rgb(118, 196, 158),
         .surface_title, .tab_title => rgb(212, 170, 92),
         .tab_overview => rgb(168, 148, 228),
         .confirm => rgb(232, 104, 112),
