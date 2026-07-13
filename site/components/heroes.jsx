@@ -4,7 +4,7 @@ import { ReleaseBlock } from './release/release-block.jsx';
 import { ReleaseChip } from './hero/release-chip.jsx';
 import { ParamuxMissionControl } from './mission-control.jsx';
 
-const RELEASE_URL = 'https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.9';
+const RELEASE_URL = 'https://github.com/soldforaloss/paramux/releases/tag/v0.1.1';
 
 export function HeroColorPop() {
   return (

@@ -7,16 +7,16 @@ separate from the current user path.
 ## Current distribution contract
 
 As of 2026-07-11, the current build is the public prerelease
-[`v0.1.0-paramux.9`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.9).
+[`v0.1.1`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.1).
 
 ## Versioning scheme
 
-`v0.1.0-paramux.9` is the **last** release under the historical
-`v0.1.0-paramux.N` naming. Every release after it uses plain semantic
-versions only:
+Releases use plain semantic versions; `v0.1.1` is the first under this
+scheme (everything before it used the historical `v0.1.0-paramux.N`
+prerelease naming, which ended with `v0.1.0-paramux.9`):
 
-- Tags are `vMAJOR.MINOR.PATCH` (next: `v0.1.1`), with no `-paramux.N`
-  or other suffixes.
+- Tags are `vMAJOR.MINOR.PATCH`, with no `-paramux.N` or other
+  suffixes.
 - The release title is the bare tag (for example `v0.1.1`) — no
   "paramux" prefix or descriptive suffix in the release name.
 - Artifact names keep their existing shape
@@ -28,7 +28,7 @@ versions only:
 
 It publishes exactly these two assets:
 
-- `paramux-0.1.0-paramux.9-windows-x64-portable.zip`
+- `paramux-0.1.1-windows-x64-portable.zip`
 - `SHA256SUMS-windows-x64.txt`
 
 This artifact is branding-complete: its embedded README, command completions,
@@ -94,7 +94,7 @@ The app binaries are written to `zig-out\bin\paramux.exe` and
 Use the Windows packaging script with an explicit architecture:
 
 ```powershell
-$version = "0.1.0-paramux.9"
+$version = "0.1.1"
 powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1 `
   -Version $version `
   -Architecture x64 `
@@ -104,7 +104,7 @@ powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1 `
 The portable output is staged beneath:
 
 ```text
-dist\artifacts\paramux-0.1.0-paramux.9-windows-x64\
+dist\artifacts\paramux-0.1.1-windows-x64\
 ```
 
 The packaging script performs its own package smoke checks and emits the
@@ -127,7 +127,7 @@ powershell -ExecutionPolicy Bypass -File scripts/check-windows-x64-baseline.ps1 
   -Path zig-out\bin\paramux.exe
 
 Get-FileHash `
-  .\dist\artifacts\paramux-0.1.0-paramux.9-windows-x64\paramux-0.1.0-paramux.9-windows-x64-portable.zip `
+  .\dist\artifacts\paramux-0.1.1-windows-x64\paramux-0.1.1-windows-x64-portable.zip `
   -Algorithm SHA256
 ```
 
@@ -139,7 +139,7 @@ temporary directory and verify:
 Get-AuthenticodeSignature .\paramux\paramux.exe | Select-Object Status, StatusMessage
 ```
 
-For `v0.1.0-paramux.9`, `NotSigned` is the expected signature status. A future
+For `v0.1.1`, `NotSigned` is the expected signature status. A future
 signed channel must instead fail closed unless the expected Authenticode signer
 and checksum both validate.
 

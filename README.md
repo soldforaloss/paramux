@@ -83,30 +83,33 @@ path today.
 ## Try the current prerelease
 
 The current test build is
-[`v0.1.0-paramux.9`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.0-paramux.9),
-published 2026-07-11 for Windows x64:
+[`v0.1.1`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.1),
+published 2026-07-13 for Windows x64:
 
-- [`paramux-0.1.0-paramux.9-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.9/paramux-0.1.0-paramux.9-windows-x64-portable.zip)
-- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.0-paramux.9/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.1-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.1/paramux-0.1.1-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.1/SHA256SUMS-windows-x64.txt)
 
-This build makes the CLI plain-spoken (`paramux update`, not
-`paramux +update` — the old spelling still works), turns the sidebar
-into an always-complete map of every workspace and pane so no running
-agent can leave the screen, and adds MRU navigation: toggle between
-your two recent workspaces (`Ctrl+Alt+L`) or panes (`Ctrl+Alt+;`), and
-jump straight to the newest agent notification (`Ctrl+Alt+U`). It sits
-on top of the `v0.1.0-paramux.8` settings-window overhaul and confirm-
-dialog fixes. Releases from `v0.1.0-paramux.7` onward apply with
-`paramux update`; earlier prereleases are superseded
-(`v0.1.0-paramux.4` remains a legacy test artifact). This is the last
-release under the `-paramux.N` naming — the next is plain `v0.1.1`.
+This build makes the sidebar the whole navigation story — the top tab
+strip is gone, workspace headers read cleanly ("Workspace 1" instead of
+echoing the pane title), the `+` button asks whether you want a new
+workspace or a new terminal here, and added terminals auto-tile
+(two columns first, then the largest pane splits along its longer
+side). The agent integrations got a matching upgrade: waiting panes now
+show the agent's *real* request text, a session that exits clears its
+row instead of sticking on "working", and the new `paramux doctor
+--fire` verifies your Claude Code / Codex / Gemini / OpenCode wiring
+end to end. It sits on top of `v0.1.0-paramux.9`'s bare CLI verbs,
+always-complete sidebar, and MRU navigation. This is the first release
+under the plain-semver naming scheme; releases from `v0.1.0-paramux.7`
+onward apply with `paramux update` (`v0.1.0-paramux.4` remains a legacy
+test artifact).
 
 1. Download both the portable ZIP and `SHA256SUMS-windows-x64.txt`.
 2. Before extracting or running anything, compare the ZIP's digest with the
    release checksum:
 
 ```powershell
-Get-FileHash .\paramux-0.1.0-paramux.9-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\paramux-0.1.1-windows-x64-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 
