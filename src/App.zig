@@ -766,6 +766,7 @@ fn isSafeAutomationAction(action: input.Binding.Action) bool {
         .recent_tab,
         .goto_tab,
         .goto_attention,
+        .attention_inbox,
         .move_tab,
         .toggle_tab_overview,
         .new_split,

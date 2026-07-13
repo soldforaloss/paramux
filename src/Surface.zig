@@ -5792,6 +5792,12 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool 
             {},
         ),
 
+        .attention_inbox => return try self.rt_app.performAction(
+            .{ .surface = self },
+            .attention_inbox,
+            {},
+        ),
+
         .move_tab => |position| return try self.rt_app.performAction(
             .{ .surface = self },
             .move_tab,

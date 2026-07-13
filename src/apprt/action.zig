@@ -141,6 +141,10 @@ pub const Action = union(Key) {
     /// (agent waiting / done / error), across every tab of the window.
     goto_attention,
 
+    /// Open the attention inbox listing every pane with an unhandled
+    /// attention state, newest first.
+    attention_inbox,
+
     /// Jump to next/previous window.
     goto_window: GotoWindow,
 
@@ -371,6 +375,7 @@ pub const Action = union(Key) {
         goto_tab,
         goto_split,
         goto_attention,
+        attention_inbox,
         goto_window,
         resize_split,
         equalize_splits,

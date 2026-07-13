@@ -6084,6 +6084,13 @@ pub const Keybinds = struct {
                 .{ .goto_attention = {} },
                 .{ .performable = true },
             );
+            // The visible version: the attention inbox panel.
+            try self.set.putFlags(
+                alloc,
+                .{ .key = .{ .unicode = 'i' }, .mods = .{ .ctrl = true, .alt = true } },
+                .{ .attention_inbox = {} },
+                .{ .performable = true },
+            );
             try self.set.putFlags(
                 alloc,
                 .{ .key = .{ .unicode = '[' }, .mods = .{ .ctrl = true, .alt = true } },

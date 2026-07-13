@@ -551,6 +551,7 @@ const ODS_DISABLED = 0x0004;
 const ODS_FOCUS = 0x0010;
 const TME_LEAVE = 0x00000002;
 const TME_NONCLIENT = 0x00000010;
+const DT_RIGHT: UINT = 0x2;
 const DT_CENTER = 0x00000001;
 const DT_VCENTER = 0x00000004;
 const DT_SINGLELINE = 0x00000020;
@@ -725,6 +726,7 @@ const CTX_HELP_SHORTCUTS: usize = 4026;
 const CTX_HELP_DOCS: usize = 4027;
 const CTX_HELP_ABOUT: usize = 4028;
 const CTX_PROFILE_BASE: usize = 4100; // profile dropdown items: CTX_PROFILE_BASE + index
+const CTX_ATTENTION_BASE: usize = 4300; // attention inbox items: CTX_ATTENTION_BASE + index
 const SEARCH_BG_ID: usize = 2100;
 const SEARCH_EDIT_ID: usize = 2101;
 const SEARCH_PREV_ID: usize = 2102;
@@ -1394,6 +1396,7 @@ const help_shortcuts_text: LPCWSTR = blk: {
             "Recent workspace (toggle)\tCtrl+Alt+L\n" ++
             "Recent pane (toggle)\tCtrl+Alt+;\n" ++
             "Jump to attention\tCtrl+Alt+U\n" ++
+            "Attention inbox\tCtrl+Alt+I\n" ++
             "Focus next / previous pane\tCtrl+Alt+] / [\n" ++
             "Focus pane by direction\tCtrl+Alt+Arrows\n" ++
             "Resize pane\tCtrl+Alt+Shift+Arrows\n" ++
@@ -5622,6 +5625,13 @@ pub const App = struct {
 
             .goto_attention => {
                 return try self.gotoAttention(target);
+            },
+
+            .attention_inbox => {
+                const surface = self.findSurfaceForTarget(target) orelse return false;
+                const host = surface.host orelse return false;
+                host.showAttentionInbox();
+                return true;
             },
 
             .toggle_tab_overview => {
@@ -12472,6 +12482,43 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_STRING, CTX_CLOSE_SURFACE, closeSurfaceMenuLabel(pane_count));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
 
+        // The pane's activity timeline: recent attention transitions,
+        // newest first. Read-only context - answers "what happened while
+        // I wasn't looking" without leaving the menu.
+        if (self.activeSurface()) |surface| {
+            const activity = CreatePopupMenu();
+            if (activity) |submenu| {
+                const alloc = self.app.core_app.alloc;
+                const items = surface.attention_history.items;
+                if (items.len == 0) {
+                    _ = AppendMenuW(submenu, MF_GRAYED, 0, std.unicode.utf8ToUtf16LeStringLiteral("(no recent activity)"));
+                } else {
+                    const now_ms = std.time.milliTimestamp();
+                    var shown: usize = 0;
+                    var idx = items.len;
+                    while (idx > 0 and shown < attention_history_max) {
+                        idx -= 1;
+                        const event = items[idx];
+                        var rel_buf: [16]u8 = undefined;
+                        const rel = formatRelativeMs(&rel_buf, now_ms - event.wall_ms);
+                        const msg = event.message orelse "";
+                        const label_utf8 = (if (msg.len > 0)
+                            std.fmt.allocPrint(alloc, "{s} ago  {s} - {s}", .{ rel, attentionStateLabel(event.state), msg[0..@min(msg.len, 60)] })
+                        else
+                            std.fmt.allocPrint(alloc, "{s} ago  {s}", .{ rel, attentionStateLabel(event.state) })) catch continue;
+                        defer alloc.free(label_utf8);
+                        const label_w = std.unicode.utf8ToUtf16LeAllocZ(alloc, label_utf8) catch continue;
+                        defer alloc.free(label_w);
+                        _ = AppendMenuW(submenu, MF_GRAYED, 0, label_w.ptr);
+                        shown += 1;
+                    }
+                }
+                // DestroyMenu on the parent tears down submenus too.
+                _ = AppendMenuW(menu, MF_POPUP, @intFromPtr(submenu), std.unicode.utf8ToUtf16LeStringLiteral("Recent Activity"));
+                _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
+            }
+        }
+
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_WINDOW, std.unicode.utf8ToUtf16LeStringLiteral("New Window\tCtrl+Shift+N"));
         _ = AppendMenuW(menu, MF_STRING, CTX_SETTINGS, std.unicode.utf8ToUtf16LeStringLiteral("Settings...\tCtrl+,"));
 
@@ -12596,6 +12643,99 @@ const Host = struct {
             else => {},
         }
         _ = tab_index;
+    }
+
+    /// The contextual hint strip's text: the few actions valid RIGHT NOW.
+    /// Modes with their own affordances (confirm bar, drags) get mode
+    /// hints; otherwise the default teaches the highest-value chords.
+    fn currentHintTextW(self: *Host) [:0]const u16 {
+        if (self.overlay_mode == .confirm)
+            return std.unicode.utf8ToUtf16LeStringLiteral("Enter accept \u{00B7} Esc cancel");
+        if (self.pane_drag.dragging)
+            return std.unicode.utf8ToUtf16LeStringLiteral("Drop: edges dock \u{00B7} center swaps");
+        if (self.split_resize.active)
+            return std.unicode.utf8ToUtf16LeStringLiteral("Drag to resize");
+        return std.unicode.utf8ToUtf16LeStringLiteral("Ctrl+Alt+I inbox \u{00B7} Ctrl+Alt+U attention \u{00B7} Ctrl+Shift+P palette");
+    }
+
+    /// Repaint the chrome when the hint-strip state flips (drag/resize
+    /// transitions happen outside the normal chrome invalidation paths).
+    fn invalidateHintStrip(self: *Host) void {
+        const hwnd = self.hwnd orelse return;
+        self.chrome_repaint_dirty = true;
+        _ = InvalidateRect(hwnd, null, 0);
+    }
+
+    /// The attention inbox: every pane with an unhandled waiting/done/
+    /// error state, newest first, with its message text. A native popup
+    /// menu - keyboard navigable, Enter jumps, Esc dismisses.
+    fn showAttentionInbox(self: *Host) void {
+        const alloc = self.app.core_app.alloc;
+        const hwnd = self.hwnd orelse return;
+
+        const Entry = struct { tab_index: usize, surface: *Surface, seq: u64 };
+        var entries: [64]Entry = undefined;
+        var n: usize = 0;
+        for (self.tabs.items, 0..) |*tab, ti| {
+            var it = tab.tree.iterator();
+            while (it.next()) |leaf| {
+                if (!leaf.view.attention_state.isAlerting()) continue;
+                if (n >= entries.len) break;
+                entries[n] = .{ .tab_index = ti, .surface = leaf.view, .seq = leaf.view.attention_seq };
+                n += 1;
+            }
+        }
+        // Newest first (insertion sort; n is small).
+        var i: usize = 1;
+        while (i < n) : (i += 1) {
+            const key = entries[i];
+            var j = i;
+            while (j > 0 and entries[j - 1].seq < key.seq) : (j -= 1) entries[j] = entries[j - 1];
+            entries[j] = key;
+        }
+
+        const menu = CreatePopupMenu() orelse return;
+        defer _ = DestroyMenu(menu);
+
+        if (n == 0) {
+            _ = AppendMenuW(menu, MF_GRAYED, 0, std.unicode.utf8ToUtf16LeStringLiteral("No agents need attention"));
+        } else {
+            const now_ms = std.time.milliTimestamp();
+            for (entries[0..n], 0..) |entry, idx| {
+                const label_utf8 = buildAttentionInboxLabel(alloc, entry.tab_index, entry.surface, now_ms) catch continue;
+                defer alloc.free(label_utf8);
+                const label_w = std.unicode.utf8ToUtf16LeAllocZ(alloc, label_utf8) catch continue;
+                defer alloc.free(label_w);
+                _ = AppendMenuW(menu, MF_STRING, CTX_ATTENTION_BASE + idx, label_w.ptr);
+            }
+        }
+
+        // Anchor over the content area's top-left, the banner lane.
+        var pt = POINT{
+            .x = self.scaled(host_sidebar_width) + self.scaled(16),
+            .y = self.scaled(host_tab_height) + self.scaled(8),
+        };
+        _ = ClientToScreen(hwnd, &pt);
+        _ = SetForegroundWindow(hwnd);
+        const cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTALIGN | TPM_TOPALIGN, pt.x, pt.y, 0, hwnd, null);
+        _ = PostMessageW(hwnd, WM_NULL, 0, 0);
+        if (self.hwnd == null) return;
+        if (cmd <= 0) return;
+        const cmd_id = @as(usize, @intCast(cmd));
+        if (cmd_id < CTX_ATTENTION_BASE or cmd_id >= CTX_ATTENTION_BASE + entries.len) return;
+        const idx = cmd_id - CTX_ATTENTION_BASE;
+        if (idx >= n) return;
+        const chosen = entries[idx];
+        // Re-validate: the pane may have closed during the modal loop.
+        if (chosen.tab_index >= self.tabs.items.len) return;
+        const tab = &self.tabs.items[chosen.tab_index];
+        const handle = tab.findHandle(chosen.surface) orelse return;
+        _ = self.activateSidebarRow(.{
+            .kind = .pane,
+            .tab_index = chosen.tab_index,
+            .surface = chosen.surface,
+            .handle = handle,
+        });
     }
 
     fn showOverflowMenu(self: *Host) void {
@@ -13200,7 +13340,9 @@ const Host = struct {
     /// Reset all drag state + hide the preview. Does NOT release capture —
     /// callers do that (WM_CAPTURECHANGED means it is already gone).
     fn cancelPaneDrag(self: *Host) void {
+        const was_dragging = self.pane_drag.dragging;
         self.pane_drag.cancel();
+        if (was_dragging) self.invalidateHintStrip();
         self.pane_drag_source = null;
         self.pane_drop_target = null;
         self.pane_drop_zone = null;
@@ -14271,10 +14413,10 @@ const Host = struct {
     }
 
     fn statusBarHeight(self: *Host) i32 {
-        // Status bar is disabled; banners and overlays carry transient
-        // status feedback without reserving terminal rows.
-        _ = self;
-        return 0;
+        // One slim strip: the contextual hint line (plus launcher chips
+        // when profiles exist). Banners and overlays still carry
+        // transient feedback; this row is the always-on teaching lane.
+        return self.scaled(22);
     }
 
     /// Width (px) of the docked left metadata sidebar (M2). Always-on for
@@ -14470,7 +14612,7 @@ const Host = struct {
         };
 
         const host_status = self.app.hostTabStatus(surface);
-        try append.fmt(&parts, alloc, "Tab {d}/{d}", .{ host_status.index + 1, host_status.total });
+        try append.fmt(&parts, alloc, "Workspace {d}/{d}", .{ host_status.index + 1, host_status.total });
         const pane_count = tab.leafCount();
         if (pane_count > 1) {
             try append.fmt(&parts, alloc, "Panes {d}", .{pane_count});
@@ -16436,9 +16578,10 @@ const Host = struct {
                 self.update_open_rect = open_rect;
                 self.update_dismiss_rect = dismiss_rect;
 
-                const text_right = @max(self.scaled(120), open_rect.left - self.scaled(10));
+                const banner_left = self.scaled(host_sidebar_width) + self.scaled(16);
+                const text_right = @max(banner_left + self.scaled(40), open_rect.left - self.scaled(10));
                 var text_rect = RECT{
-                    .left = self.scaled(16),
+                    .left = banner_left,
                     .top = banner_y - self.scaled(2),
                     .right = text_right,
                     .bottom = banner_y + button_height,
@@ -16503,7 +16646,9 @@ const Host = struct {
                     .err => theme.error_fg,
                 });
                 if (self.cached_banner_w) |banner_w| {
-                    textOutWz(hdc, self.scaled(16), banner_y, banner_w);
+                    // Past the sidebar - banners belong over the content
+                    // area, not on top of the workspace tree.
+                    textOutWz(hdc, self.scaled(host_sidebar_width) + self.scaled(16), banner_y, banner_w);
                 }
             }
         } else if (explicit_banner_text != null) {
@@ -16513,7 +16658,9 @@ const Host = struct {
                 .err => theme.error_fg,
             });
             if (self.cached_banner_w) |banner_w| {
-                textOutWz(hdc, self.scaled(16), banner_y, banner_w);
+                // Past the sidebar - banners belong over the content
+                // area, not on top of the workspace tree.
+                textOutWz(hdc, self.scaled(host_sidebar_width) + self.scaled(16), banner_y, banner_w);
             }
         }
         _ = SetTextColor(hdc, theme.text_primary);
@@ -16523,6 +16670,23 @@ const Host = struct {
         }
 
         const status_y = @max(self.scaled(host_tab_height) + self.scaled(2), ps.rcPaint.bottom - @max(1, status_h) + self.scaled(4));
+        // Contextual hint strip: right-aligned, muted, state-aware.
+        {
+            var hint_rect = RECT{
+                .left = @divTrunc(ps.rcPaint.right, 2),
+                .top = status_y - self.scaled(2),
+                .right = ps.rcPaint.right - self.scaled(16),
+                .bottom = status_y + self.scaled(14),
+            };
+            _ = SetTextColor(hdc, theme.text_secondary);
+            drawTextWz(
+                hdc,
+                self.currentHintTextW(),
+                &hint_rect,
+                DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
+            );
+            _ = SetTextColor(hdc, theme.text_primary);
+        }
         var status_x: i32 = self.scaled(16);
         const launcher_lane_right: ?i32 = blk: {
             if (!(status_h > 0 and self.overlay_mode == .none and self.selectedProfile() != null)) break :blk null;
@@ -19957,8 +20121,8 @@ fn buildTabOverviewOverlayLabel(
     current_index: usize,
     total: usize,
 ) ![]u8 {
-    if (total <= 1) return try alloc.dupe(u8, "Tab");
-    return try std.fmt.allocPrint(alloc, "Tab {d}/{d}", .{ current_index + 1, total });
+    if (total <= 1) return try alloc.dupe(u8, "Workspace");
+    return try std.fmt.allocPrint(alloc, "Workspace {d}/{d}", .{ current_index + 1, total });
 }
 
 fn buildOverlayPaintLabelText(
@@ -22210,6 +22374,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                 }
                 if (v.dividerAtPoint(mx, my)) |divider| {
                     v.split_resize.begin(divider, v.scaled(win32_split_resize.min_pane_px));
+                    v.invalidateHintStrip();
                     _ = SetCapture(hwnd);
                     _ = SetCursor(LoadCursorW(null, switch (divider.orientation) {
                         .horizontal => IDC_SIZEWE,
@@ -22253,6 +22418,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     const my = signedHighWord(lParamBits(lParam));
                     if (v.pane_drag.onMouseMove(mx, my, v.scaled(win32_pane_drag.drag_threshold_px))) {
                         log.debug("pane drag: promoted at ({d},{d})", .{ mx, my });
+                        v.invalidateHintStrip();
                     }
                     if (v.pane_drag.dragging) {
                         v.updatePaneDragAtPoint(mx, my);
@@ -22349,6 +22515,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                 }
                 if (msg == WM_LBUTTONUP and v.split_resize.active) {
                     v.split_resize.end();
+                    v.invalidateHintStrip();
                     _ = ReleaseCapture();
                     return 0;
                 }
@@ -23945,6 +24112,20 @@ pub const AttentionState = enum {
 
 /// The private OSC 777 title marker paramux uses to carry an attention state.
 /// Kept in sync with `src/cli/notify.zig`.
+/// One entry of a pane's attention timeline.
+const AttentionEvent = struct {
+    wall_ms: i64,
+    state: AttentionState,
+    message: ?[]u8,
+
+    fn deinit(self: *AttentionEvent, alloc: std.mem.Allocator) void {
+        if (self.message) |m| alloc.free(m);
+        self.* = undefined;
+    }
+};
+
+const attention_history_max: usize = 8;
+
 const attention_state_marker = "paramux.state:";
 
 /// Split an incoming notification title into an optional attention state and the
@@ -23959,6 +24140,58 @@ fn parseAttentionState(title: [:0]const u8) struct { state: AttentionState, titl
         };
     }
     return .{ .state = .waiting, .title = title };
+}
+
+/// "now", "5m", "2h", "3d" - coarse relative age for inbox/timeline rows.
+fn formatRelativeMs(buf: []u8, age_ms: i64) []const u8 {
+    const mins = @divTrunc(@max(0, age_ms), std.time.ms_per_min);
+    if (mins < 1) return "now";
+    if (mins < 60) return std.fmt.bufPrint(buf, "{d}m", .{mins}) catch "now";
+    const hours = @divTrunc(mins, 60);
+    if (hours < 24) return std.fmt.bufPrint(buf, "{d}h", .{hours}) catch "now";
+    return std.fmt.bufPrint(buf, "{d}d", .{@divTrunc(hours, 24)}) catch "now";
+}
+
+test "formatRelativeMs coarsens ages" {
+    var buf: [16]u8 = undefined;
+    try std.testing.expectEqualStrings("now", formatRelativeMs(&buf, 0));
+    try std.testing.expectEqualStrings("5m", formatRelativeMs(&buf, 5 * std.time.ms_per_min));
+    try std.testing.expectEqualStrings("2h", formatRelativeMs(&buf, 2 * std.time.ms_per_hour));
+    try std.testing.expectEqualStrings("3d", formatRelativeMs(&buf, 3 * 24 * std.time.ms_per_hour));
+    try std.testing.expectEqualStrings("now", formatRelativeMs(&buf, -50));
+}
+
+/// One inbox row: "waiting - 2m - 1: claude - Allow git push?".
+fn buildAttentionInboxLabel(
+    alloc: std.mem.Allocator,
+    tab_index: usize,
+    surface: *Surface,
+    now_ms: i64,
+) ![]u8 {
+    var rel_buf: [16]u8 = undefined;
+    const rel: []const u8 = blk: {
+        const items = surface.attention_history.items;
+        if (items.len == 0) break :blk "now";
+        break :blk formatRelativeMs(&rel_buf, now_ms - items[items.len - 1].wall_ms);
+    };
+    const title: []const u8 = if (surface.effectiveTitle()) |t| t else "shell";
+    const msg: []const u8 = surface.last_notification orelse "";
+    const msg_trunc = msg[0..@min(msg.len, 60)];
+    return if (msg_trunc.len > 0)
+        std.fmt.allocPrint(alloc, "{s} - {s} - {d}: {s} - {s}", .{
+            attentionStateLabel(surface.attention_state),
+            rel,
+            tab_index + 1,
+            title,
+            msg_trunc,
+        })
+    else
+        std.fmt.allocPrint(alloc, "{s} - {s} - {d}: {s}", .{
+            attentionStateLabel(surface.attention_state),
+            rel,
+            tab_index + 1,
+            title,
+        });
 }
 
 fn attentionStateLabel(state: AttentionState) []const u8 {
@@ -24163,6 +24396,10 @@ pub const Surface = struct {
     /// Monotonic stamp of when this pane last entered an alerting
     /// attention state; `goto_attention` jumps to the highest.
     attention_seq: u64 = 0,
+    /// Recent attention transitions (oldest first), capped at
+    /// `attention_history_max` - the pane's activity timeline shown in
+    /// the Activity submenu and the attention inbox.
+    attention_history: std.ArrayListUnmanaged(AttentionEvent) = .empty,
     taskbar_progress: ?win32_taskbar_progress.ProgressReport = null,
     inspector_visible: bool = false,
     paint_pending: bool = false,
@@ -27487,6 +27724,8 @@ pub const Surface = struct {
             alloc.free(value);
             self.last_notification = null;
         }
+        for (self.attention_history.items) |*event| event.deinit(alloc);
+        self.attention_history.deinit(alloc);
 
         self.app.windowDestroyed(self);
         alloc.destroy(self);
@@ -27611,6 +27850,7 @@ pub const Surface = struct {
         var changed = false;
         if (self.attention_state != .none) {
             self.attention_state = .none;
+            self.recordAttentionEvent(.none, "cleared by interaction");
             changed = true;
         }
         if (self.last_notification) |value| {
@@ -27626,9 +27866,32 @@ pub const Surface = struct {
 
     /// paramux FR-4: set the pane's attention state and repaint. Transitioning
     /// into an alerting state (waiting/done/error) also flashes the taskbar.
+    /// Append one transition to the pane's activity timeline, evicting
+    /// the oldest past the cap. Message text is snapshotted (owned).
+    fn recordAttentionEvent(self: *Surface, state: AttentionState, message: ?[]const u8) void {
+        const alloc = self.app.core_app.alloc;
+        const owned: ?[]u8 = if (message) |m| blk: {
+            if (m.len == 0) break :blk null;
+            break :blk alloc.dupe(u8, m) catch null;
+        } else null;
+        self.attention_history.append(alloc, .{
+            .wall_ms = std.time.milliTimestamp(),
+            .state = state,
+            .message = owned,
+        }) catch {
+            if (owned) |m| alloc.free(m);
+            return;
+        };
+        while (self.attention_history.items.len > attention_history_max) {
+            var oldest = self.attention_history.orderedRemove(0);
+            oldest.deinit(alloc);
+        }
+    }
+
     fn setAttentionState(self: *Surface, state: AttentionState) void {
         if (self.attention_state == state) return;
         self.attention_state = state;
+        self.recordAttentionEvent(state, self.last_notification);
         if (state.isAlerting()) {
             // Stamp recency so goto_attention can jump to the NEWEST
             // unhandled pane (the cmux "most recent unread" queue).
@@ -33525,6 +33788,10 @@ test "win32 tab-overview-live refreshes on notification arrival" {
         .title = "pwsh",
     };
     defer if (surface.last_notification) |value| std.testing.allocator.free(value);
+    defer {
+        for (surface.attention_history.items) |*event| event.deinit(std.testing.allocator);
+        surface.attention_history.deinit(std.testing.allocator);
+    }
 
     try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface));
     try host.setOverlayDefaultBanner(.tab_overview);
@@ -33565,6 +33832,10 @@ test "win32 tab-overview-live refreshes on acknowledgement" {
         .attention_state = .waiting,
     };
     defer if (surface.last_notification) |value| std.testing.allocator.free(value);
+    defer {
+        for (surface.attention_history.items) |*event| event.deinit(std.testing.allocator);
+        surface.attention_history.deinit(std.testing.allocator);
+    }
 
     try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface));
     try host.setOverlayDefaultBanner(.tab_overview);
@@ -35328,11 +35599,11 @@ test "win32 buildTabOverviewOverlayLabel reflects current host tab" {
 
     const multi = try buildTabOverviewOverlayLabel(std.testing.allocator, 1, 4);
     defer std.testing.allocator.free(multi);
-    try std.testing.expectEqualStrings("Tab 2/4", multi);
+    try std.testing.expectEqualStrings("Workspace 2/4", multi);
 
     const single = try buildTabOverviewOverlayLabel(std.testing.allocator, 0, 1);
     defer std.testing.allocator.free(single);
-    try std.testing.expectEqualStrings("Tab", single);
+    try std.testing.expectEqualStrings("Workspace", single);
 }
 
 test "win32 buildOverlayPaintLabelText reflects live overlay mode" {

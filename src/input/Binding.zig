@@ -552,6 +552,11 @@ pub const Action = union(enum) {
     /// needed. Turns agent notifications into a work queue.
     goto_attention,
 
+    /// Open the attention inbox: every pane with an unhandled
+    /// waiting/done/error state, newest first, with its message text.
+    /// Enter jumps to the selected pane.
+    attention_inbox,
+
     /// Go to the tab with the specific index, starting from 1.
     ///
     /// If the tab number is higher than the number of tabs,
@@ -1398,6 +1403,7 @@ pub const Action = union(enum) {
             .recent_tab,
             .goto_tab,
             .goto_attention,
+            .attention_inbox,
             .move_tab,
             .toggle_tab_overview,
             .new_split,

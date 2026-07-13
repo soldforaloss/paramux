@@ -523,6 +523,12 @@ fn actionCommands(action: Action.Key) []const Command {
             .description = "Focus the pane with the most recent agent notification (waiting, done, or error).",
         }},
 
+        .attention_inbox => comptime &.{.{
+            .action = .attention_inbox,
+            .title = "Attention Inbox",
+            .description = "List every pane that needs attention, newest first, and jump to one.",
+        }},
+
         .goto_window => comptime &.{
             .{
                 .action = .{ .goto_window = .previous },
