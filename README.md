@@ -83,23 +83,23 @@ path today.
 ## Try the current prerelease
 
 The current test build is
-[`v0.1.2`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.2),
+[`v0.1.3`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.3),
 published 2026-07-13 for Windows x64:
 
-- [`paramux-0.1.2-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.2/paramux-0.1.2-windows-x64-portable.zip)
-- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.2/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.3-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.3/paramux-0.1.3-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.3/SHA256SUMS-windows-x64.txt)
 
-This build is the command-center release: `Ctrl+Alt+I` opens the
-**attention inbox** — every pane that needs you, newest first, with the
-agent's actual request text, Enter to jump. Right-click a pane row for
-its **recent activity** timeline ("14:02 working → 14:09 waiting —
-Allow git push?"). A contextual **hint strip** in the status bar
-teaches the shortcuts that matter right now, transient toasts dismiss
-themselves, alerting attention dots breathe, the divider under your
-cursor lights up before you grab it, the chrome gained a real type
-hierarchy, and the taskbar icon's right-click menu has real tasks (New
-Window / Settings / Attention Inbox). It sits on top of `v0.1.1`'s
-sidebar-first chrome and agent-integration upgrade. Releases from
+This build is the awareness release: an **agent watchdog** flags any
+pane whose process crashes or finishes while you're elsewhere (green
+done / red error dot plus a toast), and toasts now carry an **Open
+Inbox** button that lands you in the attention inbox. **Hover a
+sidebar row** to peek at that pane's last output without focusing it.
+**Click a file path** in any pane (`C:\repo\main.zig:42`) to open it
+in your editor at that line (`open-file-command`, VS Code by default).
+"Find in All Panes..." (right-click menu) searches the visible text of
+every pane and jumps to the match. It sits on top of `v0.1.2`'s
+command-center chrome (attention inbox, activity timeline, hint strip)
+and `v0.1.1`'s agent-integration upgrade. Releases from
 `v0.1.0-paramux.7` onward apply with `paramux update`
 (`v0.1.0-paramux.4` remains a legacy test artifact).
 
@@ -108,7 +108,7 @@ sidebar-first chrome and agent-integration upgrade. Releases from
    release checksum:
 
 ```powershell
-Get-FileHash .\paramux-0.1.2-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\paramux-0.1.3-windows-x64-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 
