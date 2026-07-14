@@ -704,7 +704,7 @@ pub fn semanticOverlayHue(mode: HostOverlayMode) f32 {
     return switch (mode) {
         .command_palette => 215.0, // cool blue
         .profile => 285.0, // violet
-        .search => 150.0, // teal / emerald
+        .search, .find_panes => 150.0, // teal / emerald
         .surface_title, .tab_title => 40.0, // warm amber
         .tab_overview => 258.0, // periwinkle
         .confirm => 0.0, // warning red (destructive)

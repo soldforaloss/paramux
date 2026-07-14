@@ -14689,7 +14689,12 @@ const Host = struct {
             },
             .find_panes => {
                 if (text.len == 0) return false;
+                // Hide first (like command_palette): the results menu and
+                // the jump both move focus, which hideOverlay would undo.
+                self.hideOverlay();
+                self.layout() catch {};
                 self.runFindAcrossPanes(text);
+                return true;
             },
             .confirm => {
                 // Enter maps to Accept.
