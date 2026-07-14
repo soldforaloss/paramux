@@ -6,7 +6,7 @@ separate from the current user path.
 
 ## Current distribution contract
 
-As of 2026-07-13, the current build is the public prerelease
+As of 2026-07-14, the current build is the public prerelease
 [`v0.1.3`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.3).
 
 ## Versioning scheme
