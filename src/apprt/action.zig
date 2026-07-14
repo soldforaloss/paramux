@@ -145,6 +145,15 @@ pub const Action = union(Key) {
     /// attention state, newest first.
     attention_inbox,
 
+    /// Open the find-across-panes overlay.
+    find_all_panes,
+
+    /// Show the while-you-were-away attention digest.
+    show_digest,
+
+    /// Show the health HUD.
+    health_hud,
+
     /// Jump to next/previous window.
     goto_window: GotoWindow,
 
@@ -376,6 +385,9 @@ pub const Action = union(Key) {
         goto_split,
         goto_attention,
         attention_inbox,
+        find_all_panes,
+        show_digest,
+        health_hud,
         goto_window,
         resize_split,
         equalize_splits,

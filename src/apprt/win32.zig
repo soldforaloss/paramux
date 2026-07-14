@@ -736,6 +736,8 @@ const CTX_HELP_ABOUT: usize = 4028;
 const CTX_PROFILE_BASE: usize = 4100; // profile dropdown items: CTX_PROFILE_BASE + index
 const CTX_ATTENTION_BASE: usize = 4300; // attention inbox items: CTX_ATTENTION_BASE + index
 const CTX_FIND_PANES: usize = 4026;
+const CTX_SCROLLBACK_EDITOR: usize = 4027;
+const CTX_MUTE_PANE: usize = 4028;
 const CTX_FIND_RESULT_BASE: usize = 4400; // find-across-panes results: base + index
 const SEARCH_BG_ID: usize = 2100;
 const SEARCH_EDIT_ID: usize = 2101;
@@ -1332,6 +1334,30 @@ extern "shell32" fn ShellExecuteW(
     nShowCmd: i32,
 ) callconv(.winapi) ?*anyopaque;
 extern "shell32" fn DragAcceptFiles(hWnd: HWND, fAccept: BOOL) callconv(.winapi) void;
+const PROCESS_MEMORY_COUNTERS = extern struct {
+    cb: u32,
+    PageFaultCount: u32,
+    PeakWorkingSetSize: usize,
+    WorkingSetSize: usize,
+    QuotaPeakPagedPoolUsage: usize,
+    QuotaPagedPoolUsage: usize,
+    QuotaPeakNonPagedPoolUsage: usize,
+    QuotaNonPagedPoolUsage: usize,
+    PagefileUsage: usize,
+    PeakPagefileUsage: usize,
+};
+extern "kernel32" fn K32GetProcessMemoryInfo(hProcess: ?*anyopaque, ppsmemCounters: *PROCESS_MEMORY_COUNTERS, cb: u32) callconv(.winapi) BOOL;
+extern "kernel32" fn GetCurrentProcess() callconv(.winapi) ?*anyopaque;
+const LASTINPUTINFO = extern struct { cbSize: u32, dwTime: u32 };
+extern "user32" fn GetLastInputInfo(plii: *LASTINPUTINFO) callconv(.winapi) BOOL;
+
+/// Milliseconds since the last user keyboard/mouse input, system-wide.
+fn userIdleMs() u64 {
+    var lii: LASTINPUTINFO = .{ .cbSize = @sizeOf(LASTINPUTINFO), .dwTime = 0 };
+    if (GetLastInputInfo(&lii) == 0) return 0;
+    const now: u32 = @truncate(GetTickCount64());
+    return now -% lii.dwTime;
+}
 extern "shell32" fn DragQueryFileW(hDrop: *anyopaque, iFile: UINT, lpszFile: ?[*]u16, cch: UINT) callconv(.winapi) UINT;
 extern "shell32" fn DragFinish(hDrop: *anyopaque) callconv(.winapi) void;
 
@@ -5652,6 +5678,30 @@ pub const App = struct {
                 return true;
             },
 
+            .find_all_panes => {
+                const surface = self.findSurfaceForTarget(target) orelse return false;
+                const host = surface.host orelse return false;
+                host.showOverlay(.find_panes, null) catch |err| {
+                    log.warn("win32 find_all_panes overlay failed err={}", .{err});
+                    return false;
+                };
+                return true;
+            },
+
+            .show_digest => {
+                const surface = self.findSurfaceForTarget(target) orelse return false;
+                const host = surface.host orelse return false;
+                host.showAttentionDigest();
+                return true;
+            },
+
+            .health_hud => {
+                const surface = self.findSurfaceForTarget(target) orelse return false;
+                const host = surface.host orelse return false;
+                host.showHealthHud();
+                return true;
+            },
+
             .toggle_tab_overview => {
                 if (self.findSurfaceForTarget(target)) |surface| {
                     return try surface.toggleTabOverview();
@@ -8343,11 +8393,12 @@ pub const App = struct {
         // double-notify on the same event. Any show error (Focus
         // Assist, notifications disabled, runtime unavailable) falls
         // back to the banner so the user still gets feedback.
+        const severity: win32_toast_winrt.Severity = if (self.notificationIsUrgent(title, body)) .warn else .info;
         if (self.winrt_toast) |*toast| {
             const result = if (launch) |value|
-                toast.showWithLaunch(caption, body, .info, value)
+                toast.showWithLaunch(caption, body, severity, value)
             else
-                toast.show(caption, body, .info);
+                toast.show(caption, body, severity);
             if (result) |_| {
                 return;
             } else |err| {
@@ -8397,8 +8448,25 @@ pub const App = struct {
         if (self.findSurfaceForTarget(target)) |surface| {
             surface.setLastNotification(attn.title, body) catch {};
             surface.setAttentionState(attn.state);
+            if (surface.attentionMuted()) return;
         }
         try self.showDesktopNotification(target, attn.title, body);
+    }
+
+    /// True when the notification text matches one of the configured
+    /// attention-alert-keywords (comma-separated, case-insensitive).
+    fn notificationIsUrgent(self: *App, title: []const u8, body: []const u8) bool {
+        const keywords = self.config.@"attention-alert-keywords";
+        if (keywords.len == 0) return false;
+        var lower_buf: [512]u8 = undefined;
+        var it = std.mem.splitScalar(u8, keywords, ',');
+        while (it.next()) |raw| {
+            const kw = std.mem.trim(u8, raw, " ");
+            if (kw.len == 0 or kw.len > lower_buf.len) continue;
+            const kw_lower = std.ascii.lowerString(lower_buf[0..kw.len], kw);
+            if (containsIgnoreCase(title, kw_lower) or containsIgnoreCase(body, kw_lower)) return true;
+        }
+        return false;
     }
 
     /// paramux: apply a notification delivered over IPC (from `paramux
@@ -9463,6 +9531,15 @@ const Host = struct {
     peek_hwnd: ?HWND = null,
     peek_text: ?[]u8 = null,
     peek_row: ?usize = null,
+    /// Last find-across-panes query; prefilled on the next find.
+    last_find_query: [128]u8 = undefined,
+    last_find_query_len: usize = 0,
+    /// When this host was last deactivated; drives the
+    /// while-you-were-away digest on return.
+    deactivated_at_ms: i64 = 0,
+    /// Where the hint strip was painted last frame (client coords);
+    /// clicking it runs the hint's action.
+    hint_strip_rect: ?RECT = null,
     banner_kind: HostBannerKind = .none,
     banner_text: ?[:0]const u8 = null,
     update_open_rect: RECT = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 },
@@ -12166,7 +12243,10 @@ const Host = struct {
         return switch (mode) {
             .none => null,
             .command_palette => null,
-            .find_panes => null,
+            .find_panes => if (self.last_find_query_len > 0)
+                self.app.core_app.alloc.dupe(u8, self.last_find_query[0..self.last_find_query_len]) catch null
+            else
+                null,
             .profile => if (self.selectedProfile()) |profile|
                 self.app.core_app.alloc.dupe(u8, profile.key) catch null
             else
@@ -12652,7 +12732,14 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_STRING, CTX_SELECT_ALL, std.unicode.utf8ToUtf16LeStringLiteral("Select All"));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
         _ = AppendMenuW(menu, MF_STRING, CTX_FIND, std.unicode.utf8ToUtf16LeStringLiteral("Find...\tCtrl+Shift+F"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_FIND_PANES, std.unicode.utf8ToUtf16LeStringLiteral("Find in All Panes..."));
+        _ = AppendMenuW(menu, MF_STRING, CTX_FIND_PANES, std.unicode.utf8ToUtf16LeStringLiteral("Find in All Panes...\tCtrl+Alt+F"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_SCROLLBACK_EDITOR, std.unicode.utf8ToUtf16LeStringLiteral("Open Scrollback in Editor"));
+        if (self.activeSurface()) |mute_target| {
+            _ = AppendMenuW(menu, MF_STRING, CTX_MUTE_PANE, if (mute_target.attentionMuted())
+                std.unicode.utf8ToUtf16LeStringLiteral("Unmute Notifications")
+            else
+                std.unicode.utf8ToUtf16LeStringLiteral("Mute Notifications 30 min"));
+        }
         _ = AppendMenuW(menu, MF_STRING, CTX_COMMAND_PALETTE, std.unicode.utf8ToUtf16LeStringLiteral("Command Palette\tCtrl+Shift+P"));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New Workspace\tCtrl+Shift+T"));
@@ -12786,6 +12873,27 @@ const Host = struct {
                     log.warn("find-across-panes overlay failed err={}", .{err});
                 };
             },
+            CTX_MUTE_PANE => {
+                if (self.activeSurface()) |active| {
+                    if (active.attentionMuted()) {
+                        active.attention_mute_until_ms = 0;
+                        self.setBanner(.info, "Notifications unmuted for this pane.") catch {};
+                    } else {
+                        active.attention_mute_until_ms = std.time.milliTimestamp() + 30 * std.time.ms_per_min;
+                        self.setBanner(.info, "Pane notifications muted for 30 minutes.") catch {};
+                    }
+                }
+            },
+            CTX_SCROLLBACK_EDITOR => {
+                if (self.activeSurface()) |active| {
+                    _ = active.core_surface.performBindingAction(
+                        .{ .write_scrollback_file = .open },
+                    ) catch |err| {
+                        log.warn("win32 scrollback-in-editor failed err={}", .{err});
+                        self.setBanner(.err, "Could not export scrollback.") catch {};
+                    };
+                }
+            },
             CTX_SETTINGS => {
                 runUiActionOrLog("context menu settings failed", self.app.openConfig());
             },
@@ -12867,11 +12975,86 @@ const Host = struct {
         _ = InvalidateRect(hwnd, null, 0);
     }
 
+    /// Count panes by alerting attention state across every workspace.
+    fn attentionCounts(self: *Host) struct { waiting: usize, done: usize, err: usize, panes: usize } {
+        var waiting: usize = 0;
+        var done: usize = 0;
+        var err_count: usize = 0;
+        var panes: usize = 0;
+        for (self.tabs.items) |*tab| {
+            var it = tab.tree.iterator();
+            while (it.next()) |leaf| {
+                panes += 1;
+                if (!leaf.view.attention_state.isAlerting()) continue;
+                switch (leaf.view.attention_state) {
+                    .waiting => waiting += 1,
+                    .done => done += 1,
+                    .@"error" => err_count += 1,
+                    else => {},
+                }
+            }
+        }
+        return .{ .waiting = waiting, .done = done, .err = err_count, .panes = panes };
+    }
+
+    /// The while-you-were-away digest: one banner summarizing every
+    /// pane that needs attention right now, with the inbox chord.
+    fn showAttentionDigest(self: *Host) void {
+        const alloc = self.app.core_app.alloc;
+        const c = self.attentionCounts();
+        if (c.waiting + c.done + c.err == 0) {
+            self.setBanner(.info, "All quiet: no panes need attention.") catch {};
+            return;
+        }
+        const message = std.fmt.allocPrint(
+            alloc,
+            "While you were away: {d} waiting \u{00B7} {d} done \u{00B7} {d} failed. Ctrl+Alt+I to review.",
+            .{ c.waiting, c.done, c.err },
+        ) catch return;
+        defer alloc.free(message);
+        self.setBanner(.info, message) catch {};
+    }
+
+    /// The health HUD: a quick snapshot of workspace/pane counts,
+    /// attention totals, process memory, and key paths.
+    fn showHealthHud(self: *Host) void {
+        const alloc = self.app.core_app.alloc;
+        const hwnd = self.hwnd orelse return;
+        const c = self.attentionCounts();
+
+        var mem_mb: u64 = 0;
+        var pmc: PROCESS_MEMORY_COUNTERS = std.mem.zeroes(PROCESS_MEMORY_COUNTERS);
+        pmc.cb = @sizeOf(PROCESS_MEMORY_COUNTERS);
+        if (K32GetProcessMemoryInfo(GetCurrentProcess(), &pmc, pmc.cb) != 0) {
+            mem_mb = pmc.WorkingSetSize / (1024 * 1024);
+        }
+
+        const text_utf8 = std.fmt.allocPrint(
+            alloc,
+            "Workspaces: {d}\nPanes: {d}\nAttention: {d} waiting, {d} done, {d} failed\nMemory (working set): {d} MB\nControl pipe: \\\\.\\pipe\\paramux\nConfig dir: %LOCALAPPDATA%\\paramux\n\nRun `paramux doctor` in a pane for the full hook-integration report.",
+            .{ self.tabs.items.len, c.panes, c.waiting, c.done, c.err, mem_mb },
+        ) catch return;
+        defer alloc.free(text_utf8);
+        const text_w = std.unicode.utf8ToUtf16LeAllocZ(alloc, text_utf8) catch return;
+        defer alloc.free(text_w);
+        _ = MessageBoxW(
+            hwnd,
+            text_w.ptr,
+            std.unicode.utf8ToUtf16LeStringLiteral("Paramux Health"),
+            MB_OK | MB_ICONINFORMATION,
+        );
+    }
+
     /// Search every pane's visible text for `query` (case-insensitive)
     /// and present the matches as a jumpable menu: "2: claude - <line>".
     fn runFindAcrossPanes(self: *Host, query: []const u8) void {
         const alloc = self.app.core_app.alloc;
         const hwnd = self.hwnd orelse return;
+
+        // Remember the query so the next find prefills it.
+        const keep = @min(query.len, self.last_find_query.len);
+        @memcpy(self.last_find_query[0..keep], query[0..keep]);
+        self.last_find_query_len = keep;
 
         const Match = struct { tab_index: usize, surface: *Surface, line: [96]u8, line_len: usize };
         var matches: [24]Match = undefined;
@@ -12899,9 +13082,9 @@ const Host = struct {
                     const lower_line = std.ascii.lowerString(lower_line_buf[0..cap], line[0..cap]);
                     if (std.mem.indexOf(u8, lower_line, lower_query) == null) continue;
                     var m: Match = .{ .tab_index = ti, .surface = leaf.view, .line = undefined, .line_len = 0 };
-                    const keep = @min(line.len, m.line.len);
-                    @memcpy(m.line[0..keep], line[0..keep]);
-                    m.line_len = keep;
+                    const line_keep = @min(line.len, m.line.len);
+                    @memcpy(m.line[0..line_keep], line[0..line_keep]);
+                    m.line_len = line_keep;
                     matches[n] = m;
                     n += 1;
                     if (n >= matches.len) break :outer;
@@ -17105,6 +17288,7 @@ const Host = struct {
                 .right = ps.rcPaint.right - self.scaled(16),
                 .bottom = status_y + self.scaled(14),
             };
+            self.hint_strip_rect = hint_rect;
             _ = SetTextColor(hdc, theme.text_secondary);
             const prev_hint_font: ?HGDIOBJ = if (self.chrome_font_small) |f| SelectObject(hdc, f) else null;
             drawTextWz(
@@ -22282,8 +22466,22 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
             return 0;
         },
         WM_ACTIVATE => {
+            if ((wParam & 0xFFFF) != WA_INACTIVE) {
+                if (host) |v| {
+                    const away_min = v.app.config.@"digest-after-away-minutes";
+                    if (away_min > 0 and v.deactivated_at_ms > 0) {
+                        const away_ms = std.time.milliTimestamp() - v.deactivated_at_ms;
+                        if (away_ms >= @as(i64, away_min) * std.time.ms_per_min) {
+                            const c = v.attentionCounts();
+                            if (c.waiting + c.done + c.err > 0) v.showAttentionDigest();
+                        }
+                    }
+                    v.deactivated_at_ms = 0;
+                }
+            }
             if ((wParam & 0xFFFF) == WA_INACTIVE) {
                 if (host) |v| {
+                    v.deactivated_at_ms = std.time.milliTimestamp();
                     if (v.app.config.@"quick-terminal-autohide") {
                         if (v.app.quickTerminalSurfaceForHost(v)) |surface| {
                             if (surface.window_visible) {
@@ -22875,6 +23073,16 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                         .vertical => IDC_SIZENS,
                     }));
                     return 0;
+                }
+                // Clicking the hint strip runs what it teaches: the
+                // default hint advertises the attention inbox.
+                if (v.hint_strip_rect) |hr| {
+                    if (v.overlay_mode == .none and !v.pane_drag.dragging and !v.split_resize.active and
+                        mx >= hr.left and mx < hr.right and my >= hr.top and my < hr.bottom)
+                    {
+                        v.showAttentionInbox();
+                        return 0;
+                    }
                 }
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
@@ -24650,6 +24858,27 @@ const attention_history_max: usize = 8;
 
 const attention_state_marker = "paramux.state:";
 
+/// Case-insensitive substring check; `needle_lower` must already be
+/// lowercase.
+fn containsIgnoreCase(haystack: []const u8, needle_lower: []const u8) bool {
+    if (needle_lower.len == 0 or haystack.len < needle_lower.len) return false;
+    var i: usize = 0;
+    outer: while (i + needle_lower.len <= haystack.len) : (i += 1) {
+        for (needle_lower, 0..) |nc, j| {
+            if (std.ascii.toLower(haystack[i + j]) != nc) continue :outer;
+        }
+        return true;
+    }
+    return false;
+}
+
+test "containsIgnoreCase basic" {
+    try std.testing.expect(containsIgnoreCase("Allow Git PUSH?", "push"));
+    try std.testing.expect(containsIgnoreCase("PERMISSION required", "permission"));
+    try std.testing.expect(!containsIgnoreCase("done", "error"));
+    try std.testing.expect(!containsIgnoreCase("", "x"));
+}
+
 /// Split an incoming notification title into an optional attention state and the
 /// human-facing title. A title of `paramux.state:<tag>` yields that state and an
 /// empty display title; any other title is a plain notification (state
@@ -24955,6 +25184,8 @@ pub const Surface = struct {
     /// Monotonic stamp of when this pane last entered an alerting
     /// attention state; `goto_attention` jumps to the highest.
     attention_seq: u64 = 0,
+    /// Notifications suppressed until this wall-clock ms (0 = unmuted).
+    attention_mute_until_ms: i64 = 0,
     /// Recent attention transitions (oldest first), capped at
     /// `attention_history_max` - the pane's activity timeline shown in
     /// the Activity submenu and the attention inbox.
@@ -28048,19 +28279,14 @@ pub const Surface = struct {
                 result.append(alloc, ' ') catch continue;
             }
 
-            // Quote paths containing spaces or special characters
-            const needs_quoting = std.mem.indexOfAny(u8, path, " \t'\"\\(){}[]$&;|<>!~`#") != null;
+            // Quote paths containing spaces or shell-special characters.
+            // Double quotes work in cmd, PowerShell, and POSIX shells, and
+            // NTFS forbids '"' in file names, so no escaping is needed.
+            const needs_quoting = std.mem.indexOfAny(u8, path, " \t'(){}[]$&;|<>!~`#") != null;
             if (needs_quoting) {
-                result.append(alloc, '\'') catch continue;
-                // Escape any existing single quotes within the path
-                for (path) |c| {
-                    if (c == '\'') {
-                        result.appendSlice(alloc, "'\\''") catch continue;
-                    } else {
-                        result.append(alloc, c) catch continue;
-                    }
-                }
-                result.append(alloc, '\'') catch continue;
+                result.append(alloc, '"') catch continue;
+                result.appendSlice(alloc, path) catch continue;
+                result.append(alloc, '"') catch continue;
             } else {
                 result.appendSlice(alloc, path) catch continue;
             }
@@ -28447,6 +28673,12 @@ pub const Surface = struct {
         }
     }
 
+    /// True while this pane's notifications are muted (dot still
+    /// paints; toast/flash/focus-follow are suppressed).
+    fn attentionMuted(self: *const Surface) bool {
+        return self.attention_mute_until_ms > std.time.milliTimestamp();
+    }
+
     fn setAttentionState(self: *Surface, state: AttentionState) void {
         if (self.attention_state == state) return;
         self.attention_state = state;
@@ -28456,7 +28688,17 @@ pub const Surface = struct {
             // unhandled pane (the cmux "most recent unread" queue).
             self.app.attention_seq_counter += 1;
             self.attention_seq = self.app.attention_seq_counter;
-            if (self.host) |host| host.flashForAttention();
+            if (!self.attentionMuted()) {
+                if (self.host) |host| host.flashForAttention();
+                // Focus-follows-attention: jump to a pane the moment its
+                // agent starts waiting, but never mid-keystroke.
+                if (state == .waiting and
+                    self.app.config.@"focus-follows-attention" and
+                    userIdleMs() >= 10 * std.time.ms_per_s)
+                {
+                    self.app.activateSurface(self);
+                }
+            }
         }
         self.invalidateStatusBarState();
         if (self.host) |host| host.refreshTabOverviewBanner();

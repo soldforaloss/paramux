@@ -5798,6 +5798,24 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool 
             {},
         ),
 
+        .find_all_panes => return try self.rt_app.performAction(
+            .{ .surface = self },
+            .find_all_panes,
+            {},
+        ),
+
+        .show_digest => return try self.rt_app.performAction(
+            .{ .surface = self },
+            .show_digest,
+            {},
+        ),
+
+        .health_hud => return try self.rt_app.performAction(
+            .{ .surface = self },
+            .health_hud,
+            {},
+        ),
+
         .move_tab => |position| return try self.rt_app.performAction(
             .{ .surface = self },
             .move_tab,

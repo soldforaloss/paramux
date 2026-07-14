@@ -557,6 +557,18 @@ pub const Action = union(enum) {
     /// Enter jumps to the selected pane.
     attention_inbox,
 
+    /// Search the visible text of every pane in every workspace and
+    /// jump to a match. Repeats prefill the previous query.
+    find_all_panes,
+
+    /// Show the while-you-were-away digest: how many panes are
+    /// waiting, done, or errored right now.
+    show_digest,
+
+    /// Show the health HUD: workspace/pane counts, attention totals,
+    /// process memory, and where the config and control pipe live.
+    health_hud,
+
     /// Go to the tab with the specific index, starting from 1.
     ///
     /// If the tab number is higher than the number of tabs,
@@ -1404,6 +1416,9 @@ pub const Action = union(enum) {
             .goto_tab,
             .goto_attention,
             .attention_inbox,
+            .find_all_panes,
+            .show_digest,
+            .health_hud,
             .move_tab,
             .toggle_tab_overview,
             .new_split,

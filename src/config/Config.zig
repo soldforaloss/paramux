@@ -1806,6 +1806,25 @@ class: ?[:0]const u8 = null,
 /// Tables are activated and deactivated using the binding actions
 /// `activate_key_table:<name>` and `deactivate_key_table`. Other table
 /// related binding actions also exist; see the documentation for a full list.
+
+
+/// Automatically focus a pane the moment its agent starts waiting for
+/// input, but only when you have been idle (no keyboard/mouse) for at
+/// least 10 seconds -- it never steals focus mid-keystroke. Off by
+/// default.
+@"focus-follows-attention": bool = false,
+
+/// Show a "while you were away" digest banner when the window regains
+/// focus after being away at least this many minutes, if any panes
+/// need attention. Set to 0 to disable. Ctrl+Alt+D shows the digest on
+/// demand at any time.
+@"digest-after-away-minutes": u32 = 5,
+
+/// Comma-separated, case-insensitive keywords that mark an agent
+/// notification as urgent. Matching notifications use an alarm toast
+/// (audible, breaks through quiet hours) instead of the standard one.
+/// Example: `permission,approve,error`. Empty disables.
+@"attention-alert-keywords": [:0]const u8 = "",
 /// These are the primary way to interact with key tables.
 ///
 /// Binding lookup proceeds from the innermost table outward, so keybinds in
@@ -6096,6 +6115,27 @@ pub const Keybinds = struct {
                 alloc,
                 .{ .key = .{ .unicode = 'i' }, .mods = .{ .ctrl = true, .alt = true } },
                 .{ .attention_inbox = {} },
+                .{ .performable = true },
+            );
+            // Fleet-wide find: search every pane's visible text.
+            try self.set.putFlags(
+                alloc,
+                .{ .key = .{ .unicode = 'f' }, .mods = .{ .ctrl = true, .alt = true } },
+                .{ .find_all_panes = {} },
+                .{ .performable = true },
+            );
+            // While-you-were-away digest.
+            try self.set.putFlags(
+                alloc,
+                .{ .key = .{ .unicode = 'd' }, .mods = .{ .ctrl = true, .alt = true } },
+                .{ .show_digest = {} },
+                .{ .performable = true },
+            );
+            // Health HUD.
+            try self.set.putFlags(
+                alloc,
+                .{ .key = .{ .unicode = 'h' }, .mods = .{ .ctrl = true, .alt = true } },
+                .{ .health_hud = {} },
                 .{ .performable = true },
             );
             try self.set.putFlags(

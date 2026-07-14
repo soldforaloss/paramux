@@ -529,6 +529,24 @@ fn actionCommands(action: Action.Key) []const Command {
             .description = "List every pane that needs attention, newest first, and jump to one.",
         }},
 
+        .find_all_panes => comptime &.{.{
+            .action = .find_all_panes,
+            .title = "Find in All Panes",
+            .description = "Search the visible text of every pane in every workspace and jump to a match.",
+        }},
+
+        .show_digest => comptime &.{.{
+            .action = .show_digest,
+            .title = "Attention Digest",
+            .description = "Show how many panes are waiting, done, or errored right now.",
+        }},
+
+        .health_hud => comptime &.{.{
+            .action = .health_hud,
+            .title = "Health HUD",
+            .description = "Show workspace, pane, attention, and process health at a glance.",
+        }},
+
         .goto_window => comptime &.{
             .{
                 .action = .{ .goto_window = .previous },
