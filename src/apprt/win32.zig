@@ -11,6 +11,7 @@ const configpkg = @import("../config.zig");
 const config_edit = @import("../config/edit.zig");
 const windows_shell = @import("../config/windows_shell.zig");
 const input = @import("../input.zig");
+const command_pkg = @import("../input/command.zig");
 const homedir = @import("../os/homedir.zig");
 const internal_os = @import("../os/main.zig");
 const terminal = @import("../terminal/main.zig");
@@ -738,6 +739,8 @@ const CTX_ATTENTION_BASE: usize = 4300; // attention inbox items: CTX_ATTENTION_
 const CTX_FIND_PANES: usize = 4026;
 const CTX_SCROLLBACK_EDITOR: usize = 4027;
 const CTX_MUTE_PANE: usize = 4028;
+const CTX_NEW_TAB_HERE: usize = 4029;
+const CTX_ACCENT_BASE: usize = 4500; // workspace colors: base + index; base+8 = default
 const CTX_FIND_RESULT_BASE: usize = 4400; // find-across-panes results: base + index
 const SEARCH_BG_ID: usize = 2100;
 const SEARCH_EDIT_ID: usize = 2101;
@@ -9221,6 +9224,10 @@ const TabOverviewEntry = struct {
 const SplitTreeSurface = SplitTree(Surface);
 
 const Tab = struct {
+    /// User-assigned accent color (index into `workspace_accents`);
+    /// null uses the theme accent. Right-click a pane > Workspace Color.
+    accent_index: ?u8 = null,
+
     alloc: Allocator,
     id: u32,
     tree: SplitTreeSurface,
@@ -9537,6 +9544,13 @@ const Host = struct {
     /// When this host was last deactivated; drives the
     /// while-you-were-away digest on return.
     deactivated_at_ms: i64 = 0,
+    /// Scratch for the dynamic (git-prefixed) hint strip text.
+    hint_dynamic_buf: [200:0]u16 = undefined,
+    /// Arena + merged entry arrays backing the command palette's
+    /// dynamic workspace entries; rebuilt on every palette open.
+    palette_dyn_arena: ?std.heap.ArenaAllocator = null,
+    palette_dyn_commands: []const command_pkg.Command = &.{},
+    palette_dyn_cvals: []const command_pkg.Command.C = &.{},
     /// Where the hint strip was painted last frame (client coords);
     /// clicking it runs the hint's action.
     hint_strip_rect: ?RECT = null,
@@ -10350,10 +10364,61 @@ const Host = struct {
     /// Non-owning view over the palette command lists. Lifetime is tied
     /// to `app.config` — do not hold across a reload.
     fn paletteSnapshot(self: *const Host) PaletteSnapshot {
+        if (self.palette_dyn_commands.len > 0) {
+            return .{
+                .commands = self.palette_dyn_commands,
+                .cvals = self.palette_dyn_cvals,
+            };
+        }
         return .{
             .commands = self.app.config.@"command-palette-entry".value.items,
             .cvals = self.app.config.@"command-palette-entry".value_c.items,
         };
+    }
+
+    /// Rebuild the palette's dynamic entries: the config's commands
+    /// plus one "Go to Workspace N" entry per open workspace, so the
+    /// palette doubles as a workspace switcher (type a workspace's
+    /// name or number). Called on every palette open.
+    fn rebuildPaletteDynamicEntries(self: *Host) void {
+        const base = self.app.core_app.alloc;
+        if (self.palette_dyn_arena) |*old| old.deinit();
+        self.palette_dyn_arena = std.heap.ArenaAllocator.init(base);
+        self.palette_dyn_commands = &.{};
+        self.palette_dyn_cvals = &.{};
+        const arena = self.palette_dyn_arena.?.allocator();
+
+        const cfg_cmds = self.app.config.@"command-palette-entry".value.items;
+        const cfg_cvals = self.app.config.@"command-palette-entry".value_c.items;
+        const total = cfg_cmds.len + self.tabs.items.len;
+        var cmds = arena.alloc(command_pkg.Command, total) catch return;
+        var cvals = arena.alloc(command_pkg.Command.C, total) catch return;
+        @memcpy(cmds[0..cfg_cmds.len], cfg_cmds);
+        @memcpy(cvals[0..cfg_cvals.len], cfg_cvals);
+
+        var n: usize = cfg_cmds.len;
+        for (self.tabs.items, 0..) |*tab, ti| {
+            const override: ?[]const u8 = if (tab.focusedSurface()) |fs| fs.tab_title_override else null;
+            const title = (if (override) |name|
+                std.fmt.allocPrintSentinel(arena, "Go to Workspace {d} - {s}", .{ ti + 1, name }, 0)
+            else
+                std.fmt.allocPrintSentinel(arena, "Go to Workspace {d}", .{ti + 1}, 0)) catch break;
+            const action_str = std.fmt.allocPrintSentinel(arena, "goto_tab:{d}", .{ti + 1}, 0) catch break;
+            cmds[n] = .{
+                .action = .{ .goto_tab = ti + 1 },
+                .title = title,
+                .description = "Focus this workspace.",
+            };
+            cvals[n] = .{
+                .action_key = "goto_tab",
+                .action = action_str.ptr,
+                .title = title.ptr,
+                .description = "Focus this workspace.",
+            };
+            n += 1;
+        }
+        self.palette_dyn_commands = cmds[0..n];
+        self.palette_dyn_cvals = cvals[0..n];
     }
 
     // ── Palette list UI ───────────────────────────────────────────────
@@ -10793,6 +10858,12 @@ const Host = struct {
         if (self.peek_text) |t| {
             self.app.core_app.alloc.free(t);
             self.peek_text = null;
+        }
+        if (self.palette_dyn_arena) |*arena| {
+            arena.deinit();
+            self.palette_dyn_arena = null;
+            self.palette_dyn_commands = &.{};
+            self.palette_dyn_cvals = &.{};
         }
 
         destroyChildWindow(&self.palette_list_hwnd);
@@ -12043,6 +12114,9 @@ const Host = struct {
 
     fn showOverlay(self: *Host, mode: HostOverlayMode, initial: ?[]const u8) !void {
         try self.ensureOverlayControls();
+        // Refresh the palette's dynamic workspace entries at open so
+        // "Go to Workspace N" reflects the live workspace list.
+        if (mode == .command_palette) self.rebuildPaletteDynamicEntries();
         self.overlay_mode = mode;
         self.clearOverlayCompletion();
         try self.setOverlayDefaultBanner(mode);
@@ -12743,6 +12817,27 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_STRING, CTX_COMMAND_PALETTE, std.unicode.utf8ToUtf16LeStringLiteral("Command Palette\tCtrl+Shift+P"));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New Workspace\tCtrl+Shift+T"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB_HERE, std.unicode.utf8ToUtf16LeStringLiteral("New Workspace Here (same folder)"));
+        if (CreatePopupMenu()) |accent_menu| {
+            for (workspace_accent_names, 0..) |name, ai| {
+                var label_buf: [32]u8 = undefined;
+                const label = std.fmt.bufPrint(&label_buf, "{s}", .{name}) catch continue;
+                var label_w: [32:0]u16 = undefined;
+                const wlen = std.unicode.utf8ToUtf16Le(&label_w, label) catch continue;
+                label_w[wlen] = 0;
+                const checked: UINT = blk: {
+                    if (self.active_tab < self.tabs.items.len) {
+                        if (self.tabs.items[self.active_tab].accent_index) |cur| {
+                            if (cur == ai) break :blk MF_CHECKED;
+                        }
+                    }
+                    break :blk 0;
+                };
+                _ = AppendMenuW(accent_menu, MF_STRING | checked, CTX_ACCENT_BASE + ai, @ptrCast(&label_w));
+            }
+            _ = AppendMenuW(accent_menu, MF_STRING, CTX_ACCENT_BASE + workspace_accents.len, std.unicode.utf8ToUtf16LeStringLiteral("Default"));
+            _ = AppendMenuW(menu, MF_POPUP, @intFromPtr(accent_menu), std.unicode.utf8ToUtf16LeStringLiteral("Workspace Color"));
+        }
         _ = AppendMenuW(menu, MF_STRING, CTX_TAB_OVERVIEW, std.unicode.utf8ToUtf16LeStringLiteral("Workspaces..."));
 
         // Split directions as direct, top-level items (not a buried submenu) so
@@ -12873,6 +12968,28 @@ const Host = struct {
                     log.warn("find-across-panes overlay failed err={}", .{err});
                 };
             },
+            CTX_ACCENT_BASE...CTX_ACCENT_BASE + workspace_accents.len => |picked| {
+                if (self.active_tab < self.tabs.items.len) {
+                    const pick = picked - CTX_ACCENT_BASE;
+                    self.tabs.items[self.active_tab].accent_index = if (pick >= workspace_accents.len)
+                        null
+                    else
+                        @intCast(pick);
+                    self.invalidateSidebar();
+                }
+            },
+            CTX_NEW_TAB_HERE => {
+                self.postDeferredNewTab();
+                if (self.activeSurface()) |src| {
+                    if (src.pwd) |dir| {
+                        const alloc2 = self.app.core_app.alloc;
+                        if (std.fmt.allocPrint(alloc2, "New workspace opens in {s}", .{dir})) |msg| {
+                            defer alloc2.free(msg);
+                            self.setBanner(.info, msg) catch {};
+                        } else |_| {}
+                    }
+                }
+            },
             CTX_MUTE_PANE => {
                 if (self.activeSurface()) |active| {
                     if (active.attentionMuted()) {
@@ -12964,7 +13081,20 @@ const Host = struct {
             return std.unicode.utf8ToUtf16LeStringLiteral("Drop: edges dock \u{00B7} center swaps");
         if (self.split_resize.active)
             return std.unicode.utf8ToUtf16LeStringLiteral("Drag to resize");
-        return std.unicode.utf8ToUtf16LeStringLiteral("Ctrl+Alt+I inbox \u{00B7} Ctrl+Alt+U attention \u{00B7} Ctrl+Shift+P palette");
+        // Default hint, prefixed with the focused pane's git branch
+        // when one is known: the status bar doubles as a git segment.
+        const fallback = std.unicode.utf8ToUtf16LeStringLiteral("Ctrl+Alt+I inbox \u{00B7} Ctrl+Alt+U attention \u{00B7} Ctrl+Shift+P palette");
+        const surface = self.activeSurface() orelse return fallback;
+        const branch = surface.git_branch orelse return fallback;
+        var utf8_buf: [160]u8 = undefined;
+        const text = std.fmt.bufPrint(
+            &utf8_buf,
+            "\u{2387} {s}{s}  \u{00B7}  Ctrl+Alt+I inbox \u{00B7} Ctrl+Alt+U attention",
+            .{ branch[0..@min(branch.len, 40)], if (surface.git_dirty) "*" else "" },
+        ) catch return fallback;
+        const wlen = std.unicode.utf8ToUtf16Le(self.hint_dynamic_buf[0..199], text) catch return fallback;
+        self.hint_dynamic_buf[wlen] = 0;
+        return self.hint_dynamic_buf[0..wlen :0];
     }
 
     /// Repaint the chrome when the hint-strip state flips (drag/resize
@@ -16272,9 +16402,18 @@ const Host = struct {
                     const tab = &self.tabs.items[row.tab_index];
                     const prev_hdr_font: ?HGDIOBJ = if (self.chrome_font_semibold) |f| SelectObject(hdc, f) else null;
                     defer if (prev_hdr_font) |f| { _ = SelectObject(hdc, f); };
+                    const ws_accent: u32 = if (tab.accent_index) |ai|
+                        workspace_accents[ai % workspace_accents.len]
+                    else
+                        theme.accent;
                     if (active_ws) {
                         fillSolidRect(hdc, .{ .left = rect.left, .top = row.y, .right = rect.right - border, .bottom = row_bottom }, theme.button_active_bg);
-                        fillSolidRect(hdc, .{ .left = rect.left, .top = row.y, .right = rect.left + stripe_w, .bottom = row_bottom }, theme.accent);
+                        fillSolidRect(hdc, .{ .left = rect.left, .top = row.y, .right = rect.left + stripe_w, .bottom = row_bottom }, ws_accent);
+                    } else if (tab.accent_index != null) {
+                        // Assigned colors stay visible on inactive
+                        // workspaces -- that is the grouping cue.
+                        fillSolidRect(hdc, .{ .left = rect.left, .top = row.y, .right = rect.left + stripe_w, .bottom = row_bottom }, ws_accent);
+                        if (hovered) fillSolidRect(hdc, .{ .left = rect.left + stripe_w, .top = row.y, .right = rect.right - border, .bottom = row_bottom }, blendColorRGB(theme.chrome_bg, theme.text_primary, 0.05));
                     } else if (hovered) {
                         fillSolidRect(hdc, .{ .left = rect.left, .top = row.y, .right = rect.right - border, .bottom = row_bottom }, blendColorRGB(theme.chrome_bg, theme.text_primary, 0.05));
                     }
@@ -24857,6 +24996,20 @@ const AttentionEvent = struct {
 const attention_history_max: usize = 8;
 
 const attention_state_marker = "paramux.state:";
+
+/// The 8 assignable workspace accent colors (COLORREF 0x00BBGGRR).
+/// Curated to read on both dark and light chrome.
+const workspace_accents = [_]u32{
+    0x00E09C56, // blue
+    0x0092BE5E, // green
+    0x0050A8DE, // amber
+    0x00DC84A8, // violet
+    0x006C6CE0, // red
+    0x00BABA48, // teal
+    0x00AA70D6, // pink
+    0x009E9696, // gray
+};
+const workspace_accent_names = [_][]const u8{ "Blue", "Green", "Amber", "Violet", "Red", "Teal", "Pink", "Gray" };
 
 /// Case-insensitive substring check; `needle_lower` must already be
 /// lowercase.
