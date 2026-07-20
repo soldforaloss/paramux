@@ -108,6 +108,7 @@ const COMBO_CLIPBOARD_WRITE: usize = 423;
 const COMBO_LINK_URL: usize = 424;
 const COMBO_LINK_PREVIEWS: usize = 425;
 const EDIT_THEME_SEARCH: usize = 426;
+const EDIT_SETTINGS_SEARCH: usize = 435;
 const LIST_THEMES: usize = 427;
 const CHK_EXPLORER_MENU: usize = 428;
 const EDIT_DIGEST_MIN: usize = 429;
@@ -541,7 +542,9 @@ pub const SettingsWindow = struct {
     btn_section_keybindings: ?HWND = null,
     btn_section_windows: ?HWND = null,
     btn_section_advanced: ?HWND = null,
+    btn_section_agents: ?HWND = null,
     edit_theme_search: ?HWND = null,
+    edit_settings_search: ?HWND = null,
     list_themes: ?HWND = null,
     chk_explorer_menu: ?HWND = null,
     /// Theme catalogue backing the picker. All entry strings live in
@@ -622,6 +625,7 @@ pub const SettingsWindow = struct {
         self.btn_section_keybindings = null;
         self.btn_section_windows = null;
         self.btn_section_advanced = null;
+        self.btn_section_agents = null;
         self.edit_theme_search = null;
         self.list_themes = null;
         self.chk_explorer_menu = null;
@@ -681,6 +685,7 @@ pub const SettingsWindow = struct {
         self.btn_section_keybindings = null;
         self.btn_section_windows = null;
         self.btn_section_advanced = null;
+        self.btn_section_agents = null;
         self.edit_theme_search = null;
         self.list_themes = null;
         self.chk_explorer_menu = null;
@@ -724,6 +729,7 @@ pub const SettingsWindow = struct {
             .keybindings => self.btn_section_keybindings,
             .windows => self.btn_section_windows,
             .advanced => self.btn_section_advanced,
+            .agents => self.btn_section_agents,
         };
     }
 
@@ -757,6 +763,7 @@ pub const SettingsWindow = struct {
             self.btn_section_terminal,   self.btn_section_shell,
             self.btn_section_keybindings, self.btn_section_windows,
             self.btn_section_advanced,
+            self.btn_section_agents,
         }) |maybe_btn| {
             if (maybe_btn) |btn| _ = InvalidateRect(btn, null, 1);
         }
@@ -1587,6 +1594,20 @@ pub const SettingsWindow = struct {
         return p.@"new-workspace-layout";
     }
 
+    /// Rail search: activate the first section matching the query.
+    fn jumpToSearchedSection(self: *SettingsWindow) void {
+        if (self.suppress_edit_events) return;
+        const edit = self.edit_settings_search orelse return;
+        var buf_w: [64]u16 = undefined;
+        const n = GetWindowTextW(edit, &buf_w, @intCast(buf_w.len));
+        if (n <= 0) return;
+        var utf8_buf: [128]u8 = undefined;
+        const len = std.unicode.utf16LeToUtf8(&utf8_buf, buf_w[0..@intCast(n)]) catch return;
+        const trimmed = std.mem.trim(u8, utf8_buf[0..len], " ");
+        const section = sectionMatchingQuery(trimmed) orelse return;
+        if (self.active_section != section) self.setActiveSection(section);
+    }
+
     fn syncAgentNumberFromEdit(self: *SettingsWindow, edit_opt: ?HWND, comptime field: []const u8, comptime T: type) void {
         if (self.suppress_edit_events) return;
         const p = &(self.pending orelse return);
@@ -1923,6 +1944,7 @@ pub const SettingsWindow = struct {
         self.btn_section_shell = makeSectionButton(hwnd, self.handle.hinstance, btn_class, Section.shell);
         self.btn_section_keybindings = makeSectionButton(hwnd, self.handle.hinstance, btn_class, Section.keybindings);
         self.btn_section_windows = makeSectionButton(hwnd, self.handle.hinstance, btn_class, Section.windows);
+        self.btn_section_agents = makeSectionButton(hwnd, self.handle.hinstance, btn_class, Section.agents);
         self.btn_section_advanced = makeSectionButton(hwnd, self.handle.hinstance, btn_class, Section.advanced);
 
         // "Open in default editor" button — escape hatch for users
@@ -2144,6 +2166,7 @@ pub const SettingsWindow = struct {
             &.{ "bar", "block", "underline", "block_hollow" },
         );
 
+        self.edit_settings_search = makeEdit(hwnd, self.handle.hinstance, EDIT_SETTINGS_SEARCH, 160, 0);
         self.edit_digest_min = makeEdit(hwnd, self.handle.hinstance, EDIT_DIGEST_MIN, 120, ES_NUMBER);
         self.edit_alert_keywords = makeEdit(hwnd, self.handle.hinstance, EDIT_ALERT_KEYWORDS, 320, 0);
         self.edit_token_budget = makeEdit(hwnd, self.handle.hinstance, EDIT_TOKEN_BUDGET, 140, ES_NUMBER);
@@ -2443,6 +2466,33 @@ const advanced_rows = [_]SectionRow{
     .{ .label = "Full config editor", .w = 220, .h = 32 },
 };
 
+/// Keywords per section for the rail search box; first section whose
+/// name or keywords contain the query becomes active.
+fn sectionSearchBlob(section: Section) []const u8 {
+    return switch (section) {
+        .appearance => "appearance font size theme opacity cursor padding blur",
+        .theme => "theme colors swatch dark light import",
+        .terminal => "terminal scrollback confirm close copy clipboard link notifications",
+        .shell => "shell command integration powershell wsl",
+        .keybindings => "keybindings shortcuts chords keys",
+        .windows => "windows explorer context menu integration",
+        .agents => "agents digest keywords token budget restart layout focus attention webhook",
+        .advanced => "advanced update channel editor config",
+    };
+}
+
+fn sectionMatchingQuery(query: []const u8) ?Section {
+    if (query.len == 0) return null;
+    var lower_buf: [64]u8 = undefined;
+    if (query.len > lower_buf.len) return null;
+    const q = std.ascii.lowerString(&lower_buf, query);
+    inline for (@typeInfo(Section).@"enum".fields) |field| {
+        const section: Section = @enumFromInt(field.value);
+        if (std.mem.indexOf(u8, sectionSearchBlob(section), q) != null) return section;
+    }
+    return null;
+}
+
 fn sectionGridRows(section: Section) []const SectionRow {
     return switch (section) {
         .terminal => &terminal_rows,
@@ -2572,6 +2622,10 @@ fn layoutChildren(self: *SettingsWindow) void {
     const btn_x: i32 = side_pad;
     const btn_w: i32 = left_rail_width - side_pad - side_pad;
     var y: i32 = section_btn_top_pad;
+    if (self.edit_settings_search) |search_edit| {
+        _ = MoveWindow(search_edit, btn_x, y, btn_w, 26, 1);
+        y += 26 + section_btn_gap * 2;
+    }
     for ([_]?HWND{
         self.btn_section_appearance,
         self.btn_section_theme,
@@ -2579,6 +2633,7 @@ fn layoutChildren(self: *SettingsWindow) void {
         self.btn_section_shell,
         self.btn_section_keybindings,
         self.btn_section_windows,
+        self.btn_section_agents,
         self.btn_section_advanced,
     }) |btn_opt| {
         if (btn_opt) |btn| {
@@ -2734,6 +2789,10 @@ fn wndProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.wina
             }
             if (id == BTN_SAVE) {
                 if (owner) |o| o.save();
+                return 0;
+            }
+            if (id == EDIT_SETTINGS_SEARCH and notify == EN_CHANGE) {
+                if (owner) |o| o.jumpToSearchedSection();
                 return 0;
             }
             if (id == EDIT_DIGEST_MIN and notify == EN_CHANGE) {
