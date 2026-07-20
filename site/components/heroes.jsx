@@ -20,7 +20,8 @@ export function HeroColorPop() {
           <p className="wg-hero__caption">
             Paramux is a native Windows command center for parallel coding agents: cmux/tmux/wmux-inspired
             panes and workspaces, live sidebar metadata, four-state attention, and local automation on
-            Ghostty&apos;s GPU terminal core.
+            Ghostty&apos;s GPU terminal core.{' '}
+            <a href="https://github.com/soldforaloss/paramux#readme">See a real capture in the README.</a>
           </p>
         </div>
 
