@@ -93,8 +93,8 @@ pub fn run(alloc: Allocator) !u8 {
 
     if (opts.check) {
         try stdout.print(
-            "Update available: {s} -> {s}\nRun `paramux update` to apply it.\n",
-            .{ build_config.version_string, release.version_text },
+            "Update available: {s} -> {s}\nRelease notes: {s}\nRun `paramux update` to apply it.\n",
+            .{ build_config.version_string, release.version_text, release.release_url },
         );
         return 0;
     }
@@ -115,6 +115,7 @@ pub fn run(alloc: Allocator) !u8 {
     };
     defer alloc.free(state_path);
 
+    try stdout.print("Release notes: {s}\n", .{release.release_url});
     try stdout.print("Downloading and verifying {s} ...\n", .{release.version_text});
     try stdout.flush();
     var staged = github_releases.stagePortableUpdate(alloc, state_path, &release) catch |err| {
