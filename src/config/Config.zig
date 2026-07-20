@@ -1820,6 +1820,12 @@ class: ?[:0]const u8 = null,
 /// demand at any time.
 @"digest-after-away-minutes": u32 = 5,
 
+/// Automatically restart a pane whose process exits with a non-zero
+/// code, up to this many times over the pane's lifetime (a fresh
+/// auto-placed shell opens in the same folder; the dead pane closes).
+/// 0 disables. Clean exits (code 0) never auto-restart.
+@"pane-auto-restart": u32 = 0,
+
 /// Alert when a pane's reported agent-session token total crosses
 /// this threshold: an urgent (audible) toast fires once per crossing.
 /// 0 disables. Requires the Claude Stop hook's token reporting.

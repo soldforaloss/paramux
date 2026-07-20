@@ -748,6 +748,7 @@ const CTX_SCROLL_BOTTOM: usize = 4033;
 const CTX_WHATS_NEW: usize = 4034;
 const CTX_COPY_FLEET: usize = 4035;
 const CTX_BROADCAST: usize = 4036;
+const CTX_OPEN_DATA_DIR: usize = 4039;
 const CTX_RESTART_PANE: usize = 4037;
 const CTX_WORKTREE_SEED: usize = 4038;
 const CTX_RATIO_BASE: usize = 4720; // split ratio presets: base + index
@@ -8628,6 +8629,26 @@ pub const App = struct {
         if (self.findSurfaceForTarget(target)) |surface| {
             surface.setLastNotification("", message) catch {};
             surface.setAttentionState(if (exited.exit_code == 0) .done else .@"error");
+
+            // Crash-loop-guarded auto-restart: respawn a shell in the
+            // same folder for non-zero exits, up to the configured cap.
+            const cap = self.config.@"pane-auto-restart";
+            if (cap > 0 and exited.exit_code != 0 and surface.restart_count < cap) {
+                surface.restart_count += 1;
+                if (surface.host) |host| {
+                    self.activateSurface(surface);
+                    host.addTerminalAutoPlaced();
+                    _ = surface.core_surface.performBindingAction(.{ .close_surface = {} }) catch {};
+                    var restart_buf: [96]u8 = undefined;
+                    const note = std.fmt.bufPrint(
+                        &restart_buf,
+                        "Pane crashed (code {d}) - restarted ({d}/{d}).",
+                        .{ exited.exit_code, surface.restart_count, cap },
+                    ) catch "Pane crashed - restarted.";
+                    host.setBanner(.err, note) catch {};
+                    return;
+                }
+            }
         }
 
         if (try self.showHostBanner(target, .info, message)) return;
@@ -13983,6 +14004,7 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_STRING, CTX_HELP_SHORTCUTS, std.unicode.utf8ToUtf16LeStringLiteral("Keyboard Shortcuts"));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
         _ = AppendMenuW(menu, MF_STRING, CTX_HELP_DOCS, std.unicode.utf8ToUtf16LeStringLiteral("Documentation (GitHub)"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_OPEN_DATA_DIR, std.unicode.utf8ToUtf16LeStringLiteral("Open Data Folder (config, logs, crashes)"));
         _ = AppendMenuW(menu, MF_STRING, CTX_HELP_ABOUT, std.unicode.utf8ToUtf16LeStringLiteral("About Paramux"));
 
         _ = SetForegroundWindow(hwnd);
@@ -14013,6 +14035,16 @@ const Host = struct {
                 const url = std.unicode.utf8ToUtf16LeStringLiteral("https://github.com/soldforaloss/paramux#readme");
                 const result = ShellExecuteW(null, shell_open, url, null, null, SW_SHOW);
                 if (@intFromPtr(result) <= 32) log.warn("help docs open failed code={d}", .{@intFromPtr(result)});
+            },
+            CTX_OPEN_DATA_DIR => {
+                const alloc2 = self.app.core_app.alloc;
+                const local = std.process.getEnvVarOwned(alloc2, "LOCALAPPDATA") catch return;
+                defer alloc2.free(local);
+                const dir = std.fs.path.join(alloc2, &.{ local, "paramux" }) catch return;
+                defer alloc2.free(dir);
+                const dir_w = std.unicode.utf8ToUtf16LeAllocZ(alloc2, dir) catch return;
+                defer alloc2.free(dir_w);
+                _ = ShellExecuteW(null, shell_open, dir_w.ptr, null, null, SW_SHOW);
             },
             CTX_WHATS_NEW => {
                 var url_buf: [128]u8 = undefined;
@@ -26068,6 +26100,8 @@ pub const Surface = struct {
     /// One-shot guard for the stuck-agent nudge; reset on any state
     /// change via recordAttentionEvent.
     stuck_nudged: bool = false,
+    /// Lifetime auto-restart count for pane-auto-restart.
+    restart_count: u32 = 0,
     /// Recent attention transitions (oldest first), capped at
     /// `attention_history_max` - the pane's activity timeline shown in
     /// the Activity submenu and the attention inbox.
