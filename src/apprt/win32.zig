@@ -750,6 +750,8 @@ const CTX_COPY_FLEET: usize = 4035;
 const CTX_BROADCAST: usize = 4036;
 const CTX_OPEN_DATA_DIR: usize = 4039;
 const CTX_PIN_PANE: usize = 4040;
+const CTX_PROMPT_PREV: usize = 4041;
+const CTX_PROMPT_NEXT: usize = 4042;
 const CTX_RESTART_PANE: usize = 4037;
 const CTX_WORKTREE_SEED: usize = 4038;
 const CTX_RATIO_BASE: usize = 4720; // split ratio presets: base + index
@@ -12451,6 +12453,7 @@ const Host = struct {
                 self.app.core_app.alloc.dupe(u8, self.last_find_query[0..self.last_find_query_len]) catch null
             else
                 null,
+            .worktree_branch => null,
             .profile => if (self.selectedProfile()) |profile|
                 self.app.core_app.alloc.dupe(u8, profile.key) catch null
             else
@@ -12535,6 +12538,12 @@ const Host = struct {
                 label_hwnd,
                 &self.cached_overlay_label,
                 "Find in all panes",
+            ),
+            .worktree_branch => return try syncWindowTextUtf8Cached(
+                alloc,
+                label_hwnd,
+                &self.cached_overlay_label,
+                "New workspace from branch",
             ),
             .command_palette => {
                 const text = std.mem.trim(u8, try overlayEditText(self), " \t\r\n");
@@ -12947,6 +12956,8 @@ const Host = struct {
             _ = AppendMenuW(ratio_menu, MF_STRING, CTX_RATIO_BASE + 2, std.unicode.utf8ToUtf16LeStringLiteral("30 / 70"));
             _ = AppendMenuW(menu, MF_POPUP, @intFromPtr(ratio_menu), std.unicode.utf8ToUtf16LeStringLiteral("Split Ratio"));
         }
+        _ = AppendMenuW(menu, MF_STRING, CTX_PROMPT_PREV, std.unicode.utf8ToUtf16LeStringLiteral("Previous Command Output"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_PROMPT_NEXT, std.unicode.utf8ToUtf16LeStringLiteral("Next Command Output"));
         _ = AppendMenuW(menu, MF_STRING, CTX_SCROLL_TOP, std.unicode.utf8ToUtf16LeStringLiteral("Scroll to Top"));
         _ = AppendMenuW(menu, MF_STRING, CTX_SCROLL_BOTTOM, std.unicode.utf8ToUtf16LeStringLiteral("Scroll to Bottom"));
         _ = AppendMenuW(menu, MF_STRING, CTX_COPY_FLEET, std.unicode.utf8ToUtf16LeStringLiteral("Copy Fleet Status"));
@@ -13198,6 +13209,16 @@ const Host = struct {
             CTX_COPY_FLEET => {
                 self.copyFleetStatus();
             },
+            CTX_PROMPT_PREV => {
+                if (self.activeSurface()) |active| {
+                    _ = active.core_surface.performBindingAction(.{ .jump_to_prompt = -1 }) catch {};
+                }
+            },
+            CTX_PROMPT_NEXT => {
+                if (self.activeSurface()) |active| {
+                    _ = active.core_surface.performBindingAction(.{ .jump_to_prompt = 1 }) catch {};
+                }
+            },
             CTX_SCROLL_TOP => {
                 if (self.activeSurface()) |active| {
                     _ = active.core_surface.performBindingAction(.{ .scroll_to_top = {} }) catch {};
@@ -13223,19 +13244,9 @@ const Host = struct {
                 }
             },
             CTX_WORKTREE_SEED => {
-                // v1 of worktree workspaces: pre-type the git command in
-                // this pane (complete the branch, Enter, then use New
-                // Workspace Here from the new folder).
-                if (self.activeSurface()) |active| {
-                    const alloc2 = self.app.core_app.alloc;
-                    const repo = if (active.pwd) |pwd| std.fs.path.basename(pwd) else "repo";
-                    const seed = std.fmt.allocPrint(alloc2, "git worktree add \"../{s}-\" ", .{repo}) catch return;
-                    defer alloc2.free(seed);
-                    var ev: input.KeyEvent = .{ .action = .press, .key = .unidentified, .mods = .{} };
-                    ev.utf8 = seed;
-                    _ = active.core_surface.keyCallback(ev) catch {};
-                    self.setBanner(.info, "Finish the branch name and press Enter; then right-click > New Workspace Here from the new folder.") catch {};
-                }
+                self.showOverlay(.worktree_branch, null) catch |err| {
+                    log.warn("worktree overlay failed err={}", .{err});
+                };
             },
             CTX_MUTE_PANE => {
                 if (self.activeSurface()) |active| {
@@ -13465,6 +13476,50 @@ const Host = struct {
         var msg_buf: [72]u8 = undefined;
         const msg = std.fmt.bufPrint(&msg_buf, "Layout {d} applied as a new workspace.", .{slot + 1}) catch "Layout applied.";
         self.setBanner(.info, msg) catch {};
+    }
+
+    /// Run `git worktree add` for `branch` in the focused pane (typed
+    /// + Enter, so the user sees the output), then explain the next
+    /// step. Branch names are sanitized to git-safe characters.
+    fn runWorktreeAdd(self: *Host, branch: []const u8) void {
+        const active = self.activeSurface() orelse return;
+        var clean_buf: [64]u8 = undefined;
+        var n: usize = 0;
+        for (branch) |c| {
+            if (n >= clean_buf.len) break;
+            const ok = (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or
+                (c >= '0' and c <= '9') or c == '-' or c == '_' or c == '/' or c == '.';
+            if (!ok) continue;
+            clean_buf[n] = c;
+            n += 1;
+        }
+        if (n == 0) {
+            self.setBanner(.err, "Branch name has no usable characters.") catch {};
+            return;
+        }
+        const clean = clean_buf[0..n];
+        const alloc = self.app.core_app.alloc;
+        const repo = if (active.pwd) |pwd| std.fs.path.basename(pwd) else "repo";
+        var slash_free_buf: [64]u8 = undefined;
+        const slash_free = blk: {
+            var m: usize = 0;
+            for (clean) |c| {
+                if (m >= slash_free_buf.len) break;
+                slash_free_buf[m] = if (c == '/') '-' else c;
+                m += 1;
+            }
+            break :blk slash_free_buf[0..m];
+        };
+        const cmd = std.fmt.allocPrint(
+            alloc,
+            "git worktree add \"../{s}-{s}\" \"{s}\" || git worktree add -b \"{s}\" \"../{s}-{s}\"\r",
+            .{ repo, slash_free, clean, clean, repo, slash_free },
+        ) catch return;
+        defer alloc.free(cmd);
+        var ev: input.KeyEvent = .{ .action = .press, .key = .unidentified, .mods = .{} };
+        ev.utf8 = cmd;
+        _ = active.core_surface.keyCallback(ev) catch {};
+        self.setBanner(.info, "Worktree command running. When it finishes: right-click > New Workspace Here from the new folder.") catch {};
     }
 
     /// Copy a markdown snapshot of every workspace and pane (state,
@@ -15642,6 +15697,10 @@ const Host = struct {
                 self.layout() catch {};
                 self.runFindAcrossPanes(text);
                 return true;
+            },
+            .worktree_branch => {
+                if (text.len == 0) return false;
+                self.runWorktreeAdd(text);
             },
             .confirm => {
                 // Enter maps to Accept.
@@ -21675,6 +21734,7 @@ fn buildOverlayPaintLabelText(
         .none => try alloc.dupe(u8, ""),
         .surface_title => try alloc.dupe(u8, "Window title"),
         .find_panes => try alloc.dupe(u8, "Find in all panes"),
+        .worktree_branch => try alloc.dupe(u8, "New workspace from branch"),
         .tab_title => try alloc.dupe(u8, "Tab title"),
         .command_palette => try buildCommandPaletteOverlayLabel(alloc, palette, input_text),
         .profile => try alloc.dupe(u8, "Profile"),
@@ -21753,6 +21813,7 @@ fn buildOverlayAcceptLabel(
             break :blk try alloc.dupe(u8, "Find");
         },
         .find_panes => try alloc.dupe(u8, "Search"),
+        .worktree_branch => try alloc.dupe(u8, "Create"),
         .surface_title, .tab_title => if (input_text.len == 0)
             try alloc.dupe(u8, "Close")
         else
@@ -21820,6 +21881,7 @@ fn buildOverlayHintText(
         },
         .surface_title => try alloc.dupe(u8, "Apply a window title override for this host. Submit empty text to clear it."),
         .find_panes => try alloc.dupe(u8, "Search the visible text of every pane in every workspace."),
+        .worktree_branch => try alloc.dupe(u8, "Runs git worktree add for this branch in the current pane; then use New Workspace Here from the new folder."),
         .tab_title => blk: {
             if (pane_count > 1) {
                 break :blk try std.fmt.allocPrint(
@@ -21878,6 +21940,7 @@ fn overlayCancelLabel(mode: HostOverlayMode) []const u8 {
         .command_palette, .profile, .search, .tab_overview => "Close",
         .surface_title, .tab_title => "Cancel",
         .find_panes => "Cancel",
+        .worktree_branch => "Cancel",
         // Confirm overlays override this via the payload.
         .confirm => "Cancel",
     };
