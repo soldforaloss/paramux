@@ -159,7 +159,7 @@ fn runArgs(
 }
 
 /// Every pane surface id in the running instance, in listing order.
-fn collectSurfaceIds(alloc: Allocator, target: apprt.ipc.Target) ![]u64 {
+pub fn collectSurfaceIds(alloc: Allocator, target: apprt.ipc.Target) ![]u64 {
     const payload = (try apprt.App.queryAutomationWindowList(alloc, target)) orelse
         return error.NoInstance;
     defer alloc.free(payload);
@@ -203,6 +203,37 @@ fn collectSurfaceIds(alloc: Allocator, target: apprt.ipc.Target) ![]u64 {
             }
         },
         else => return error.BadSchema,
+    }
+    return try ids.toOwnedSlice(alloc);
+}
+
+/// Pane surface ids of the ACTIVE workspace in the focused window.
+pub fn collectActiveTabSurfaceIds(alloc: Allocator, target: apprt.ipc.Target) ![]u64 {
+    const payload = (try apprt.App.queryAutomationWindowList(alloc, target)) orelse
+        return error.NoInstance;
+    defer alloc.free(payload);
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, payload, .{});
+    defer parsed.deinit();
+
+    var ids: std.ArrayListUnmanaged(u64) = .empty;
+    const windows = parsed.value.object.get("windows") orelse return error.BadSchema;
+    for (windows.array.items) |win| {
+        const focused = if (win.object.get("focused")) |v| v.bool else false;
+        if (!focused) continue;
+        const tabs = win.object.get("tabs") orelse continue;
+        for (tabs.array.items) |tab| {
+            const active = if (tab.object.get("active")) |v| v.bool else false;
+            if (!active) continue;
+            const panes = tab.object.get("panes") orelse continue;
+            for (panes.array.items) |pane| {
+                if (pane.object.get("surface_id")) |sid| {
+                    switch (sid) {
+                        .integer => |v| try ids.append(alloc, @intCast(v)),
+                        else => {},
+                    }
+                }
+            }
+        }
     }
     return try ids.toOwnedSlice(alloc);
 }

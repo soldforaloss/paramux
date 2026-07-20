@@ -10,6 +10,9 @@ pub const Options = struct {
     _arena: ?ArenaAllocator = null,
     class: ?[:0]const u8 = null,
     @"surface-id": ?u64 = null,
+    /// Deliver the payload to EVERY pane in the active workspace of
+    /// the focused window instead of one pane (broadcast for scripts).
+    @"all-panes": bool = false,
 
     pub fn deinit(self: *Options) void {
         if (self._arena) |arena| arena.deinit();
@@ -81,6 +84,10 @@ fn runArgsWithPerform(
                 opts.class = try opts_alloc.dupeZ(u8, std.mem.trim(u8, class, &std.ascii.whitespace));
                 continue;
             }
+            if (std.mem.eql(u8, arg, "--all-panes")) {
+                opts.@"all-panes" = true;
+                continue;
+            }
             if (lib.cutPrefix(u8, arg, "--surface-id=")) |raw| {
                 opts.@"surface-id" = std.fmt.parseInt(u64, std.mem.trim(u8, raw, &std.ascii.whitespace), 10) catch {
                     try stderr.print("+send: invalid --surface-id value: {s}\n", .{raw});
@@ -120,9 +127,30 @@ fn runArgsWithPerform(
         return 1;
     }
 
+    const ipc_target: apprt.ipc.Target = if (opts.class) |class| .{ .class = class } else .detect;
+    if (opts.@"all-panes") {
+        const run_helpers = @import("run.zig");
+        const ids = run_helpers.collectActiveTabSurfaceIds(alloc, ipc_target) catch |err| {
+            try stderr.print("could not enumerate the active workspace's panes: {}\n", .{err});
+            return 1;
+        };
+        defer alloc.free(ids);
+        if (ids.len == 0) {
+            try stderr.writeAll("the active workspace has no panes.\n");
+            return 1;
+        }
+        var ok: usize = 0;
+        for (ids) |id| {
+            const one = perform(alloc, ipc_target, .{ .surface_id = id }, value) catch false;
+            if (one) ok += 1;
+        }
+        try stderr.print("delivered to {d}/{d} panes.\n", .{ ok, ids.len });
+        return if (ok > 0) 0 else 1;
+    }
+
     const delivered = perform(
         alloc,
-        if (opts.class) |class| .{ .class = class } else .detect,
+        ipc_target,
         if (opts.@"surface-id") |id| .{ .surface_id = id } else .focused,
         value,
     ) catch |err| {

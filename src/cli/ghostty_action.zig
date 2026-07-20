@@ -103,6 +103,9 @@ pub const Action = enum {
     // totals as a table.
     status,
 
+    // Open a directory as a new workspace in the running instance.
+    open,
+
     pub fn detectSpecialCase(arg: []const u8) ?SpecialCase(Action) {
         // If we see a "-e" and we haven't seen a command yet, then
         // we are done looking for commands. This special case enables
