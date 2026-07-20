@@ -6180,6 +6180,13 @@ pub const Keybinds = struct {
                 .{ .health_hud = {} },
                 .{ .performable = true },
             );
+            // Workspace scratch note.
+            try self.set.putFlags(
+                alloc,
+                .{ .key = .{ .unicode = 'n' }, .mods = .{ .ctrl = true, .alt = true } },
+                .{ .workspace_note = {} },
+                .{ .performable = true },
+            );
             // Always-on-top toggle.
             try self.set.putFlags(
                 alloc,

@@ -553,6 +553,12 @@ fn actionCommands(action: Action.Key) []const Command {
             .description = "Keep this window above every other window, or release it.",
         }},
 
+        .workspace_note => comptime &.{.{
+            .action = .workspace_note,
+            .title = "Workspace Note",
+            .description = "Edit this workspace's scratch note (saved with the session).",
+        }},
+
         .apply_layout => comptime &.{
             .{
                 .action = .{ .apply_layout = 1 },

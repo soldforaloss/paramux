@@ -771,6 +771,7 @@ fn isSafeAutomationAction(action: input.Binding.Action) bool {
         .show_digest,
         .toggle_window_on_top,
         .apply_layout,
+        .workspace_note,
         .move_tab,
         .toggle_tab_overview,
         .new_split,

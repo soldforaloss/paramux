@@ -5828,6 +5828,12 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool 
             @enumFromInt(slot),
         ),
 
+        .workspace_note => return try self.rt_app.performAction(
+            .{ .surface = self },
+            .workspace_note,
+            {},
+        ),
+
         .move_tab => |position| return try self.rt_app.performAction(
             .{ .surface = self },
             .move_tab,

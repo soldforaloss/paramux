@@ -5899,6 +5899,16 @@ pub const App = struct {
                 return true;
             },
 
+            .workspace_note => {
+                const surface = self.findSurfaceForTarget(target) orelse return false;
+                const host = surface.host orelse return false;
+                host.showOverlay(.workspace_note, null) catch |err| {
+                    log.warn("workspace note overlay failed err={}", .{err});
+                    return false;
+                };
+                return true;
+            },
+
             .toggle_tab_overview => {
                 if (self.findSurfaceForTarget(target)) |surface| {
                     return try surface.toggleTabOverview();

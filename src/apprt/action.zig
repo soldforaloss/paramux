@@ -160,6 +160,9 @@ pub const Action = union(Key) {
     /// Recreate a saved layout slot (1-based) as a new workspace.
     apply_layout: ApplyLayout,
 
+    /// Edit the active workspace's scratch note.
+    workspace_note,
+
     /// Jump to next/previous window.
     goto_window: GotoWindow,
 
@@ -396,6 +399,7 @@ pub const Action = union(Key) {
         health_hud,
         toggle_window_on_top,
         apply_layout,
+        workspace_note,
         goto_window,
         resize_split,
         equalize_splits,

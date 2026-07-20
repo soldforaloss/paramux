@@ -572,6 +572,9 @@ pub const Action = union(enum) {
     /// Keep this window above all others (toggle).
     toggle_window_on_top,
 
+    /// Edit the active workspace's scratch note.
+    workspace_note,
+
     /// Recreate a saved layout slot (1-5) as a new workspace.
     apply_layout: u8,
 
@@ -1426,6 +1429,7 @@ pub const Action = union(enum) {
             .show_digest,
             .health_hud,
             .toggle_window_on_top,
+            .workspace_note,
             .apply_layout,
             .move_tab,
             .toggle_tab_overview,
