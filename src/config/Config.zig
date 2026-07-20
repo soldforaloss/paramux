@@ -1820,6 +1820,11 @@ class: ?[:0]const u8 = null,
 /// demand at any time.
 @"digest-after-away-minutes": u32 = 5,
 
+/// When set to 1-5, the (+) button's "New Workspace" recreates that
+/// saved layout slot (right-click > Save Layout To) instead of the
+/// stock two-column default. 0 keeps the standard behavior.
+@"new-workspace-layout": u32 = 0,
+
 /// Comma-separated, case-insensitive keywords that mark an agent
 /// notification as urgent. Matching notifications use an alarm toast
 /// (audible, breaks through quiet hours) instead of the standard one.

@@ -748,6 +748,8 @@ const CTX_SCROLL_BOTTOM: usize = 4033;
 const CTX_WHATS_NEW: usize = 4034;
 const CTX_COPY_FLEET: usize = 4035;
 const CTX_BROADCAST: usize = 4036;
+const CTX_RESTART_PANE: usize = 4037;
+const CTX_WORKTREE_SEED: usize = 4038;
 const CTX_RATIO_BASE: usize = 4720; // split ratio presets: base + index
 const CTX_LAYOUT_SAVE_BASE: usize = 4700; // save layout slots: base + slot
 const CTX_LAYOUT_APPLY_BASE: usize = 4710; // apply layout slots: base + slot
@@ -10668,6 +10670,16 @@ const Host = struct {
     }
 
     fn dispatchDeferredNewTab(self: *Host, source_surface_id: ?u64) void {
+        // A configured new-workspace-layout slot replaces the stock
+        // two-column default with that saved layout.
+        const slot_cfg = self.app.config.@"new-workspace-layout";
+        if (slot_cfg >= 1 and slot_cfg <= layout_slot_count) {
+            const occupied = self.layoutSlotOccupancy();
+            if (occupied[slot_cfg - 1]) {
+                self.applyLayoutSlot(slot_cfg - 1);
+                return;
+            }
+        }
         if (source_surface_id) |surface_id| {
             if (self.app.findSurfaceById(surface_id)) |surface| {
                 runUiActionOrLog("deferred new tab dispatch failed", self.app.performAction(.{ .surface = surface.core() }, .new_tab, {}));
@@ -12872,6 +12884,8 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_STRING, CTX_FIND_PANES, std.unicode.utf8ToUtf16LeStringLiteral("Find in All Panes...\tCtrl+Alt+F"));
         _ = AppendMenuW(menu, MF_STRING, CTX_SCROLLBACK_EDITOR, std.unicode.utf8ToUtf16LeStringLiteral("Open Scrollback in Editor"));
         _ = AppendMenuW(menu, MF_STRING, CTX_WATCH_PANE, std.unicode.utf8ToUtf16LeStringLiteral("Pop Out Watch Window"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_RESTART_PANE, std.unicode.utf8ToUtf16LeStringLiteral("Restart Pane (new shell here)"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_WORKTREE_SEED, std.unicode.utf8ToUtf16LeStringLiteral("Type Worktree Command"));
         if (CreatePopupMenu()) |ratio_menu| {
             _ = AppendMenuW(ratio_menu, MF_STRING, CTX_RATIO_BASE + 0, std.unicode.utf8ToUtf16LeStringLiteral("50 / 50"));
             _ = AppendMenuW(ratio_menu, MF_STRING, CTX_RATIO_BASE + 1, std.unicode.utf8ToUtf16LeStringLiteral("70 / 30"));
@@ -13130,6 +13144,32 @@ const Host = struct {
             CTX_WATCH_PANE => {
                 if (self.activeSurface()) |active| self.showPaneWatch(active);
             },
+            CTX_RESTART_PANE => {
+                // Spawn a fresh auto-placed shell (inherits this pane's
+                // cwd), then close the old pane. Dead panes close
+                // without a confirm; live ones still ask.
+                if (self.activeSurface()) |old_pane| {
+                    self.addTerminalAutoPlaced();
+                    _ = old_pane.core_surface.performBindingAction(.{ .close_surface = {} }) catch |err| {
+                        log.warn("restart pane close failed err={}", .{err});
+                    };
+                }
+            },
+            CTX_WORKTREE_SEED => {
+                // v1 of worktree workspaces: pre-type the git command in
+                // this pane (complete the branch, Enter, then use New
+                // Workspace Here from the new folder).
+                if (self.activeSurface()) |active| {
+                    const alloc2 = self.app.core_app.alloc;
+                    const repo = if (active.pwd) |pwd| std.fs.path.basename(pwd) else "repo";
+                    const seed = std.fmt.allocPrint(alloc2, "git worktree add \"../{s}-\" ", .{repo}) catch return;
+                    defer alloc2.free(seed);
+                    var ev: input.KeyEvent = .{ .action = .press, .key = .unidentified, .mods = .{} };
+                    ev.utf8 = seed;
+                    _ = active.core_surface.keyCallback(ev) catch {};
+                    self.setBanner(.info, "Finish the branch name and press Enter; then right-click > New Workspace Here from the new folder.") catch {};
+                }
+            },
             CTX_MUTE_PANE => {
                 if (self.activeSurface()) |active| {
                     if (active.attentionMuted()) {
@@ -13215,12 +13255,22 @@ const Host = struct {
     /// Modes with their own affordances (confirm bar, drags) get mode
     /// hints; otherwise the default teaches the highest-value chords.
     fn currentHintTextW(self: *Host) [:0]const u16 {
+        @setEvalBranchQuota(20_000);
         if (self.overlay_mode == .confirm)
             return std.unicode.utf8ToUtf16LeStringLiteral("Enter accept \u{00B7} Esc cancel");
         if (self.pane_drag.dragging)
             return std.unicode.utf8ToUtf16LeStringLiteral("Drop: edges dock \u{00B7} center swaps");
         if (self.split_resize.active)
             return std.unicode.utf8ToUtf16LeStringLiteral("Drag to resize");
+        // First-run tour: rotate three teaching hints until the
+        // first-run marker is written (once per install).
+        if (self.app.first_run_hint_active) {
+            return switch ((GetTickCount64() / 20_000) % 3) {
+                0 => std.unicode.utf8ToUtf16LeStringLiteral("Tip 1/3: the (+) button asks - new workspace, or a pane in this one"),
+                1 => std.unicode.utf8ToUtf16LeStringLiteral("Tip 2/3: Ctrl+Alt+I lists every pane that needs you"),
+                else => std.unicode.utf8ToUtf16LeStringLiteral("Tip 3/3: right-click a pane for layouts, colors, and broadcast"),
+            };
+        }
         if (self.activeTab()) |hint_tab| {
             if (hint_tab.broadcast)
                 return std.unicode.utf8ToUtf16LeStringLiteral("BROADCAST \u{00B7} typing goes to every pane in this workspace");
@@ -13429,6 +13479,27 @@ const Host = struct {
             }
         }
         self.setBanner(.info, "Focused pane has no split to resize.") catch {};
+    }
+
+    /// Flag agents that report `working` but haven't changed state in
+    /// 10+ minutes: flip them to waiting with a "possibly stuck" note
+    /// (once per working stretch).
+    fn nudgeStuckAgents(self: *Host) void {
+        const now_ms = std.time.milliTimestamp();
+        for (self.tabs.items) |*tab| {
+            var it = tab.tree.iterator();
+            while (it.next()) |leaf| {
+                const surface = leaf.view;
+                if (surface.attention_state != .working) continue;
+                if (surface.stuck_nudged) continue;
+                const items = surface.attention_history.items;
+                if (items.len == 0) continue;
+                if (now_ms - items[items.len - 1].wall_ms < 10 * std.time.ms_per_min) continue;
+                surface.stuck_nudged = true;
+                surface.setLastNotification("", "No state change in 10 minutes - possibly stuck?") catch {};
+                surface.setAttentionState(.waiting);
+            }
+        }
     }
 
     /// Count panes by alerting attention state across every workspace.
@@ -23198,6 +23269,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     if (v.autosave_ticks >= 20) {
                         v.autosave_ticks = 0;
                         v.app.saveSessionState();
+                        v.nudgeStuckAgents();
                     }
                 }
                 return 0;
@@ -25951,6 +26023,9 @@ pub const Surface = struct {
     /// Latest agent-session token total reported via `paramux notify
     /// --tokens-from-transcript` (0 = unknown). Shown in the sidebar meta.
     agent_tokens: u64 = 0,
+    /// One-shot guard for the stuck-agent nudge; reset on any state
+    /// change via recordAttentionEvent.
+    stuck_nudged: bool = false,
     /// Recent attention transitions (oldest first), capped at
     /// `attention_history_max` - the pane's activity timeline shown in
     /// the Activity submenu and the attention inbox.
@@ -29464,6 +29539,7 @@ pub const Surface = struct {
     fn setAttentionState(self: *Surface, state: AttentionState) void {
         if (self.attention_state == state) return;
         self.attention_state = state;
+        self.stuck_nudged = false;
         self.recordAttentionEvent(state, self.last_notification);
         if (state.isAlerting()) {
             // Stamp recency so goto_attention can jump to the NEWEST
