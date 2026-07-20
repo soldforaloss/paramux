@@ -75,7 +75,7 @@ fn runArgs(
     };
     defer parsed.deinit();
 
-    try stdout.print("{s:<10} {s:<12} {s:<10} {s:<10} {s}\n", .{ "WORKSPACE", "SURFACE", "STATE", "TOKENS", "FLAGS" });
+    try stdout.print("{s:<10} {s:<20} {s:<10} {s:<10} {s}\n", .{ "WORKSPACE", "SURFACE", "STATE", "TOKENS", "FLAGS" });
     const windows = parsed.value.object.get("windows") orelse return 1;
     for (windows.array.items) |win| {
         const tabs = win.object.get("tabs") orelse continue;
@@ -89,7 +89,15 @@ fn runArgs(
                 const focused = if (obj.get("focused")) |v| v.bool else false;
                 const active = if (obj.get("active")) |v| v.bool else false;
                 const flags: []const u8 = if (active) "active" else if (focused) "focused" else "";
-                try stdout.print("{d:<10} {d:<12} {s:<10} {d:<10} {s}\n", .{ ti + 1, sid, state, tokens, flags });
+                // Numbers render via bufPrint first: Zig 0.15's numeric
+                // alignment specs prepend a sign, strings do not.
+                var ws_buf: [16]u8 = undefined;
+                var sid_buf: [24]u8 = undefined;
+                var tok_buf: [24]u8 = undefined;
+                const ws_s = std.fmt.bufPrint(&ws_buf, "{d}", .{ti + 1}) catch "?";
+                const sid_s = std.fmt.bufPrint(&sid_buf, "{d}", .{sid}) catch "?";
+                const tok_s = std.fmt.bufPrint(&tok_buf, "{d}", .{tokens}) catch "?";
+                try stdout.print("{s:<10} {s:<20} {s:<10} {s:<10} {s}\n", .{ ws_s, sid_s, state, tok_s, flags });
             }
         }
     }

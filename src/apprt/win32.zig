@@ -877,6 +877,8 @@ const ERROR_FILE_NOT_FOUND = 2;
 const PIPE_READMODE_BYTE = 0x00000000;
 const PIPE_WAIT = 0x00000000;
 const PIPE_ACCESS_DUPLEX = 0x00000003;
+const FILE_FLAG_FIRST_PIPE_INSTANCE = 0x00080000;
+const PIPE_REJECT_REMOTE_CLIENTS = 0x00000008;
 const PIPE_UNLIMITED_INSTANCES = 255;
 // Keep every bounded authenticated request below the pipe input quota. The
 // client writes a complete frame before reading its ack, while the server may
@@ -3164,11 +3166,18 @@ fn ipcServerMain(app: *App) void {
         app.ipc_thread_handle = thread_handle;
     }
 
+    var first_pipe_instance = true;
     while (!app.ipc_stop_requested.load(.acquire)) {
+        // FIRST_PIPE_INSTANCE only on the first instance: it defeats
+        // pipe-name squatting (another local process pre-creating our
+        // name to intercept clients) while letting our own loop keep
+        // serving. REJECT_REMOTE_CLIENTS keeps the control surface
+        // strictly local.
+        const first_instance_flag: u32 = if (first_pipe_instance) FILE_FLAG_FIRST_PIPE_INSTANCE else 0;
         const pipe = CreateNamedPipeW(
             pipe_name.ptr,
-            PIPE_ACCESS_DUPLEX,
-            windows.PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+            PIPE_ACCESS_DUPLEX | first_instance_flag,
+            windows.PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
             PIPE_UNLIMITED_INSTANCES,
             ipc_pipe_buffer_len,
             ipc_pipe_buffer_len,
@@ -3181,6 +3190,7 @@ fn ipcServerMain(app: *App) void {
             });
             return;
         }
+        first_pipe_instance = false;
 
         const connected = ConnectNamedPipe(pipe, null);
         if (connected == 0) {
