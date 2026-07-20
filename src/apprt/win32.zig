@@ -755,6 +755,7 @@ const CTX_PROMPT_NEXT: usize = 4042;
 const CTX_MOVE_WS_LEFT: usize = 4043;
 const CTX_MOVE_WS_RIGHT: usize = 4044;
 const CTX_WS_NOTE: usize = 4045;
+const CTX_BROADCAST_OPTOUT: usize = 4046;
 const CTX_RESTART_PANE: usize = 4037;
 const CTX_WORKTREE_SEED: usize = 4038;
 const CTX_RATIO_BASE: usize = 4720; // split ratio presets: base + index
@@ -13320,6 +13321,12 @@ const Host = struct {
             const bcast_on = if (self.activeTab()) |t| t.broadcast else false;
             const bcast_flags: UINT = if (bcast_on) MF_STRING | MF_CHECKED else MF_STRING;
             _ = AppendMenuW(menu, bcast_flags, CTX_BROADCAST, std.unicode.utf8ToUtf16LeStringLiteral("Broadcast Input to This Workspace"));
+            if (self.activeSurface()) |bc_target| {
+                _ = AppendMenuW(menu, MF_STRING, CTX_BROADCAST_OPTOUT, if (bc_target.broadcast_opt_out)
+                    std.unicode.utf8ToUtf16LeStringLiteral("Include This Pane in Broadcast")
+                else
+                    std.unicode.utf8ToUtf16LeStringLiteral("Exclude This Pane from Broadcast"));
+            }
         }
         if (self.activeSurface()) |pin_target| {
             _ = AppendMenuW(menu, MF_STRING, CTX_PIN_PANE, if (pin_target.pinned)
@@ -13567,6 +13574,15 @@ const Host = struct {
                 if (self.activeSurface()) |active| {
                     active.pinned = !active.pinned;
                     self.invalidateSidebar();
+                }
+            },
+            CTX_BROADCAST_OPTOUT => {
+                if (self.activeSurface()) |active| {
+                    active.broadcast_opt_out = !active.broadcast_opt_out;
+                    self.setBanner(.info, if (active.broadcast_opt_out)
+                        "Pane excluded from broadcast input."
+                    else
+                        "Pane included in broadcast input.") catch {};
                 }
             },
             CTX_BROADCAST => {
@@ -26676,6 +26692,8 @@ pub const Surface = struct {
     restart_count: u32 = 0,
     /// Pinned panes sort first within their workspace's sidebar rows.
     pinned: bool = false,
+    /// Excluded from broadcast-input mirroring (right-click toggle).
+    broadcast_opt_out: bool = false,
     /// Recent attention transitions (oldest first), capped at
     /// `attention_history_max` - the pane's activity timeline shown in
     /// the Activity submenu and the attention inbox.
@@ -29576,6 +29594,7 @@ pub const Surface = struct {
         while (it.next()) |leaf| {
             if (leaf.view == self) continue;
             if (!leaf.view.core_initialized) continue;
+            if (leaf.view.broadcast_opt_out) continue;
             _ = leaf.view.core_surface.keyCallback(event) catch {};
         }
     }
