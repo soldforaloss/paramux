@@ -6,7 +6,7 @@ terminal core, config grammar, resource formats, and `libghostty-vt`; its native
 Windows host and agent workflow are Paramux-specific.
 
 Last reviewed: 2026-07-10, against the public x64 portable prerelease
-`v0.1.7`.
+`v0.1.8`.
 
 ## Status legend
 
@@ -45,14 +45,14 @@ Last reviewed: 2026-07-10, against the public x64 portable prerelease
 
 | Surface | Paramux note |
 | --- | --- |
-| Native Windows app | Paramux ships a native Win32 app for Windows 10/11. The current release artifact is x64 only; ARM64 release support is planned and not yet published. |
+| Native Windows app | Paramux ships a native Win32 app for Windows 10/11 with x64 and native ARM64 portable artifacts on the release page (ARM64 built and smoke-tested on native ARM64 CI runners). |
 | GPU rendering | Paramux renders through WGL with OpenGL 4.3+. It has no DirectX or ANGLE fallback. |
 | Windows paths and identity | App state lives under `%LOCALAPPDATA%\paramux\...`; the app identity is `io.github.soldforaloss.paramux`. |
 | Tabs and splits | Native tabs, horizontal/vertical splits, tab drag reorder, a visible split button, menu/context split actions, mouse divider resize, and Windows-safe focus/resize keybindings ship today. |
 | Agent workspace | A per-pane sidebar shows available cwd/Git/port/notification metadata. `working`, `waiting`, `done`, and `error` states drive sidebar, pane, tab, toast, and taskbar attention. |
 | Local automation | `paramux list-windows` reports `paramux.windows.v2` structural JSON. `perform-action`, `notify`, `read-pane`, `send`, and `send-key` are token-gated; `PARAMUX_SURFACE_ID` targets panes and `PARAMUX_TOKEN` authenticates in-pane clients. The generic `perform-action` allowlist rejects terminal-input, arbitrary-file helper, and crash actions; the dedicated `send`/`send-key` methods are the bounded terminal-input path. |
 | Windows UX | DWM dark-title-bar integration, high-contrast palette switching, IME, file drag-and-drop, native context menus, profile selection, taskbar progress, and WinRT toast attempts are implemented in the Win32 host. |
-| Current distribution | The public `v0.1.7` release contains one unsigned x64 portable ZIP, `SHA256SUMS-windows-x64.txt`, and the `install-paramux.cmd` PATH helper. Signed installer, WinGet, Scoop, ARM64, and public stable channels are planned. |
+| Current distribution | The public `v0.1.8` release contains unsigned x64 and ARM64 portable ZIPs with per-arch `SHA256SUMS` files and the `install-paramux.cmd` PATH helper. Signed installer, WinGet, Scoop, and public stable channels are planned. |
 
 ## Maintenance anchors
 

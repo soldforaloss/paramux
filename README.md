@@ -87,28 +87,31 @@ path today.
 ## Try the current prerelease
 
 The current test build is
-[`v0.1.7`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.7),
-published 2026-07-20 for Windows x64:
+[`v0.1.8`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.8),
+published 2026-07-20 for Windows x64 and ARM64:
 
-- [`paramux-0.1.7-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.7/paramux-0.1.7-windows-x64-portable.zip)
-- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.7/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.8-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.8/paramux-0.1.8-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.8/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.8-windows-arm64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.8/paramux-0.1.8-windows-arm64-portable.zip) (first native ARM64 build)
+- [`SHA256SUMS-windows-arm64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.8/SHA256SUMS-windows-arm64.txt)
 
-This build is the foundation release — hardening, portability, and
-reach. The **IPC pipe** rejects remote clients and pipe-name squatting
-(token auth was already constant-time), malformed frames are
-**fuzz-tested** in CI, and a **perf budget gate** fails the build if
-CLI cold-start regresses past 250ms. **`session-name`** keeps
-independent saved sessions per instance, **`paramux export-config`**
-backs up your whole setup, **`update --rollback`** restores the
-previous version from its `.old` window, and `paramux status` gains
-**`--watch`**. Projects get a **layout template gallery**
-(`docs/paramux/layouts/`), screen readers get a **live fleet summary**
-on the window's UIA HelpText, high contrast overrides custom accent
-colors, the hint strip is configurable, the HUD reports DPI/uptime/
-window count, workspaces move up/down from the menu, and a
-**telemetry design fence** documents that nothing is collected today.
-It sits on top of
-`v0.1.6`'s horizon features. Releases from
+This build is the reach release — and the first to ship a **native
+ARM64 build** alongside x64. The fleet becomes an ecosystem:
+**attention webhooks** POST state changes to your own endpoint,
+**`on-attention-command`** runs your script on every transition,
+**`paramux serve`** bridges fleet status to localhost HTTP,
+**`paramux record`** captures a pane as an asciinema cast, and layout
+templates can now **launch a command per pane** — `paramux open .`
+starts your whole agent formation. **Find in All Panes searches full
+scrollback**, every workspace takes a **scratch note** (`Ctrl+Alt+N`,
+session-persisted), `import-theme` accepts **https:// URLs**, doctor
+times the **IPC round-trip**, the HUD counts **child-process
+memory**, and receipts now include a **cold-start comparison** with
+Windows Terminal when installed. The repo grew its **community kit**
+(CONTRIBUTING, templates), a **1.0 roadmap with receipt-gated
+stability gates**, and design fences for remote fleets and i18n. It
+sits on top of
+`v0.1.7`'s foundation hardening. Releases from
 `v0.1.0-paramux.7` onward apply with `paramux update`
 (`v0.1.0-paramux.4` remains a legacy test artifact).
 
@@ -117,7 +120,7 @@ It sits on top of
    release checksum:
 
 ```powershell
-Get-FileHash .\paramux-0.1.7-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\paramux-0.1.8-windows-x64-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 

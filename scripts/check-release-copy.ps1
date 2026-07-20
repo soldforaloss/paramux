@@ -202,11 +202,11 @@ if ($version) {
     $tag = "v$version"
     $portableName = New-WindowsPackageArtifactName -Version $version -Architecture "x64" -Kind "portable"
     $checksumsName = New-WindowsPackageArtifactName -Version $version -Architecture "x64" -Kind "checksums"
+    # ARM64 portable + checksums publish alongside x64 since v0.1.8;
+    # only signed installers remain unpublished.
     $unpublishedArtifacts = @(
         (New-WindowsPackageArtifactName -Version $version -Architecture "x64" -Kind "setup"),
-        (New-WindowsPackageArtifactName -Version $version -Architecture "arm64" -Kind "portable"),
-        (New-WindowsPackageArtifactName -Version $version -Architecture "arm64" -Kind "setup"),
-        (New-WindowsPackageArtifactName -Version $version -Architecture "arm64" -Kind "checksums")
+        (New-WindowsPackageArtifactName -Version $version -Architecture "arm64" -Kind "setup")
     )
 
     foreach ($path in @("README.md", "PACKAGING.md", "docs/getting-started.md", "docs/status.md", "docs/windows.md")) {
@@ -217,7 +217,7 @@ if ($version) {
     }
 
     Require-Contains -RelativePath "README.md" -Needle "install-paramux.cmd" -Reason "The documented install path is the portable PATH helper."
-    Require-Contains -RelativePath "PACKAGING.md" -Needle "publishes exactly these two assets" -Reason "Packaging copy must separate current artifacts from future channels."
+    Require-Contains -RelativePath "PACKAGING.md" -Needle "publishes exactly these four assets" -Reason "Packaging copy must separate current artifacts from future channels."
     Require-Contains -RelativePath "docs/status.md" -Needle "x64 only" -Reason "Status must not imply a verified ARM64 release."
     Require-Contains -RelativePath "site/components/hero/release-chip.jsx" -Needle $version -Reason "The site badge must match the README prerelease."
     Require-Contains -RelativePath "site/components/heroes.jsx" -Needle "releases/tag/$tag" -Reason "The site CTA must point at the pinned release."
