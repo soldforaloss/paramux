@@ -103,6 +103,9 @@ pub const Action = enum {
     // totals as a table.
     status,
 
+    // Copy the config, layouts, sessions, and themes to a backup folder.
+    @"export-config",
+
     // Open a directory as a new workspace in the running instance.
     open,
 

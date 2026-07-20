@@ -1820,6 +1820,13 @@ class: ?[:0]const u8 = null,
 /// demand at any time.
 @"digest-after-away-minutes": u32 = 5,
 
+/// Name this instance's saved session. The default (empty) uses
+/// `session-state.json`; a name uses `session-state-<name>.json`, so
+/// separate configs (via --config-file or profiles-by-shortcut) can
+/// keep independent workspace layouts. Letters, digits, `-` and `_`
+/// only; other characters are dropped.
+@"session-name": [:0]const u8 = "",
+
 /// Show the contextual hint strip in the status bar (the line that
 /// teaches the shortcuts valid right now, doubles as the git segment,
 /// and is clickable). Turning it off leaves the status bar's other

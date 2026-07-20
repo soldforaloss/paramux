@@ -4168,10 +4168,26 @@ pub const App = struct {
         return self.localAppDataPath("palette-mru.txt");
     }
 
-    /// Resolve `%LOCALAPPDATA%\paramux\session-state.json`. Caller
-    /// frees with `core_app.alloc`.
+    /// Resolve `%LOCALAPPDATA%\paramux\session-state.json` (or
+    /// `session-state-<session-name>.json` when the config names the
+    /// session). Caller frees with `core_app.alloc`.
     fn sessionStatePath(self: *const App) ?[]u8 {
-        return self.localAppDataPath("session-state.json");
+        const name = self.config.@"session-name";
+        if (name.len == 0) return self.localAppDataPath("session-state.json");
+        var buf: [96]u8 = undefined;
+        var n: usize = 0;
+        for (name) |c| {
+            if (n >= 48) break;
+            const ok = (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or
+                (c >= '0' and c <= '9') or c == '-' or c == '_';
+            if (!ok) continue;
+            buf[n] = c;
+            n += 1;
+        }
+        if (n == 0) return self.localAppDataPath("session-state.json");
+        const file = std.fmt.bufPrint(buf[48..], "session-state-{s}.json", .{buf[0..n]}) catch
+            return self.localAppDataPath("session-state.json");
+        return self.localAppDataPath(file);
     }
 
     fn sessionStateEnabled(self: *const App) bool {
@@ -17214,7 +17230,11 @@ const Host = struct {
                     const tab = &self.tabs.items[row.tab_index];
                     const prev_hdr_font: ?HGDIOBJ = if (self.chrome_font_semibold) |f| SelectObject(hdc, f) else null;
                     defer if (prev_hdr_font) |f| { _ = SelectObject(hdc, f); };
-                    const ws_accent: u32 = if (tab.accent_index) |ai|
+                    // High contrast overrides custom accents: the fixed
+                    // palette can vanish against HC system colors.
+                    const ws_accent: u32 = if (isHighContrastActive())
+                        theme.accent
+                    else if (tab.accent_index) |ai|
                         workspace_accents[ai % workspace_accents.len]
                     else
                         theme.accent;
@@ -20257,6 +20277,7 @@ fn patchOrAppendEdits(
     user_edited: std.StaticBitSet(std.enums.values(@import("../config/key.zig").Key).len),
     out: *std.ArrayListUnmanaged(u8),
 ) !void {
+    @setEvalBranchQuota(20_000);
     const ConfigKey = @import("../config/key.zig").Key;
     const ConfigFormatter = @import("../config/formatter.zig");
 
