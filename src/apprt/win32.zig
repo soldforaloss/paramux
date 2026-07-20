@@ -10057,6 +10057,8 @@ const Host = struct {
     is_topmost: bool = false,
     /// Ports-timer tick counter driving the 60s session autosave.
     autosave_ticks: u32 = 0,
+    /// Content signature at the last UIA TextChanged raise (0 = never).
+    uia_text_sig: u64 = 0,
     /// Always-on-top watch window mirroring one pane's tail (Pop Out
     /// Watch Window): handle, owned text, and the watched pane.
     watch_hwnd: ?HWND = null,
@@ -16420,6 +16422,43 @@ const Host = struct {
         const cr = self.contentRect() catch return;
         var rect = RECT{ .left = cr.left, .top = cr.top, .right = cr.right, .bottom = cr.bottom };
         _ = InvalidateRect(hwnd, &rect, 0);
+    }
+
+    /// UIA TextChanged heartbeat, on the ports tick (3s). When a UIA
+    /// client is attached and the active pane's content signature moved
+    /// since the last raise, fire UIA_Text_TextChangedEventId on the
+    /// window element so screen readers re-fetch the TextPattern
+    /// document. The provider is transient (create → raise → release) —
+    /// UIA matches the event to the element by host HWND. The signature
+    /// is cursor position + screen-end pin, read briefly under the
+    /// renderer mutex; no client attached costs one bool check.
+    fn tickUiaTextChanged(self: *Host) void {
+        if (!win32_uia.events.clientsAreListening()) return;
+        const surface = self.activeSurface() orelse return;
+        const core = surface.core();
+        var hash = std.hash.Wyhash.init(0x75696174);
+        {
+            core.renderer_state.mutex.lock();
+            defer core.renderer_state.mutex.unlock();
+            const screen = core.renderer_state.terminal.screens.active;
+            hash.update(std.mem.asBytes(&screen.cursor.x));
+            hash.update(std.mem.asBytes(&screen.cursor.y));
+            if (screen.pages.getBottomRight(.screen)) |br| {
+                const node_bits: usize = @intFromPtr(br.node);
+                hash.update(std.mem.asBytes(&node_bits));
+                hash.update(std.mem.asBytes(&br.y));
+            }
+        }
+        const sig = hash.final() ^ core.id;
+        if (sig == self.uia_text_sig) return;
+        const hwnd = self.hwnd orelse return;
+        self.uia_text_sig = sig;
+        const provider = win32_uia.RootProvider.create(
+            self.app.core_app.alloc,
+            hwnd,
+        ) catch return;
+        defer _ = win32_uia.RootProvider.Release(&provider.base);
+        win32_uia.events.raiseTextChanged(&provider.base);
     }
 
     /// paramux FR-3: the ports-refresh timer tick. Captures each visible pane's
@@ -24115,6 +24154,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
             if (wParam == PORTS_TIMER_ID) {
                 if (host) |v| {
                     v.tickPorts();
+                    v.tickUiaTextChanged();
                     // Crash-safe session autosave: persist layout every
                     // ~60s, not only at exit.
                     v.autosave_ticks += 1;

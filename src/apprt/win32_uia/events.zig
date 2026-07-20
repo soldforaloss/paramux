@@ -22,6 +22,17 @@ pub fn raiseFocusChanged(provider: *com.IRawElementProviderSimple) void {
     logIfFailed("UIA_AutomationFocusChangedEventId", hr);
 }
 
+/// Text content of the element's TextPattern changed; clients drop
+/// their ranges and re-fetch the document.
+pub fn raiseTextChanged(provider: *com.IRawElementProviderSimple) void {
+    if (!clientsAreListening()) return;
+    const hr = com.UiaRaiseAutomationEvent(
+        provider,
+        constants.UIA_Text_TextChangedEventId,
+    );
+    logIfFailed("UIA_Text_TextChangedEventId", hr);
+}
+
 pub fn raiseSelectionInvalidated(provider: *com.IRawElementProviderSimple) void {
     if (!clientsAreListening()) return;
     const hr = com.UiaRaiseAutomationEvent(
