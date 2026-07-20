@@ -4401,6 +4401,14 @@ pub const App = struct {
             const alloc = config._arena.?.allocator();
             config.@"working-directory" = .{ .path = try alloc.dupe(u8, cwd) };
         }
+        // Layout templates can name a startup command per pane
+        // (shell-expanded, like `command` in the config).
+        if (pane.command) |cmd_str| {
+            if (cmd_str.len > 0) {
+                const alloc = config._arena.?.allocator();
+                config.command = .{ .shell = try alloc.dupeZ(u8, cmd_str) };
+            }
+        }
 
         const tab_id = if (tab_surface) |source|
             (self.findTabForSurface(source) orelse return error.NoActiveSurface).tab.id

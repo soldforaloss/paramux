@@ -75,6 +75,10 @@ pub const Pane = struct {
     profile: ?[]const u8 = null,
     title_override: ?[]const u8 = null,
     tab_title_override: ?[]const u8 = null,
+    /// Layout templates only: a shell command the pane runs at spawn.
+    /// Never emitted by session SAVE (running commands are not
+    /// captured); honored on restore/apply when present.
+    command: ?[]const u8 = null,
 };
 
 pub const Split = struct {
