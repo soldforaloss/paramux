@@ -157,7 +157,24 @@ pub fn run(alloc: Allocator) !u8 {
         try report.line(.warn, "not inside a paramux pane - hooks fired here cannot auto-target; --fire unavailable", .{});
     }
 
-    // 6. Live pipeline test.
+    // 6. IPC health: is an instance listening, and how fast is a
+    // round-trip? list-windows is the unauthenticated discovery call.
+    {
+        var timer = std.time.Timer.start() catch null;
+        if (apprt.App.queryAutomationWindowList(alloc, .detect) catch null) |data| {
+            defer alloc.free(data);
+            if (timer) |*tm| {
+                const us = tm.read() / std.time.ns_per_us;
+                try report.line(.ok, "IPC round-trip (list-windows): {d}.{d} ms", .{ us / 1000, (us % 1000) / 100 });
+            } else {
+                try report.line(.ok, "IPC round-trip: instance responded", .{});
+            }
+        } else {
+            try report.line(.warn, "no running paramux instance answered the IPC pipe", .{});
+        }
+    }
+
+    // 7. Live pipeline test.
     if (opts.fire) {
         if (surface_id) |id| {
             try fireTestSignals(&report, alloc, a, id);

@@ -6956,6 +6956,20 @@ pub const App = struct {
 
         self.first_run_hint_active = true;
 
+        // Not-installed nudge: running from a folder that is not on
+        // the user PATH (a fresh Downloads extract) gets one banner
+        // pointing at `paramux install`.
+        install_hint: {
+            const exe_dir = std.fs.selfExeDirPathAlloc(alloc) catch break :install_hint;
+            defer alloc.free(exe_dir);
+            const path_value = std.process.getEnvVarOwned(alloc, "PATH") catch break :install_hint;
+            defer alloc.free(path_value);
+            if (@import("../os/windows_user_env.zig").pathContains(path_value, exe_dir)) break :install_hint;
+            if (self.hosts.items.len > 0) {
+                self.hosts.items[0].setBanner(.info, "Tip: run `paramux install` (or install-paramux.cmd) to add this folder to PATH.") catch {};
+            }
+        }
+
         if (std.fs.path.dirname(path)) |dir| {
             std.fs.makeDirAbsolute(dir) catch |err| switch (err) {
                 error.PathAlreadyExists => {},
