@@ -31,27 +31,28 @@ try {
         & $Com perform-action new_split:auto | Out-Null
         Start-Sleep -Milliseconds 300
     }
+    $ErrorActionPreference = "Continue"
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
     $minute = 0
     while ($sw.Elapsed.TotalMinutes -lt $totalMinutes) {
         # Drive attention churn: a notify + an occasional pane cycle.
         foreach ($s in $states) {
-            & $Com notify "--state=$s" "soak cycle $cycles" 2>$null | Out-Null
+            & $Com notify "--state=$s" "soak cycle $cycles" | Out-Null
             $cycles++
             Start-Sleep -Milliseconds 400
         }
         if ($cycles % 40 -eq 0) {
             # Churn: add a pane, then close it (undo-safe close path).
-            & $Com perform-action new_split:auto 2>$null | Out-Null
+            & $Com perform-action new_split:auto | Out-Null
             Start-Sleep -Milliseconds 400
-            & $Com perform-action close_surface 2>$null | Out-Null
+            & $Com perform-action close_surface | Out-Null
         }
         if ([math]::Floor($sw.Elapsed.TotalMinutes) -gt $minute) {
             $minute = [math]::Floor($sw.Elapsed.TotalMinutes)
             $proc.Refresh()
             $alive = -not $proc.HasExited
             $mb = if ($alive) { [math]::Round($proc.WorkingSet64 / 1MB, 1) } else { 0 }
-            $statusRaw = if ($alive) { (& $Com status --no-header 2>$null) } else { @() }
+            $statusRaw = if ($alive) { (& $Com status --no-header) } else { @() }
             $paneCount = @($statusRaw).Count
             $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$($proc.Id)" -ErrorAction SilentlyContinue)
             $childMb = [math]::Round((($children | ForEach-Object { $_.WorkingSetSize } | Measure-Object -Sum).Sum / 1MB), 1)
