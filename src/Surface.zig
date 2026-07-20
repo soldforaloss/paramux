@@ -5822,6 +5822,12 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool 
             {},
         ),
 
+        .apply_layout => |slot| return try self.rt_app.performAction(
+            .{ .surface = self },
+            .apply_layout,
+            @enumFromInt(slot),
+        ),
+
         .move_tab => |position| return try self.rt_app.performAction(
             .{ .surface = self },
             .move_tab,

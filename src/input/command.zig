@@ -553,6 +553,24 @@ fn actionCommands(action: Action.Key) []const Command {
             .description = "Keep this window above every other window, or release it.",
         }},
 
+        .apply_layout => comptime &.{
+            .{
+                .action = .{ .apply_layout = 1 },
+                .title = "Apply Layout Slot 1",
+                .description = "Recreate saved layout slot 1 as a new workspace.",
+            },
+            .{
+                .action = .{ .apply_layout = 2 },
+                .title = "Apply Layout Slot 2",
+                .description = "Recreate saved layout slot 2 as a new workspace.",
+            },
+            .{
+                .action = .{ .apply_layout = 3 },
+                .title = "Apply Layout Slot 3",
+                .description = "Recreate saved layout slot 3 as a new workspace.",
+            },
+        },
+
         .goto_window => comptime &.{
             .{
                 .action = .{ .goto_window = .previous },

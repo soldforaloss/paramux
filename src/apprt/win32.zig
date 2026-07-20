@@ -749,6 +749,7 @@ const CTX_WHATS_NEW: usize = 4034;
 const CTX_COPY_FLEET: usize = 4035;
 const CTX_BROADCAST: usize = 4036;
 const CTX_OPEN_DATA_DIR: usize = 4039;
+const CTX_PIN_PANE: usize = 4040;
 const CTX_RESTART_PANE: usize = 4037;
 const CTX_WORKTREE_SEED: usize = 4038;
 const CTX_RATIO_BASE: usize = 4720; // split ratio presets: base + index
@@ -5729,6 +5730,15 @@ pub const App = struct {
                 const surface = self.findSurfaceForTarget(target) orelse return false;
                 const host = surface.host orelse return false;
                 host.toggleAlwaysOnTop();
+                return true;
+            },
+
+            .apply_layout => {
+                const surface = self.findSurfaceForTarget(target) orelse return false;
+                const host = surface.host orelse return false;
+                const slot_num = value.slot();
+                if (slot_num < 1 or slot_num > layout_slot_count) return false;
+                host.applyLayoutSlot(slot_num - 1);
                 return true;
             },
 
@@ -12945,6 +12955,12 @@ const Host = struct {
             const bcast_flags: UINT = if (bcast_on) MF_STRING | MF_CHECKED else MF_STRING;
             _ = AppendMenuW(menu, bcast_flags, CTX_BROADCAST, std.unicode.utf8ToUtf16LeStringLiteral("Broadcast Input to This Workspace"));
         }
+        if (self.activeSurface()) |pin_target| {
+            _ = AppendMenuW(menu, MF_STRING, CTX_PIN_PANE, if (pin_target.pinned)
+                std.unicode.utf8ToUtf16LeStringLiteral("Unpin Pane")
+            else
+                std.unicode.utf8ToUtf16LeStringLiteral("Pin Pane to Top"));
+        }
         if (self.activeSurface()) |mute_target| {
             _ = AppendMenuW(menu, MF_STRING, CTX_MUTE_PANE, if (mute_target.attentionMuted())
                 std.unicode.utf8ToUtf16LeStringLiteral("Unmute Notifications")
@@ -13162,6 +13178,12 @@ const Host = struct {
             CTX_RATIO_BASE...CTX_RATIO_BASE + 2 => |picked_ratio| {
                 const ratios = [_]f32{ 0.5, 0.7, 0.3 };
                 self.setFocusedSplitRatio(ratios[picked_ratio - CTX_RATIO_BASE]);
+            },
+            CTX_PIN_PANE => {
+                if (self.activeSurface()) |active| {
+                    active.pinned = !active.pinned;
+                    self.invalidateSidebar();
+                }
             },
             CTX_BROADCAST => {
                 if (self.activeTab()) |t| {
@@ -14204,19 +14226,23 @@ const Host = struct {
             buf[n] = .{ .kind = .workspace_header, .tab_index = ti, .y = y, .h = header_h };
             n += 1;
             y += header_h;
-            var it = tab.tree.iterator();
-            while (it.next()) |entry| {
-                if (n >= buf.len) break;
-                buf[n] = .{
-                    .kind = .pane,
-                    .tab_index = ti,
-                    .surface = entry.view,
-                    .handle = entry.handle,
-                    .y = y,
-                    .h = row_h,
-                };
-                n += 1;
-                y += row_h;
+            // Pinned panes first, then the rest, both in tree order.
+            for (0..2) |pass| {
+                var it = tab.tree.iterator();
+                while (it.next()) |entry| {
+                    if (entry.view.pinned != (pass == 0)) continue;
+                    if (n >= buf.len) break;
+                    buf[n] = .{
+                        .kind = .pane,
+                        .tab_index = ti,
+                        .surface = entry.view,
+                        .handle = entry.handle,
+                        .y = y,
+                        .h = row_h,
+                    };
+                    n += 1;
+                    y += row_h;
+                }
             }
         }
         if (n < buf.len) {
@@ -23512,6 +23538,10 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
         WM_DPICHANGED => {
+            if (host) |dpi_host| {
+                dpi_host.hidePanePeek();
+                dpi_host.hidePaneWatch();
+            }
             if (host) |v| {
                 const new_dpi = GetDpiForWindow(hwnd);
                 if (new_dpi > 0) v.current_dpi = new_dpi;
@@ -26135,6 +26165,8 @@ pub const Surface = struct {
     stuck_nudged: bool = false,
     /// Lifetime auto-restart count for pane-auto-restart.
     restart_count: u32 = 0,
+    /// Pinned panes sort first within their workspace's sidebar rows.
+    pinned: bool = false,
     /// Recent attention transitions (oldest first), capped at
     /// `attention_history_max` - the pane's activity timeline shown in
     /// the Activity submenu and the attention inbox.

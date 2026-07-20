@@ -87,7 +87,26 @@ fn runArgs(
         return 1;
     };
 
-    const performed = apprt.App.performAutomationAction(alloc, target, .focused, "new_tab") catch |err| {
+    // Project layout seeding: a .paramux/layout file (the layouts.json
+    // slot format) is installed into slot 5 and applied instead of a
+    // plain workspace.
+    var project_layout = false;
+    {
+        var layout_path_buf: [std.fs.max_path_bytes]u8 = undefined;
+        const layout_path = std.fmt.bufPrint(&layout_path_buf, "{s}/.paramux/layout", .{abs}) catch null;
+        if (layout_path) |lp| {
+            if (std.fs.cwd().readFileAlloc(a, lp, 4 * 1024 * 1024)) |layout_json| {
+                if (installProjectLayoutSlot(a, layout_json)) {
+                    project_layout = true;
+                } else |err| {
+                    try stderr.print("warning: .paramux/layout ignored (err={})\n", .{err});
+                }
+            } else |_| {}
+        }
+    }
+
+    const spawn_action: []const u8 = if (project_layout) "apply_layout:5" else "new_tab";
+    const performed = apprt.App.performAutomationAction(alloc, target, .focused, spawn_action) catch |err| {
         try stderr.print("workspace spawn failed (err={})\n", .{err});
         return 1;
     };
@@ -120,4 +139,42 @@ fn runArgs(
 
     try stdout.print("{d}\n", .{surface_id});
     return 0;
+}
+
+
+/// Validate the project layout JSON as a session Tab and write it into
+/// layouts.json slot 5 (the "project slot").
+fn installProjectLayoutSlot(alloc: Allocator, layout_json: []const u8) !void {
+    const session = @import("../apprt/win32_session_state.zig");
+    const parsed = try std.json.parseFromSlice(session.Tab, alloc, layout_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    const local = std.process.getEnvVarOwned(alloc, "LOCALAPPDATA") catch return error.NoLocalAppData;
+    defer alloc.free(local);
+    const path = try std.fs.path.join(alloc, &.{ local, "paramux", "layouts.json" });
+    defer alloc.free(path);
+
+    const Slots = struct { slots: [5]?session.Tab = .{ null, null, null, null, null } };
+    var slots: Slots = .{};
+    if (std.fs.cwd().readFileAlloc(alloc, path, 16 * 1024 * 1024)) |raw| {
+        defer alloc.free(raw);
+        if (std.json.parseFromSlice(Slots, alloc, raw, .{ .ignore_unknown_fields = true })) |existing| {
+            defer existing.deinit();
+            slots = existing.value;
+            slots.slots[4] = parsed.value;
+            return writeSlots(alloc, path, slots);
+        } else |_| {}
+    } else |_| {}
+    slots.slots[4] = parsed.value;
+    return writeSlots(alloc, path, slots);
+}
+
+fn writeSlots(alloc: Allocator, path: []const u8, slots: anytype) !void {
+    var out: std.Io.Writer.Allocating = .init(alloc);
+    defer out.deinit();
+    try std.json.Stringify.value(slots, .{}, &out.writer);
+    if (std.fs.path.dirname(path)) |dir| std.fs.cwd().makePath(dir) catch {};
+    const file = try std.fs.cwd().createFile(path, .{});
+    defer file.close();
+    try file.writeAll(out.written());
 }

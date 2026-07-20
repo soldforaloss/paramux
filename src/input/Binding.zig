@@ -572,6 +572,9 @@ pub const Action = union(enum) {
     /// Keep this window above all others (toggle).
     toggle_window_on_top,
 
+    /// Recreate a saved layout slot (1-5) as a new workspace.
+    apply_layout: u8,
+
     /// Go to the tab with the specific index, starting from 1.
     ///
     /// If the tab number is higher than the number of tabs,
@@ -1423,6 +1426,7 @@ pub const Action = union(enum) {
             .show_digest,
             .health_hud,
             .toggle_window_on_top,
+            .apply_layout,
             .move_tab,
             .toggle_tab_overview,
             .new_split,

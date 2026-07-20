@@ -157,6 +157,9 @@ pub const Action = union(Key) {
     /// Toggle this window's always-on-top state.
     toggle_window_on_top,
 
+    /// Recreate a saved layout slot (1-based) as a new workspace.
+    apply_layout: ApplyLayout,
+
     /// Jump to next/previous window.
     goto_window: GotoWindow,
 
@@ -392,6 +395,7 @@ pub const Action = union(Key) {
         show_digest,
         health_hud,
         toggle_window_on_top,
+        apply_layout,
         goto_window,
         resize_split,
         equalize_splits,
@@ -602,6 +606,17 @@ pub const NewWindow = struct {
 /// The tab to jump to. This is non-exhaustive so that integer values represent
 /// the index (zero-based) of the tab to jump to. Negative values are special
 /// values.
+/// A 1-based saved-layout slot for apply_layout.
+pub const ApplyLayout = enum(c_int) {
+    _,
+
+    pub fn slot(self: ApplyLayout) u8 {
+        const raw = @intFromEnum(self);
+        if (raw < 1 or raw > 255) return 0;
+        return @intCast(raw);
+    }
+};
+
 pub const GotoTab = enum(c_int) {
     previous = -1,
     next = -2,
