@@ -31,6 +31,7 @@ const install = @import("install.zig");
 const uninstall = @import("uninstall.zig");
 const update = @import("update.zig");
 const doctor = @import("doctor.zig");
+const run_cmd = @import("run.zig");
 
 pub const Action = @import("ghostty_action.zig").Action;
 
@@ -95,6 +96,7 @@ fn runMain(self: Action, alloc: Allocator) !u8 {
         .uninstall => try uninstall.run(alloc),
         .update => try update.run(alloc),
         .doctor => try doctor.run(alloc),
+        .run => try run_cmd.run(alloc),
     };
 }
 
@@ -132,6 +134,7 @@ pub fn options(comptime self: Action) type {
             .uninstall => uninstall.Options,
             .update => update.Options,
             .doctor => doctor.Options,
+            .run => run_cmd.Options,
         };
     }
 }

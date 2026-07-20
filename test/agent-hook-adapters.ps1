@@ -161,16 +161,17 @@ function Assert-HookCommand {
         $Hook,
         [string] $ExpectedState,
         [string] $ExpectedMessage,
-        [switch] $MessageFromStdin
+        [switch] $MessageFromStdin,
+        [switch] $TokensFromTranscript
     )
 
     Assert-Equal $Hook.type 'command' 'Claude hook type'
     Assert-Equal $Hook.command '__PARAMUX_EXECUTABLE__?RUN_INSTALL_PARAMUX_PS1' 'Claude hook template executable'
-    $expectedArgs = if ($MessageFromStdin) {
-        @('notify', "--state=$ExpectedState", '--message-from-stdin', $ExpectedMessage)
-    } else {
-        @('notify', "--state=$ExpectedState", $ExpectedMessage)
-    }
+    $expectedArgs = @('notify')
+    if ($TokensFromTranscript) { $expectedArgs += '--tokens-from-transcript' }
+    $expectedArgs += "--state=$ExpectedState"
+    if ($MessageFromStdin) { $expectedArgs += '--message-from-stdin' }
+    $expectedArgs += $ExpectedMessage
     Assert-Sequence @($Hook.args) $expectedArgs 'Claude hook args'
 }
 
@@ -212,7 +213,7 @@ Assert-Sequence @($claude.hooks.PSObject.Properties.Name) @('UserPromptSubmit', 
 Assert-HookCommand $claude.hooks.UserPromptSubmit[0].hooks[0] 'working' 'Claude Code is working'
 Assert-HookCommand $claude.hooks.PermissionRequest[0].hooks[0] 'waiting' 'Claude Code needs your approval' -MessageFromStdin
 Assert-HookCommand $claude.hooks.Elicitation[0].hooks[0] 'waiting' 'Claude Code needs your input' -MessageFromStdin
-Assert-HookCommand $claude.hooks.Stop[0].hooks[0] 'done' 'Claude Code finished responding'
+Assert-HookCommand $claude.hooks.Stop[0].hooks[0] 'done' 'Claude Code finished responding' -TokensFromTranscript
 Assert-HookCommand $claude.hooks.StopFailure[0].hooks[0] 'error' 'Claude Code stopped with an error' -MessageFromStdin
 Assert-HookCommand $claude.hooks.SessionEnd[0].hooks[0] 'none' 'Claude Code session ended'
 

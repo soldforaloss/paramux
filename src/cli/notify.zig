@@ -11,6 +11,11 @@ pub const Options = struct {
     /// This is set by the CLI parser for deinit.
     _arena: ?ArenaAllocator = null,
 
+    /// Read the hook payload from stdin, sum the token usage recorded in
+    /// the agent transcript named by its `transcript_path` (Claude Code
+    /// JSONL), and attach the total to the attention signal.
+    @"tokens-from-transcript": bool = false,
+
     /// An optional title for the notification, set with `--title=<title>`.
     /// The title is shown in bold in the desktop toast and is prefixed to the
     /// message in the paramux sidebar row. Ignored when `--state` is set.
@@ -62,6 +67,10 @@ pub const Options = struct {
     }
 
     fn consume(self: *Options, alloc: Allocator, arg: []const u8) Allocator.Error!void {
+        if (std.mem.eql(u8, arg, "--tokens-from-transcript")) {
+            self.@"tokens-from-transcript" = true;
+            return;
+        }
         if (lib.cutPrefix(u8, arg, "--title=")) |rest| {
             self.title = try alloc.dupeZ(u8, rest);
             return;
@@ -159,16 +168,32 @@ pub fn run(alloc: Allocator) !u8 {
     // stdin; surface its real `message` text when asked to. Any parse or
     // read failure quietly keeps the positional fallback — a notification
     // with a canned message beats no notification.
+    var transcript_tokens: u64 = 0;
+    const wants_stdin = opts.@"message-from-stdin" or opts.@"tokens-from-transcript";
+    const stdin_bytes: ?[]const u8 = if (wants_stdin)
+        (std.fs.File.stdin().readToEndAlloc(arena, 1024 * 1024) catch null)
+    else
+        null;
+    if (opts.@"tokens-from-transcript") {
+        if (stdin_bytes) |payload| {
+            if (extractTranscriptPath(arena, payload)) |path| {
+                transcript_tokens = sumClaudeTranscriptTokens(arena, path) catch 0;
+            }
+        }
+    }
     const message: []const u8 = if (opts.@"message-from-stdin") blk: {
-        const stdin_bytes = std.fs.File.stdin().readToEndAlloc(arena, 1024 * 1024) catch break :blk fallback_message;
-        break :blk extractHookMessage(arena, stdin_bytes) orelse fallback_message;
+        const payload = stdin_bytes orelse break :blk fallback_message;
+        break :blk extractHookMessage(arena, payload) orelse fallback_message;
     } else fallback_message;
 
     // When a state is given, encode it in the OSC 777 title as the paramux
     // marker `paramux.state:<state>` (parsed by the win32 apprt's
     // `parseAttentionState`). Otherwise the title is the plain human title.
     const osc_title: []const u8 = if (opts.state.len > 0)
-        try std.fmt.allocPrint(arena, "paramux.state:{s}", .{opts.state})
+        (if (transcript_tokens > 0)
+            try std.fmt.allocPrint(arena, "paramux.state:{s};tokens={d}", .{ opts.state, transcript_tokens })
+        else
+            try std.fmt.allocPrint(arena, "paramux.state:{s}", .{opts.state}))
     else
         opts.title;
 
@@ -351,4 +376,66 @@ test "notify collects message and title" {
     try testing.expectEqualStrings("Claude", opts._message.items[0]);
     try testing.expectEqualStrings("is", opts._message.items[1]);
     try testing.expectEqualStrings("waiting", opts._message.items[2]);
+}
+
+/// The hook payload's `transcript_path` value, if present.
+fn extractTranscriptPath(alloc: std.mem.Allocator, payload: []const u8) ?[]const u8 {
+    var parsed = std.json.parseFromSlice(std.json.Value, alloc, payload, .{}) catch return null;
+    defer parsed.deinit();
+    const obj = switch (parsed.value) {
+        .object => |o| o,
+        else => return null,
+    };
+    const val = obj.get("transcript_path") orelse return null;
+    return switch (val) {
+        .string => |str| alloc.dupe(u8, str) catch null,
+        else => null,
+    };
+}
+
+/// Sum input+output tokens across a Claude Code JSONL transcript. Each
+/// assistant line carries `message.usage.{input_tokens,output_tokens}`;
+/// the sum approximates the session's total token traffic. Capped scan.
+fn sumClaudeTranscriptTokens(alloc: std.mem.Allocator, path: []const u8) !u64 {
+    const file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+    const bytes = try file.readToEndAlloc(alloc, 64 * 1024 * 1024);
+    defer alloc.free(bytes);
+
+    var total: u64 = 0;
+    var lines = std.mem.splitScalar(u8, bytes, '\n');
+    while (lines.next()) |line| {
+        if (std.mem.indexOf(u8, line, "\"usage\"") == null) continue;
+        total += extractUsageNumber(line, "\"input_tokens\":");
+        total += extractUsageNumber(line, "\"output_tokens\":");
+    }
+    return total;
+}
+
+/// First integer following `key` in `line` (0 when absent) — a targeted
+/// scan that avoids full JSON parsing per transcript line.
+fn extractUsageNumber(line: []const u8, key: []const u8) u64 {
+    const at = std.mem.indexOf(u8, line, key) orelse return 0;
+    var i = at + key.len;
+    while (i < line.len and (line[i] == ' ')) i += 1;
+    var value: u64 = 0;
+    var any = false;
+    while (i < line.len and line[i] >= '0' and line[i] <= '9') : (i += 1) {
+        value = value * 10 + (line[i] - '0');
+        any = true;
+    }
+    return if (any) value else 0;
+}
+
+test "extractUsageNumber pulls integers" {
+    try std.testing.expectEqual(@as(u64, 128), extractUsageNumber("{\"usage\":{\"input_tokens\": 128}}", "\"input_tokens\":"));
+    try std.testing.expectEqual(@as(u64, 0), extractUsageNumber("{}", "\"input_tokens\":"));
+}
+
+test "extractTranscriptPath reads hook payload" {
+    const t = std.testing;
+    const payload = "{\"transcript_path\":\"C:/tmp/session.jsonl\",\"hook_event_name\":\"Stop\"}";
+    const path = extractTranscriptPath(t.allocator, payload) orelse return error.TestExpectedPath;
+    defer t.allocator.free(path);
+    try t.expectEqualStrings("C:/tmp/session.jsonl", path);
 }

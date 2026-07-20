@@ -95,6 +95,10 @@ pub const Action = enum {
     // per-tool wiring, and (with --fire) a live attention signal test.
     doctor,
 
+    // Spawn a pane in the running instance, type a command into it,
+    // and print the new pane's surface id.
+    run,
+
     pub fn detectSpecialCase(arg: []const u8) ?SpecialCase(Action) {
         // If we see a "-e" and we haven't seen a command yet, then
         // we are done looking for commands. This special case enables

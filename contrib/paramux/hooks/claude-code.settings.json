@@ -55,6 +55,7 @@
             "command": "__PARAMUX_EXECUTABLE__?RUN_INSTALL_PARAMUX_PS1",
             "args": [
               "notify",
+              "--tokens-from-transcript",
               "--state=done",
               "Claude Code finished responding"
             ]

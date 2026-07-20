@@ -31,6 +31,7 @@ Last reviewed: 2026-07-10, against the public x64 portable prerelease
 
 | Ghostty documentation surface | Paramux note |
 | --- | --- |
+| [Kitty graphics protocol](https://ghostty.org/docs/vt/reference) (inline images) | The shared terminal core parses Kitty graphics and the OpenGL renderer carries the image pipeline on Windows. Treat it as available-but-lightly-tested on this fork: exercise it with `kitten icat`-style output on real hardware and report rendering gaps. |
 | [Shell integration](https://ghostty.org/docs/features/shell-integration) | Automatic integration applies to supported Unix-like shells launched on Windows. Paramux also integrates Windows PowerShell and PowerShell 7, with a manual fallback under `%LOCALAPPDATA%\paramux\shell-integration\powershell\integration.ps1`. PowerShell emits cwd and prompt metadata used by the sidebar. `cmd.exe` remains a plain fallback. |
 | [Action reference](https://ghostty.org/docs/config/keybind/reference) | The shared action grammar remains, but some upstream actions are platform-specific. For effective Windows truth, use `paramux show-config --default --docs` and `paramux list-keybinds`. |
 | [Action reference: `toggle_secure_input`](https://ghostty.org/docs/config/keybind/reference) | Windows provides a local sensitive-input indicator and cursor/status/title state. It does not implement macOS Secure Keyboard Entry or block system-wide keyboard hooks. |

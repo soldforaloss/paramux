@@ -486,6 +486,8 @@ const WS_TABSTOP = 0x00010000;
 const WS_OVERLAPPEDWINDOW = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
 const WS_POPUP = 0x80000000;
 const WS_EX_LAYERED = 0x00080000;
+const WS_EX_TOPMOST = 0x00000008;
+const WS_EX_TOOLWINDOW = 0x00000080;
 const MOD_ALT = 0x0001;
 const MOD_CONTROL = 0x0002;
 const MOD_SHIFT = 0x0004;
@@ -739,7 +741,12 @@ const CTX_ATTENTION_BASE: usize = 4300; // attention inbox items: CTX_ATTENTION_
 const CTX_FIND_PANES: usize = 4026;
 const CTX_SCROLLBACK_EDITOR: usize = 4027;
 const CTX_MUTE_PANE: usize = 4028;
-const CTX_NEW_TAB_HERE: usize = 4029;
+const CTX_NEW_TAB_HERE: usize = 4030;
+const CTX_WATCH_PANE: usize = 4031;
+const CTX_LAYOUT_SAVE_BASE: usize = 4700; // save layout slots: base + slot
+const CTX_LAYOUT_APPLY_BASE: usize = 4710; // apply layout slots: base + slot
+const layout_slot_count: usize = 5;
+const CTX_CHOOSER_PROFILE_BASE: usize = 4600; // (+) chooser agent presets: base + index
 const CTX_ACCENT_BASE: usize = 4500; // workspace colors: base + index; base+8 = default
 const CTX_FIND_RESULT_BASE: usize = 4400; // find-across-panes results: base + index
 const SEARCH_BG_ID: usize = 2100;
@@ -1372,6 +1379,9 @@ const palette_list_class_name = std.unicode.utf8ToUtf16LeStringLiteral("paramux.
 const scrollbar_class_name = std.unicode.utf8ToUtf16LeStringLiteral("paramux.win32.scrollbar");
 const pane_drop_preview_class_name = std.unicode.utf8ToUtf16LeStringLiteral("paramux.win32.pane_drop_preview");
 const pane_peek_class_name = std.unicode.utf8ToUtf16LeStringLiteral("paramux.win32.pane_peek");
+const pane_watch_class_name = std.unicode.utf8ToUtf16LeStringLiteral("paramux.win32.pane_watch");
+const WATCH_TIMER_ID: usize = 0x77684708;
+const pane_watch_refresh_ms: u32 = 1000;
 const WM_MOUSEHOVER: UINT = 0x02A1;
 const TME_HOVER: u32 = 0x0001;
 const pane_peek_hover_ms: u32 = 450;
@@ -3606,6 +3616,7 @@ pub const App = struct {
     scrollbar_class_atom: ATOM = 0,
     pane_drop_preview_class_atom: ATOM = 0,
     pane_peek_class_atom: ATOM = 0,
+    pane_watch_class_atom: ATOM = 0,
     /// Guard so the first-run marker file is probed at most once per
     /// process (the hint itself is once per INSTALL via the marker).
     first_run_hint_done: bool = false,
@@ -6492,6 +6503,18 @@ pub const App = struct {
         }
     }
 
+    fn ensurePaneWatchClass(self: *App) !void {
+        if (self.pane_watch_class_atom != 0) return;
+        var wc: WNDCLASSEXW = std.mem.zeroes(WNDCLASSEXW);
+        wc.cbSize = @sizeOf(WNDCLASSEXW);
+        wc.lpfnWndProc = &paneWatchProc;
+        wc.hInstance = self.hinstance;
+        wc.lpszClassName = pane_watch_class_name;
+        const atom = RegisterClassExW(&wc);
+        if (atom == 0) return windows.unexpectedError(windows.kernel32.GetLastError());
+        self.pane_watch_class_atom = atom;
+    }
+
     fn ensurePanePeekClass(self: *App) !void {
         if (self.pane_peek_class_atom != 0) return;
         var wc: WNDCLASSEXW = std.mem.zeroes(WNDCLASSEXW);
@@ -8450,6 +8473,7 @@ pub const App = struct {
         const attn = parseAttentionState(title);
         if (self.findSurfaceForTarget(target)) |surface| {
             surface.setLastNotification(attn.title, body) catch {};
+            if (attn.tokens > 0) surface.agent_tokens = attn.tokens;
             surface.setAttentionState(attn.state);
             if (surface.attentionMuted()) return;
         }
@@ -9544,6 +9568,11 @@ const Host = struct {
     /// When this host was last deactivated; drives the
     /// while-you-were-away digest on return.
     deactivated_at_ms: i64 = 0,
+    /// Always-on-top watch window mirroring one pane's tail (Pop Out
+    /// Watch Window): handle, owned text, and the watched pane.
+    watch_hwnd: ?HWND = null,
+    watch_text: ?[]u8 = null,
+    watch_surface: ?*Surface = null,
     /// Scratch for the dynamic (git-prefixed) hint strip text.
     hint_dynamic_buf: [200:0]u16 = undefined,
     /// Arena + merged entry arrays backing the command palette's
@@ -10859,6 +10888,16 @@ const Host = struct {
             self.app.core_app.alloc.free(t);
             self.peek_text = null;
         }
+        if (self.watch_hwnd) |wh| {
+            _ = KillTimer(wh, WATCH_TIMER_ID);
+            _ = DestroyWindow(wh);
+            self.watch_hwnd = null;
+        }
+        if (self.watch_text) |wt| {
+            self.app.core_app.alloc.free(wt);
+            self.watch_text = null;
+        }
+        self.watch_surface = null;
         if (self.palette_dyn_arena) |*arena| {
             arena.deinit();
             self.palette_dyn_arena = null;
@@ -12808,6 +12847,7 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_STRING, CTX_FIND, std.unicode.utf8ToUtf16LeStringLiteral("Find...\tCtrl+Shift+F"));
         _ = AppendMenuW(menu, MF_STRING, CTX_FIND_PANES, std.unicode.utf8ToUtf16LeStringLiteral("Find in All Panes...\tCtrl+Alt+F"));
         _ = AppendMenuW(menu, MF_STRING, CTX_SCROLLBACK_EDITOR, std.unicode.utf8ToUtf16LeStringLiteral("Open Scrollback in Editor"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_WATCH_PANE, std.unicode.utf8ToUtf16LeStringLiteral("Pop Out Watch Window"));
         if (self.activeSurface()) |mute_target| {
             _ = AppendMenuW(menu, MF_STRING, CTX_MUTE_PANE, if (mute_target.attentionMuted())
                 std.unicode.utf8ToUtf16LeStringLiteral("Unmute Notifications")
@@ -12837,6 +12877,32 @@ const Host = struct {
             }
             _ = AppendMenuW(accent_menu, MF_STRING, CTX_ACCENT_BASE + workspace_accents.len, std.unicode.utf8ToUtf16LeStringLiteral("Default"));
             _ = AppendMenuW(menu, MF_POPUP, @intFromPtr(accent_menu), std.unicode.utf8ToUtf16LeStringLiteral("Workspace Color"));
+        }
+        {
+            const occupied = self.layoutSlotOccupancy();
+            if (CreatePopupMenu()) |save_menu| {
+                for (0..layout_slot_count) |slot| {
+                    var lbuf: [40]u8 = undefined;
+                    const lu = std.fmt.bufPrint(&lbuf, "Slot {d}{s}", .{ slot + 1, if (occupied[slot]) " (saved)" else "" }) catch continue;
+                    var lw: [40:0]u16 = undefined;
+                    const wn = std.unicode.utf8ToUtf16Le(&lw, lu) catch continue;
+                    lw[wn] = 0;
+                    _ = AppendMenuW(save_menu, MF_STRING, CTX_LAYOUT_SAVE_BASE + slot, @ptrCast(&lw));
+                }
+                _ = AppendMenuW(menu, MF_POPUP, @intFromPtr(save_menu), std.unicode.utf8ToUtf16LeStringLiteral("Save Layout To"));
+            }
+            if (CreatePopupMenu()) |apply_menu| {
+                for (0..layout_slot_count) |slot| {
+                    var lbuf: [40]u8 = undefined;
+                    const lu = std.fmt.bufPrint(&lbuf, "Slot {d}{s}", .{ slot + 1, if (occupied[slot]) "" else " (empty)" }) catch continue;
+                    var lw: [40:0]u16 = undefined;
+                    const wn = std.unicode.utf8ToUtf16Le(&lw, lu) catch continue;
+                    lw[wn] = 0;
+                    const flags: UINT = if (occupied[slot]) MF_STRING else MF_GRAYED;
+                    _ = AppendMenuW(apply_menu, flags, CTX_LAYOUT_APPLY_BASE + slot, @ptrCast(&lw));
+                }
+                _ = AppendMenuW(menu, MF_POPUP, @intFromPtr(apply_menu), std.unicode.utf8ToUtf16LeStringLiteral("Apply Layout From"));
+            }
         }
         _ = AppendMenuW(menu, MF_STRING, CTX_TAB_OVERVIEW, std.unicode.utf8ToUtf16LeStringLiteral("Workspaces..."));
 
@@ -12990,6 +13056,15 @@ const Host = struct {
                     }
                 }
             },
+            CTX_LAYOUT_SAVE_BASE...CTX_LAYOUT_SAVE_BASE + layout_slot_count - 1 => |picked_save| {
+                self.saveLayoutSlot(picked_save - CTX_LAYOUT_SAVE_BASE);
+            },
+            CTX_LAYOUT_APPLY_BASE...CTX_LAYOUT_APPLY_BASE + layout_slot_count - 1 => |picked_apply| {
+                self.applyLayoutSlot(picked_apply - CTX_LAYOUT_APPLY_BASE);
+            },
+            CTX_WATCH_PANE => {
+                if (self.activeSurface()) |active| self.showPaneWatch(active);
+            },
             CTX_MUTE_PANE => {
                 if (self.activeSurface()) |active| {
                     if (active.attentionMuted()) {
@@ -13103,6 +13178,105 @@ const Host = struct {
         const hwnd = self.hwnd orelse return;
         self.chrome_repaint_dirty = true;
         _ = InvalidateRect(hwnd, null, 0);
+    }
+
+    /// Saved split layouts (5 slots) persisted to
+    /// `%LOCALAPPDATA%\\paramux\\layouts.json`.
+    const LayoutSlots = struct {
+        slots: [layout_slot_count]?win32_session_state.Tab =
+            .{ null, null, null, null, null },
+    };
+
+    fn layoutSlotsPath(alloc: Allocator) ![]u8 {
+        const local = std.process.getEnvVarOwned(alloc, "LOCALAPPDATA") catch
+            return error.NoLocalAppData;
+        defer alloc.free(local);
+        return try std.fs.path.join(alloc, &.{ local, "paramux", "layouts.json" });
+    }
+
+    /// Occupancy of each layout slot (for menu labels): true = saved.
+    fn layoutSlotOccupancy(self: *Host) [layout_slot_count]bool {
+        var result: [layout_slot_count]bool = .{false} ** layout_slot_count;
+        const alloc = self.app.core_app.alloc;
+        var arena = std.heap.ArenaAllocator.init(alloc);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const path = layoutSlotsPath(a) catch return result;
+        const raw = std.fs.cwd().readFileAlloc(a, path, 16 * 1024 * 1024) catch return result;
+        const parsed = std.json.parseFromSlice(LayoutSlots, a, raw, .{ .ignore_unknown_fields = true }) catch return result;
+        for (parsed.value.slots, 0..) |slot, i| result[i] = slot != null;
+        return result;
+    }
+
+    /// Save the active workspace's split layout (topology + cwds) into
+    /// slot `slot` of layouts.json.
+    fn saveLayoutSlot(self: *Host, slot: usize) void {
+        if (slot >= layout_slot_count) return;
+        const tab = self.activeTab() orelse return;
+        const alloc = self.app.core_app.alloc;
+        var arena = std.heap.ArenaAllocator.init(alloc);
+        defer arena.deinit();
+        const a = arena.allocator();
+
+        var slots: LayoutSlots = .{};
+        const path = layoutSlotsPath(a) catch return;
+        if (std.fs.cwd().readFileAlloc(a, path, 16 * 1024 * 1024)) |raw| {
+            if (std.json.parseFromSlice(LayoutSlots, a, raw, .{ .ignore_unknown_fields = true })) |parsed| {
+                slots = parsed.value;
+            } else |_| {}
+        } else |_| {}
+
+        slots.slots[slot] = App.buildSessionTab(a, tab) catch {
+            self.setBanner(.err, "Could not capture this workspace's layout.") catch {};
+            return;
+        };
+
+        var out: std.Io.Writer.Allocating = .init(a);
+        std.json.Stringify.value(slots, .{}, &out.writer) catch return;
+        if (std.fs.path.dirname(path)) |dir| std.fs.cwd().makePath(dir) catch {};
+        const file = std.fs.cwd().createFile(path, .{}) catch {
+            self.setBanner(.err, "Could not write layouts.json.") catch {};
+            return;
+        };
+        defer file.close();
+        file.writeAll(out.written()) catch return;
+
+        var msg_buf: [64]u8 = undefined;
+        const msg = std.fmt.bufPrint(&msg_buf, "Layout saved to slot {d}.", .{slot + 1}) catch "Layout saved.";
+        self.setBanner(.info, msg) catch {};
+    }
+
+    /// Recreate slot `slot`'s layout as a NEW workspace in this window.
+    fn applyLayoutSlot(self: *Host, slot: usize) void {
+        if (slot >= layout_slot_count) return;
+        const alloc = self.app.core_app.alloc;
+        var arena = std.heap.ArenaAllocator.init(alloc);
+        defer arena.deinit();
+        const a = arena.allocator();
+
+        const path = layoutSlotsPath(a) catch return;
+        const raw = std.fs.cwd().readFileAlloc(a, path, 16 * 1024 * 1024) catch {
+            self.setBanner(.err, "No saved layouts yet. Save one first.") catch {};
+            return;
+        };
+        const parsed = std.json.parseFromSlice(LayoutSlots, a, raw, .{ .ignore_unknown_fields = true }) catch {
+            self.setBanner(.err, "layouts.json is unreadable.") catch {};
+            return;
+        };
+        const saved = parsed.value.slots[slot] orelse {
+            self.setBanner(.err, "That layout slot is empty. Save one first.") catch {};
+            return;
+        };
+
+        const selected = self.app.restoreSessionTab(saved, self, self.tabs.items.len) catch |err| {
+            log.warn("apply layout slot={d} failed err={}", .{ slot, err });
+            self.setBanner(.err, "Could not apply that layout.") catch {};
+            return;
+        };
+        self.app.activateSurface(selected);
+        var msg_buf: [72]u8 = undefined;
+        const msg = std.fmt.bufPrint(&msg_buf, "Layout {d} applied as a new workspace.", .{slot + 1}) catch "Layout applied.";
+        self.setBanner(.info, msg) catch {};
     }
 
     /// Count panes by alerting attention state across every workspace.
@@ -13479,6 +13653,23 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TERMINAL_AUTO, std.unicode.utf8ToUtf16LeStringLiteral("New Terminal in This Workspace\tCtrl+Shift+D"));
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New Workspace\tCtrl+Shift+T"));
 
+        // Agent presets: every configured profile is one click away —
+        // "spawn a claude pane" should not need the profile overlay.
+        if (self.ensureProfiles() catch false) {
+            if (self.profiles) |profiles| {
+                if (profiles.len > 0) _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
+                const alloc = self.app.core_app.alloc;
+                for (profiles, 0..) |*profile, i| {
+                    if (i >= 9) break;
+                    const label_utf8 = std.fmt.allocPrint(alloc, "New {s} Pane", .{profile.key}) catch continue;
+                    defer alloc.free(label_utf8);
+                    const label_w = std.unicode.utf8ToUtf16LeAllocZ(alloc, label_utf8) catch continue;
+                    defer alloc.free(label_w);
+                    _ = AppendMenuW(menu, MF_STRING, CTX_CHOOSER_PROFILE_BASE + i, label_w.ptr);
+                }
+            }
+        }
+
         _ = SetForegroundWindow(hwnd);
         const cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTALIGN | TPM_TOPALIGN, rect.left, rect.bottom, 0, hwnd, null);
         _ = PostMessageW(hwnd, WM_NULL, 0, 0);
@@ -13488,6 +13679,9 @@ const Host = struct {
         switch (@as(usize, @intCast(cmd))) {
             CTX_NEW_TERMINAL_AUTO => self.addTerminalAutoPlaced(),
             CTX_NEW_TAB => self.postDeferredNewTab(),
+            CTX_CHOOSER_PROFILE_BASE...CTX_CHOOSER_PROFILE_BASE + 8 => |picked| {
+                _ = self.quickOpenProfileIndex(picked - CTX_CHOOSER_PROFILE_BASE, .split);
+            },
             else => {},
         }
     }
@@ -13921,6 +14115,92 @@ const Host = struct {
             SWP_NOACTIVATE | SWP_SHOWWINDOW,
         );
         _ = InvalidateRect(h, null, 1);
+    }
+
+    /// Pop out an always-on-top watch window mirroring `surface`'s
+    /// last lines; refreshes once a second. Click focuses the pane;
+    /// right-click or close dismisses it.
+    fn showPaneWatch(self: *Host, surface: *Surface) void {
+        if (self.watch_hwnd == null) {
+            self.app.ensurePaneWatchClass() catch return;
+            self.watch_hwnd = CreateWindowExW(
+                WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
+                pane_watch_class_name,
+                std.unicode.utf8ToUtf16LeStringLiteral("Paramux Watch"),
+                WS_POPUP,
+                self.scaled(80),
+                self.scaled(80),
+                self.scaled(460),
+                self.scaled(190),
+                null,
+                null,
+                self.app.hinstance,
+                null,
+            );
+            const h = self.watch_hwnd orelse return;
+            _ = SetWindowLongPtrW(h, GWLP_USERDATA, @as(LONG_PTR, @intCast(@intFromPtr(self))));
+            _ = SetLayeredWindowAttributes(h, 0, 236, LWA_ALPHA);
+            _ = SetTimer(h, WATCH_TIMER_ID, pane_watch_refresh_ms, null);
+        }
+        self.watch_surface = surface;
+        self.refreshPaneWatch();
+        if (self.watch_hwnd) |h| {
+            _ = ShowWindow(h, SW_SHOWNOACTIVATE);
+            _ = InvalidateRect(h, null, 1);
+        }
+    }
+
+    fn hidePaneWatch(self: *Host) void {
+        self.watch_surface = null;
+        if (self.watch_hwnd) |h| _ = ShowWindow(h, SW_HIDE);
+    }
+
+    /// Refresh the watch window's mirrored tail; auto-hides when the
+    /// watched pane no longer exists.
+    fn refreshPaneWatch(self: *Host) void {
+        const surface = self.watch_surface orelse return;
+        // Validate the pointer against the live pane set (the pane may
+        // have been closed since the last tick).
+        var alive = false;
+        outer: for (self.tabs.items) |*tab| {
+            var it = tab.tree.iterator();
+            while (it.next()) |leaf| {
+                if (leaf.view == surface) {
+                    alive = true;
+                    break :outer;
+                }
+            }
+        }
+        if (!alive) {
+            self.hidePaneWatch();
+            return;
+        }
+
+        const alloc = self.app.core_app.alloc;
+        const full = self.app.readPaneText(.{ .surface_id = surface.core().id }, alloc) catch return;
+        defer alloc.free(full);
+
+        var lines_buf: [8][]const u8 = undefined;
+        var count: usize = 0;
+        var it = std.mem.splitBackwardsScalar(u8, full, '\n');
+        while (it.next()) |raw| {
+            const line = std.mem.trimRight(u8, raw, " \r");
+            if (line.len == 0) continue;
+            lines_buf[count] = line[0..@min(line.len, 90)];
+            count += 1;
+            if (count >= lines_buf.len) break;
+        }
+        var text: std.ArrayListUnmanaged(u8) = .empty;
+        defer text.deinit(alloc);
+        var i: usize = count;
+        while (i > 0) {
+            i -= 1;
+            text.appendSlice(alloc, lines_buf[i]) catch return;
+            if (i > 0) text.append(alloc, '\n') catch return;
+        }
+        if (self.watch_text) |old| alloc.free(old);
+        self.watch_text = alloc.dupe(u8, text.items) catch null;
+        if (self.watch_hwnd) |h| _ = InvalidateRect(h, null, 1);
     }
 
     fn hidePanePeek(self: *Host) void {
@@ -16520,12 +16800,14 @@ const Host = struct {
                             }) catch "zoomed";
                         } else blk: {
                             const ports_seg = formatSidebarPorts(&ports_buf, surface.listening_ports);
+                            var tok_buf: [24]u8 = undefined;
+                            const tok_seg = formatSidebarTokens(&tok_buf, surface.agent_tokens);
                             break :blk if (surface.pwd) |pwd| pwd_blk: {
                                 const cwd = basename(pwd);
                                 break :pwd_blk if (surface.git_branch) |br|
-                                    (std.fmt.bufPrint(&meta_buf, "{s}{s}  {s}{s}", .{ br, if (surface.git_dirty) "*" else "", cwd, ports_seg }) catch cwd)
+                                    (std.fmt.bufPrint(&meta_buf, "{s}{s}  {s}{s}{s}", .{ br, if (surface.git_dirty) "*" else "", cwd, ports_seg, tok_seg }) catch cwd)
                                 else
-                                    (std.fmt.bufPrint(&meta_buf, "{s}{s}", .{ cwd, ports_seg }) catch cwd);
+                                    (std.fmt.bufPrint(&meta_buf, "{s}{s}{s}", .{ cwd, ports_seg, tok_seg }) catch cwd);
                             } else std.mem.trimLeft(u8, ports_seg, " ");
                         };
                         if (secondary.len > 0) {
@@ -19818,6 +20100,89 @@ fn paletteListProc(
 /// child of the Host filled with the theme accent (alpha comes from
 /// `SetLayeredWindowAttributes` at creation). Mouse input never reaches it
 /// — the Host holds capture for the whole drag.
+fn paneWatchProc(
+    hwnd: HWND,
+    msg: UINT,
+    wParam: WPARAM,
+    lParam: LPARAM,
+) callconv(.winapi) LRESULT {
+    const raw = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+    const host: ?*Host = if (raw != 0) @ptrFromInt(@as(usize, @intCast(raw))) else null;
+    switch (msg) {
+        WM_ERASEBKGND => return 1,
+        WM_TIMER => {
+            if (wParam == WATCH_TIMER_ID) {
+                if (host) |v| v.refreshPaneWatch();
+                return 0;
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+        WM_NCHITTEST => {
+            // The whole body drags the window; click-through focus is
+            // on double-click instead so drag stays primary.
+            const hit = DefWindowProcW(hwnd, msg, wParam, lParam);
+            if (hit == HTCLIENT) return HTCAPTION;
+            return hit;
+        },
+        WM_LBUTTONDBLCLK => {
+            if (host) |v| {
+                if (v.watch_surface) |surface| v.app.activateSurface(surface);
+            }
+            return 0;
+        },
+        WM_RBUTTONUP, WM_CLOSE => {
+            if (host) |v| v.hidePaneWatch() else _ = ShowWindow(hwnd, SW_HIDE);
+            return 0;
+        },
+        WM_PAINT => {
+            var ps: PAINTSTRUCT = undefined;
+            const hdc = BeginPaint(hwnd, &ps) orelse return 0;
+            defer _ = EndPaint(hwnd, &ps);
+            const v = host orelse return 0;
+            const theme = &v.app.resolved_theme;
+            var rect: RECT = undefined;
+            if (GetClientRect(hwnd, &rect) == 0) return 0;
+            fillSolidRect(hdc, rect, blendColorRGB(theme.chrome_bg, theme.text_primary, 0.04));
+            fillSolidRect(hdc, .{ .left = rect.left, .top = rect.top, .right = rect.right, .bottom = rect.top + 1 }, theme.accent);
+            fillSolidRect(hdc, .{ .left = rect.left, .top = rect.bottom - 1, .right = rect.right, .bottom = rect.bottom }, theme.chrome_border);
+            fillSolidRect(hdc, .{ .left = rect.left, .top = rect.top, .right = rect.left + 1, .bottom = rect.bottom }, theme.chrome_border);
+            fillSolidRect(hdc, .{ .left = rect.right - 1, .top = rect.top, .right = rect.right, .bottom = rect.bottom }, theme.chrome_border);
+            _ = SetBkMode(hdc, TRANSPARENT);
+            const prev_font: ?HGDIOBJ = if (v.chrome_font_small) |f| SelectObject(hdc, f) else null;
+            defer if (prev_font) |f| {
+                _ = SelectObject(hdc, f);
+            };
+            const line_h = v.scaled(17);
+            var y: i32 = v.scaled(8);
+            const title: []const u8 = if (v.watch_surface) |ws|
+                (if (ws.effectiveTitle()) |t| t else "pane")
+            else
+                "pane";
+            drawPaletteRowText(hdc, title, .{
+                .left = rect.left + v.scaled(10),
+                .top = y,
+                .right = rect.right - v.scaled(10),
+                .bottom = y + line_h,
+            }, theme.text_primary);
+            y += line_h + v.scaled(2);
+            if (v.watch_text) |text| {
+                var lines = std.mem.splitScalar(u8, text, '\n');
+                while (lines.next()) |line| {
+                    drawPaletteRowText(hdc, line, .{
+                        .left = rect.left + v.scaled(10),
+                        .top = y,
+                        .right = rect.right - v.scaled(10),
+                        .bottom = y + line_h,
+                    }, theme.text_secondary);
+                    y += line_h;
+                }
+            }
+            return 0;
+        },
+        else => return DefWindowProcW(hwnd, msg, wParam, lParam),
+    }
+}
+
 fn panePeekProc(
     hwnd: HWND,
     msg: UINT,
@@ -25036,14 +25401,60 @@ test "containsIgnoreCase basic" {
 /// human-facing title. A title of `paramux.state:<tag>` yields that state and an
 /// empty display title; any other title is a plain notification (state
 /// `.waiting`) whose title text is preserved.
-fn parseAttentionState(title: [:0]const u8) struct { state: AttentionState, title: [:0]const u8 } {
+/// "  \u{00B7} 12.3k tok" for nonzero token totals; "" otherwise.
+fn formatSidebarTokens(buf: []u8, tokens: u64) []const u8 {
+    if (tokens == 0) return "";
+    if (tokens >= 1_000_000) {
+        const m10 = tokens / 100_000; // tenths of a million
+        return std.fmt.bufPrint(buf, "  \u{00B7} {d}.{d}M tok", .{ m10 / 10, m10 % 10 }) catch "";
+    }
+    if (tokens >= 1000) {
+        const k10 = tokens / 100; // tenths of a thousand
+        return std.fmt.bufPrint(buf, "  \u{00B7} {d}.{d}k tok", .{ k10 / 10, k10 % 10 }) catch "";
+    }
+    return std.fmt.bufPrint(buf, "  \u{00B7} {d} tok", .{tokens}) catch "";
+}
+
+test "formatSidebarTokens tiers" {
+    var buf: [24]u8 = undefined;
+    try std.testing.expectEqualStrings("", formatSidebarTokens(&buf, 0));
+    try std.testing.expectEqualStrings("  \u{00B7} 950 tok", formatSidebarTokens(&buf, 950));
+    try std.testing.expectEqualStrings("  \u{00B7} 12.3k tok", formatSidebarTokens(&buf, 12_345));
+    try std.testing.expectEqualStrings("  \u{00B7} 1.2M tok", formatSidebarTokens(&buf, 1_234_567));
+}
+
+fn parseAttentionState(title: [:0]const u8) struct { state: AttentionState, title: [:0]const u8, tokens: u64 = 0 } {
     if (std.mem.startsWith(u8, title, attention_state_marker)) {
+        const rest = title[attention_state_marker.len..];
+        // Optional rider: "paramux.state:<state>;tokens=<n>".
+        if (std.mem.indexOfScalar(u8, rest, ';')) |semi| {
+            var tokens: u64 = 0;
+            var it = std.mem.splitScalar(u8, rest[semi + 1 ..], ';');
+            while (it.next()) |seg| {
+                if (std.mem.startsWith(u8, seg, "tokens=")) {
+                    tokens = std.fmt.parseUnsigned(u64, seg["tokens=".len..], 10) catch 0;
+                }
+            }
+            return .{
+                .state = AttentionState.parse(rest[0..semi]),
+                .title = "",
+                .tokens = tokens,
+            };
+        }
         return .{
-            .state = AttentionState.parse(title[attention_state_marker.len..]),
+            .state = AttentionState.parse(rest),
             .title = "",
         };
     }
     return .{ .state = .waiting, .title = title };
+}
+
+test "parseAttentionState tokens rider" {
+    const parsed = parseAttentionState("paramux.state:done;tokens=12345");
+    try std.testing.expectEqual(AttentionState.done, parsed.state);
+    try std.testing.expectEqual(@as(u64, 12345), parsed.tokens);
+    const plain = parseAttentionState("paramux.state:done");
+    try std.testing.expectEqual(@as(u64, 0), plain.tokens);
 }
 
 const FilePathClick = struct {
@@ -25339,6 +25750,9 @@ pub const Surface = struct {
     attention_seq: u64 = 0,
     /// Notifications suppressed until this wall-clock ms (0 = unmuted).
     attention_mute_until_ms: i64 = 0,
+    /// Latest agent-session token total reported via `paramux notify
+    /// --tokens-from-transcript` (0 = unknown). Shown in the sidebar meta.
+    agent_tokens: u64 = 0,
     /// Recent attention transitions (oldest first), capped at
     /// `attention_history_max` - the pane's activity timeline shown in
     /// the Activity submenu and the attention inbox.
