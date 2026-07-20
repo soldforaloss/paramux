@@ -10,6 +10,10 @@ pub const Options = struct {
     /// Only report whether an update is available; change nothing.
     check: bool = false,
 
+    /// Restore the previous version's files (kept as `*.old` by the
+    /// last update). The window closes when the next update sweeps.
+    rollback: bool = false,
+
     pub fn deinit(self: Options) void {
         _ = self;
     }
@@ -65,6 +69,19 @@ pub fn run(alloc: Allocator) !u8 {
         return 1;
     };
     defer alloc.free(exe_dir);
+
+    // Rollback restores the previous files (kept as `*.old` by the
+    // last update) and must run BEFORE the sweep would destroy them.
+    // The window closes at the next `paramux update` invocation.
+    if (opts.rollback) {
+        const restored = rollbackOldFiles(exe_dir);
+        if (restored == 0) {
+            try stdout.print("Nothing to roll back: no *.old files remain (the window closes when the next update sweeps them).\n", .{});
+            return 1;
+        }
+        try stdout.print("Rolled back {d} file(s) to the previous version. Restart paramux.\n", .{restored});
+        return 0;
+    }
 
     // Sweep *.old leftovers from a previous self-update; failures are
     // fine (a straggler process may still hold one).
@@ -232,6 +249,29 @@ fn swapTree(alloc: Allocator, src_root: []const u8, dest_root: []const u8) !void
 /// Delete `*.old` leftovers from previous self-updates, recursively.
 /// Best-effort: files still locked by a running process stay for the
 /// next sweep.
+/// Restore `<name>.old` files over their current counterparts. The
+/// running paramux.com's own image stays locked, so its .old survives
+/// for the next invocation - which is fine: the restored EXE pair is
+/// what matters. Returns how many files were restored.
+fn rollbackOldFiles(install_dir: []const u8) usize {
+    var dir = std.fs.openDirAbsolute(install_dir, .{ .iterate = true }) catch return 0;
+    defer dir.close();
+    var buf: [4096]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    var walker = dir.walk(fba.allocator()) catch return 0;
+    defer walker.deinit();
+    var restored: usize = 0;
+    while (walker.next() catch null) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.path, ".old")) continue;
+        const current = entry.path[0 .. entry.path.len - ".old".len];
+        dir.deleteFile(current) catch {};
+        dir.rename(entry.path, current) catch continue;
+        restored += 1;
+    }
+    return restored;
+}
+
 fn sweepOldFiles(install_dir: []const u8) void {
     var dir = std.fs.openDirAbsolute(install_dir, .{ .iterate = true }) catch return;
     defer dir.close();
