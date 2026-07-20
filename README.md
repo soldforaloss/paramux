@@ -87,28 +87,28 @@ path today.
 ## Try the current prerelease
 
 The current test build is
-[`v0.1.6`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.6),
+[`v0.1.7`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.7),
 published 2026-07-20 for Windows x64:
 
-- [`paramux-0.1.6-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.6/paramux-0.1.6-windows-x64-portable.zip)
-- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.6/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.7-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.7/paramux-0.1.7-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.7/SHA256SUMS-windows-x64.txt)
 
-This build is the horizon release. Alerting panes show a **live
-waiting age** in the sidebar, the digest and attention inbox span
-**every window**, agents **label their own panes**
-(`notify --title=...`), **token budgets** fire audible alerts, and
-crashed agent panes can **auto-restart** with a crash-loop guard —
-all configurable in the new **Agents section of Settings**. **New
-Workspace from Branch** runs `git worktree add` from an overlay
-prompt, projects can commit a **`.paramux/layout`** file that
-`paramux open .` recreates, **Alt+drag any pane body** to rearrange,
-pin critical panes first, and jump **Previous/Next Command Output**
-from the right-click menu. `paramux update` links its release notes
-before applying, the Help menu opens your **data folder**, the ARM64
-CI lane can package a native artifact on demand
-(`docs/paramux/distribution.md`), and the README now opens with a
-recorded fleet demo. It sits on top of
-`v0.1.5`'s conductor tooling. Releases from
+This build is the foundation release — hardening, portability, and
+reach. The **IPC pipe** rejects remote clients and pipe-name squatting
+(token auth was already constant-time), malformed frames are
+**fuzz-tested** in CI, and a **perf budget gate** fails the build if
+CLI cold-start regresses past 250ms. **`session-name`** keeps
+independent saved sessions per instance, **`paramux export-config`**
+backs up your whole setup, **`update --rollback`** restores the
+previous version from its `.old` window, and `paramux status` gains
+**`--watch`**. Projects get a **layout template gallery**
+(`docs/paramux/layouts/`), screen readers get a **live fleet summary**
+on the window's UIA HelpText, high contrast overrides custom accent
+colors, the hint strip is configurable, the HUD reports DPI/uptime/
+window count, workspaces move up/down from the menu, and a
+**telemetry design fence** documents that nothing is collected today.
+It sits on top of
+`v0.1.6`'s horizon features. Releases from
 `v0.1.0-paramux.7` onward apply with `paramux update`
 (`v0.1.0-paramux.4` remains a legacy test artifact).
 
@@ -117,7 +117,7 @@ recorded fleet demo. It sits on top of
    release checksum:
 
 ```powershell
-Get-FileHash .\paramux-0.1.6-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\paramux-0.1.7-windows-x64-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 
