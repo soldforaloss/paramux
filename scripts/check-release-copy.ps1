@@ -279,7 +279,10 @@ if ($version) {
                     }
 
                     $assetNames = @($release.assets | ForEach-Object { [string]$_.name })
-                    $expectedAssets = @($portableName, $checksumsName)
+                    # Dual-arch since v0.1.8: the ARM64 pair is expected.
+                    $arm64Portable = New-WindowsPackageArtifactName -Version $version -Architecture "arm64" -Kind "portable"
+                    $arm64Checksums = New-WindowsPackageArtifactName -Version $version -Architecture "arm64" -Kind "checksums"
+                    $expectedAssets = @($portableName, $checksumsName, $arm64Portable, $arm64Checksums)
                     $unexpectedAssets = @($assetNames | Where-Object { $_ -notin $expectedAssets })
                     $missingAssets = @($expectedAssets | Where-Object { $_ -notin $assetNames })
                     if ($unexpectedAssets.Count -gt 0) {
