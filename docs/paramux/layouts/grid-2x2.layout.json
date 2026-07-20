@@ -1,0 +1,44 @@
+{
+  "selected_leaf": 0,
+  "layout": {
+    "root": 6,
+    "nodes": [
+      {
+        "pane": {}
+      },
+      {
+        "pane": {}
+      },
+      {
+        "pane": {}
+      },
+      {
+        "pane": {}
+      },
+      {
+        "split": {
+          "axis": "vertical",
+          "ratio": 0.5,
+          "first": 0,
+          "second": 1
+        }
+      },
+      {
+        "split": {
+          "axis": "vertical",
+          "ratio": 0.5,
+          "first": 2,
+          "second": 3
+        }
+      },
+      {
+        "split": {
+          "axis": "horizontal",
+          "ratio": 0.5,
+          "first": 4,
+          "second": 5
+        }
+      }
+    ]
+  }
+}
