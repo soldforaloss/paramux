@@ -3918,6 +3918,8 @@ pub const App = struct {
 
         self.initComApartment();
         self.registerJumpList();
+        // Screen readers get a live fleet summary on the window element.
+        win32_uia.setFleetHelpFn(&uiaFleetHelp);
         self.taskbar_progress = win32_taskbar_progress.TaskbarProgress.init() catch |err| blk: {
             std.log.warn("taskbar progress init failed err={}; falling back to title-only progress", .{err});
             break :blk null;
@@ -19214,6 +19216,21 @@ fn highContrastThemeFromSysColors() ThemeColors {
 
         .is_dark = false,
     };
+}
+
+/// UIA HelpText callback: resolve the window's host and summarize the
+/// fleet. Runs on the UI thread (UIA property requests marshal there).
+fn uiaFleetHelp(hwnd: HWND, buf: []u8) usize {
+    const host = getHost(hwnd) orelse return 0;
+    {
+        const c = host.attentionCounts();
+        const text = std.fmt.bufPrint(
+            buf,
+            "{d} waiting, {d} done, {d} failed; {d} panes in {d} workspaces.",
+            .{ c.waiting, c.done, c.err, c.panes, host.tabs.items.len },
+        ) catch return 0;
+        return text.len;
+    }
 }
 
 fn isHighContrastActive() bool {

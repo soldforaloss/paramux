@@ -26,6 +26,15 @@ const std = @import("std");
 const com = @import("com.zig");
 const constants = @import("constants.zig");
 
+/// Optional callback the host registers so the window's UIA HelpText
+/// can carry a live fleet summary ("2 waiting, 1 done; 4 panes").
+/// Writes UTF-8 into `buf` and returns the length (0 = no text).
+pub var fleet_help_fn: ?*const fn (com.HWND, []u8) usize = null;
+
+pub fn setFleetHelpFn(f: *const fn (com.HWND, []u8) usize) void {
+    fleet_help_fn = f;
+}
+
 pub const RootProvider = struct {
     // COM interface shape MUST be first so &self.base == &self (COM layout).
     base: com.IRawElementProviderSimple,
@@ -153,6 +162,20 @@ pub const RootProvider = struct {
             },
             constants.UIA_NamePropertyId => {
                 out.* = com.VARIANT.fromBstr(self.allocNameBstr());
+            },
+            constants.UIA_HelpTextPropertyId => {
+                if (fleet_help_fn) |help_fn| {
+                    var help_buf: [160]u8 = undefined;
+                    const n = help_fn(self.hwnd, &help_buf);
+                    if (n > 0) {
+                        var w_buf: [161]u16 = undefined;
+                        const wn = std.unicode.utf8ToUtf16Le(w_buf[0..160], help_buf[0..n]) catch 0;
+                        if (wn > 0) {
+                            w_buf[wn] = 0;
+                            out.* = com.VARIANT.fromBstr(com.SysAllocString(@ptrCast(&w_buf)));
+                        }
+                    }
+                }
             },
             constants.UIA_LocalizedControlTypePropertyId => {
                 const literal = std.unicode.utf8ToUtf16LeStringLiteral("terminal window");
