@@ -109,6 +109,9 @@ pub const Action = enum {
     // Open a directory as a new workspace in the running instance.
     open,
 
+    // Sample a pane into an asciinema v2 .cast file.
+    record,
+
     pub fn detectSpecialCase(arg: []const u8) ?SpecialCase(Action) {
         // If we see a "-e" and we haven't seen a command yet, then
         // we are done looking for commands. This special case enables
