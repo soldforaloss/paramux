@@ -83,26 +83,25 @@ path today.
 ## Try the current prerelease
 
 The current test build is
-[`v0.1.4`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.4),
+[`v0.1.5`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.5),
 published 2026-07-20 for Windows x64:
 
-- [`paramux-0.1.4-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.4/paramux-0.1.4-windows-x64-portable.zip)
-- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.4/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.5-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.5/paramux-0.1.5-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.5/SHA256SUMS-windows-x64.txt)
 
-This build is the fleet release — twenty improvements in one cut.
-**`paramux run "claude -p '...'"`** spawns a pane, types the command,
-and prints its id for scripting; the `+` chooser lists every profile
-as a one-click **agent preset**; the Claude Stop hook reports the
-session's **token total** in the sidebar. Come back after being away
-and a **digest banner** summarizes the fleet (`Ctrl+Alt+D` on
-demand); per-pane **mute**, urgent `attention-alert-keywords`, opt-in
-**focus-follows-attention**, an always-on-top **watch window**, and a
-**health HUD** (`Ctrl+Alt+H`) round out awareness. The palette now
-jumps to workspaces by name, `Ctrl+Alt+F` re-finds across panes,
-right-click saves/applies **layout snapshots** (5 slots), exports
-**scrollback to your editor**, opens a **workspace in this folder**,
-and assigns **workspace accent colors**. It sits on top of `v0.1.3`'s
-awareness features and `v0.1.2`'s command-center chrome. Releases from
+This build is the conductor release. **Broadcast input** mirrors your
+typing into every pane of a workspace (right-click toggle; keybinds
+never mirror), `paramux send --all-panes`, **`paramux status`** (fleet
+table with attention + tokens), and **`paramux open <dir>`** make the
+fleet scriptable, and **Copy Fleet Status** drops a markdown standup
+snapshot on your clipboard. Workspaces reproduce: a **default layout
+slot** for the `+` button, **Restart Pane** (fresh shell, same
+folder), **worktree seeding**, and a **60-second session autosave**
+that survives crashes. Plus double-click renames, a stuck-agent
+nudge, Always on Top (`Ctrl+Alt+T`), reachable undo (`Ctrl+Shift+Z`),
+split-ratio presets, a first-run tour, and published
+**performance receipts** (`docs/paramux/perf.md`). It sits on top of
+`v0.1.4`'s fleet tooling. Releases from
 `v0.1.0-paramux.7` onward apply with `paramux update`
 (`v0.1.0-paramux.4` remains a legacy test artifact).
 
@@ -111,7 +110,7 @@ awareness features and `v0.1.2`'s command-center chrome. Releases from
    release checksum:
 
 ```powershell
-Get-FileHash .\paramux-0.1.4-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\paramux-0.1.5-windows-x64-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 
@@ -182,6 +181,8 @@ Useful defaults:
 | Find in all panes | `Ctrl+Alt+F` |
 | Attention digest | `Ctrl+Alt+D` |
 | Health HUD | `Ctrl+Alt+H` |
+| Always on top | `Ctrl+Alt+T` |
+| Undo (close pane/workspace) | `Ctrl+Shift+Z` |
 | Resize focused pane | `Ctrl+Alt+Shift+Arrow` |
 | Next / previous workspace | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
 | Command palette | `Ctrl+Shift+P` |
