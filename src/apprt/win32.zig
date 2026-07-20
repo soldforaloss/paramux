@@ -13478,6 +13478,35 @@ const Host = struct {
         self.setBanner(.info, msg) catch {};
     }
 
+    /// Alt+drag on a pane body: arm the same drag machinery the
+    /// sidebar rows use, so dropping on another pane's edge docks and
+    /// the center swaps. Returns false when the workspace has only one
+    /// pane (nothing to rearrange).
+    fn armPaneDragFromBody(self: *Host, surface: *Surface, screen_pt: POINT) bool {
+        const hwnd = self.hwnd orelse return false;
+        const tab = self.activeTab() orelse return false;
+        if (tab.leafCount() <= 1) return false;
+
+        var rows_buf: [sidebar_rows_max]SidebarRow = undefined;
+        const rows = self.sidebarRows(&rows_buf);
+        var row_index: ?usize = null;
+        for (rows, 0..) |row, i| {
+            if (row.kind == .pane and row.surface == surface) {
+                row_index = i;
+                break;
+            }
+        }
+        const idx = row_index orelse return false;
+
+        var pt = screen_pt;
+        _ = ScreenToClient(hwnd, &pt);
+        self.pane_drag.arm(idx, pt.x, pt.y);
+        self.pane_drag_source = surface;
+        _ = SetCapture(hwnd);
+        log.debug("pane drag: armed from body row={d}", .{idx});
+        return true;
+    }
+
     /// Run `git worktree add` for `branch` in the focused pane (typed
     /// + Enter, so the user sees the output), then explain the next
     /// step. Branch names are sanitized to git-safe characters.
@@ -29385,6 +29414,20 @@ pub const Surface = struct {
         const mods = mouseModsFromWParam(wParam);
 
         self.cursor_pos = cursorPosFromLParam(lParam);
+
+        // Alt+drag a pane body rearranges panes directly (edges dock,
+        // center swaps) — same machinery as dragging its sidebar row.
+        if (state == .press and button == .left and mods.alt) {
+            if (self.host) |drag_host| {
+                var pt = POINT{
+                    .x = signedLowWord(lParamBits(lParam)),
+                    .y = signedHighWord(lParamBits(lParam)),
+                };
+                if (self.hwnd) |shwnd| _ = ClientToScreen(shwnd, &pt);
+                if (drag_host.armPaneDragFromBody(self, pt)) return;
+            }
+        }
+
         if (state == .press) {
             self.acknowledgeAttention();
             if (self.hwnd) |hwnd| {
