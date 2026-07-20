@@ -24,6 +24,10 @@
 
 ---
 
+<p align="center">
+  <img src="docs/media/demo.gif" alt="Three agent panes in one paramux workspace: auto-tiled splits, the always-visible sidebar, and the attention hint strip" width="720" />
+</p>
+
 ## What is Paramux?
 
 Paramux is a native Windows terminal built for running Claude Code, Codex CLI,
