@@ -756,6 +756,7 @@ const CTX_MOVE_WS_LEFT: usize = 4043;
 const CTX_MOVE_WS_RIGHT: usize = 4044;
 const CTX_WS_NOTE: usize = 4045;
 const CTX_BROADCAST_OPTOUT: usize = 4046;
+const CTX_QUICK_TERMINAL: usize = 4047;
 const CTX_RESTART_PANE: usize = 4037;
 const CTX_WORKTREE_SEED: usize = 4038;
 const CTX_RATIO_BASE: usize = 4720; // split ratio presets: base + index
@@ -1584,6 +1585,8 @@ const help_shortcuts_text: LPCWSTR = blk: {
             "Attention inbox\tCtrl+Alt+I\n" ++
             "Find in all panes\tCtrl+Alt+F\n" ++
             "Attention digest\tCtrl+Alt+D\n" ++
+            "Quick terminal\tCtrl+Alt+Q\n" ++
+            "Workspace note\tCtrl+Alt+N\n" ++
             "Health HUD\tCtrl+Alt+H\n" ++
             "Always on top\tCtrl+Alt+T\n" ++
             "Undo close\tCtrl+Shift+Z\n" ++
@@ -13613,6 +13616,11 @@ const Host = struct {
                     self.invalidateSidebar();
                 }
             },
+            CTX_QUICK_TERMINAL => {
+                if (self.activeSurface()) |active| {
+                    _ = active.core_surface.performBindingAction(.{ .toggle_quick_terminal = {} }) catch {};
+                }
+            },
             CTX_WS_NOTE => {
                 self.showOverlay(.workspace_note, null) catch |err| {
                     log.warn("workspace note overlay failed err={}", .{err});
@@ -14431,6 +14439,7 @@ const Host = struct {
         // the one obvious "more actions" control advertises how to split a pane.
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New Workspace\tCtrl+Shift+T"));
         _ = AppendMenuW(menu, MF_STRING, CTX_TAB_OVERVIEW, std.unicode.utf8ToUtf16LeStringLiteral("Workspaces..."));
+        _ = AppendMenuW(menu, MF_STRING, CTX_QUICK_TERMINAL, std.unicode.utf8ToUtf16LeStringLiteral("Quick Terminal\tCtrl+Alt+Q"));
         _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_RIGHT, std.unicode.utf8ToUtf16LeStringLiteral("Split Right\tCtrl+Shift+O"));
         _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_DOWN, std.unicode.utf8ToUtf16LeStringLiteral("Split Down\tCtrl+Shift+E"));
         const pane_count = if (self.activeTab()) |tab| tab.leafCount() else 1;

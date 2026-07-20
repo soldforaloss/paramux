@@ -6188,6 +6188,13 @@ pub const Keybinds = struct {
                 .{ .health_hud = {} },
                 .{ .performable = true },
             );
+            // Quick terminal (quake-style drop-down).
+            try self.set.putFlags(
+                alloc,
+                .{ .key = .{ .unicode = 'q' }, .mods = .{ .ctrl = true, .alt = true } },
+                .{ .toggle_quick_terminal = {} },
+                .{ .performable = true },
+            );
             // Workspace scratch note.
             try self.set.putFlags(
                 alloc,
