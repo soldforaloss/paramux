@@ -747,6 +747,7 @@ const CTX_SCROLL_TOP: usize = 4032;
 const CTX_SCROLL_BOTTOM: usize = 4033;
 const CTX_WHATS_NEW: usize = 4034;
 const CTX_COPY_FLEET: usize = 4035;
+const CTX_BROADCAST: usize = 4036;
 const CTX_RATIO_BASE: usize = 4720; // split ratio presets: base + index
 const CTX_LAYOUT_SAVE_BASE: usize = 4700; // save layout slots: base + slot
 const CTX_LAYOUT_APPLY_BASE: usize = 4710; // apply layout slots: base + slot
@@ -9266,6 +9267,10 @@ const Tab = struct {
     /// User-assigned accent color (index into `workspace_accents`);
     /// null uses the theme accent. Right-click a pane > Workspace Color.
     accent_index: ?u8 = null,
+    /// Broadcast input: keystrokes typed into any pane of this
+    /// workspace are mirrored to every other pane (tmux
+    /// synchronize-panes). Toggled from the context menu.
+    broadcast: bool = false,
 
     alloc: Allocator,
     id: u32,
@@ -12874,6 +12879,11 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_STRING, CTX_SCROLL_TOP, std.unicode.utf8ToUtf16LeStringLiteral("Scroll to Top"));
         _ = AppendMenuW(menu, MF_STRING, CTX_SCROLL_BOTTOM, std.unicode.utf8ToUtf16LeStringLiteral("Scroll to Bottom"));
         _ = AppendMenuW(menu, MF_STRING, CTX_COPY_FLEET, std.unicode.utf8ToUtf16LeStringLiteral("Copy Fleet Status"));
+        {
+            const bcast_on = if (self.activeTab()) |t| t.broadcast else false;
+            const bcast_flags: UINT = if (bcast_on) MF_STRING | MF_CHECKED else MF_STRING;
+            _ = AppendMenuW(menu, bcast_flags, CTX_BROADCAST, std.unicode.utf8ToUtf16LeStringLiteral("Broadcast Input to This Workspace"));
+        }
         if (self.activeSurface()) |mute_target| {
             _ = AppendMenuW(menu, MF_STRING, CTX_MUTE_PANE, if (mute_target.attentionMuted())
                 std.unicode.utf8ToUtf16LeStringLiteral("Unmute Notifications")
@@ -13092,6 +13102,16 @@ const Host = struct {
                 const ratios = [_]f32{ 0.5, 0.7, 0.3 };
                 self.setFocusedSplitRatio(ratios[picked_ratio - CTX_RATIO_BASE]);
             },
+            CTX_BROADCAST => {
+                if (self.activeTab()) |t| {
+                    t.broadcast = !t.broadcast;
+                    self.setBanner(.info, if (t.broadcast)
+                        "Broadcast ON: typing reaches every pane in this workspace."
+                    else
+                        "Broadcast off.") catch {};
+                    self.invalidateHintStrip();
+                }
+            },
             CTX_COPY_FLEET => {
                 self.copyFleetStatus();
             },
@@ -13200,6 +13220,8 @@ const Host = struct {
         if (self.split_resize.active)
             return std.unicode.utf8ToUtf16LeStringLiteral("Drag to resize");
         if (self.activeTab()) |hint_tab| {
+            if (hint_tab.broadcast)
+                return std.unicode.utf8ToUtf16LeStringLiteral("BROADCAST \u{00B7} typing goes to every pane in this workspace");
             if (hint_tab.tree.zoomed != null)
                 return std.unicode.utf8ToUtf16LeStringLiteral("Zoomed \u{00B7} Ctrl+Shift+Enter restores all panes");
         }
@@ -28807,6 +28829,21 @@ pub const Surface = struct {
         }
     }
 
+    /// Broadcast mirror: when this pane's workspace has broadcast on
+    /// and the event actually reached the terminal, replay it into
+    /// every sibling pane. App keybindings (consumed) never mirror.
+    fn mirrorBroadcastInput(self: *Surface, event: input.KeyEvent) void {
+        if (event.composing) return;
+        const found = self.app.findTabForSurface(self) orelse return;
+        if (!found.tab.broadcast) return;
+        var it = found.tab.tree.iterator();
+        while (it.next()) |leaf| {
+            if (leaf.view == self) continue;
+            if (!leaf.view.core_initialized) continue;
+            _ = leaf.view.core_surface.keyCallback(event) catch {};
+        }
+    }
+
     fn handleKeyMessage(self: *Surface, msg: UINT, wParam: WPARAM, lParam: LPARAM) void {
         if (!self.core_initialized) return;
 
@@ -28824,6 +28861,7 @@ pub const Surface = struct {
             return;
         };
         if (inputEffectAcknowledgesAttention(effect)) self.acknowledgeAttention();
+        if (effect == .terminal_input) self.mirrorBroadcastInput(event);
     }
 
     fn handleCharMessage(self: *Surface, wParam: WPARAM, lParam: LPARAM) void {
@@ -28869,6 +28907,7 @@ pub const Surface = struct {
             return;
         };
         if (inputEffectAcknowledgesAttention(effect)) self.acknowledgeAttention();
+        if (effect == .terminal_input) self.mirrorBroadcastInput(event);
     }
 
     fn positionImeWindow(self: *Surface) void {
