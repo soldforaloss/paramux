@@ -5834,6 +5834,12 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool 
             {},
         ),
 
+        .focus_pane => |id| return try self.rt_app.performAction(
+            .{ .surface = self },
+            .focus_pane,
+            .{ .id = id },
+        ),
+
         .move_tab => |position| return try self.rt_app.performAction(
             .{ .surface = self },
             .move_tab,

@@ -5919,6 +5919,15 @@ pub const App = struct {
                 return true;
             },
 
+            .focus_pane => {
+                const pane = self.findSurfaceById(value.id) orelse return false;
+                if (pane.host) |pane_host| {
+                    if (pane_host.hwnd) |h| _ = SetForegroundWindow(h);
+                }
+                self.activateSurface(pane);
+                return true;
+            },
+
             .toggle_tab_overview => {
                 if (self.findSurfaceForTarget(target)) |surface| {
                     return try surface.toggleTabOverview();
@@ -10812,7 +10821,9 @@ const Host = struct {
 
         const cfg_cmds = self.app.config.@"command-palette-entry".value.items;
         const cfg_cvals = self.app.config.@"command-palette-entry".value_c.items;
-        const total = cfg_cmds.len + self.tabs.items.len;
+        var pane_total: usize = 0;
+        for (self.tabs.items) |*count_tab| pane_total += count_tab.leafCount();
+        const total = cfg_cmds.len + self.tabs.items.len + pane_total;
         var cmds = arena.alloc(command_pkg.Command, total) catch return;
         var cvals = arena.alloc(command_pkg.Command.C, total) catch return;
         @memcpy(cmds[0..cfg_cmds.len], cfg_cmds);
@@ -10838,6 +10849,30 @@ const Host = struct {
                 .description = "Focus this workspace.",
             };
             n += 1;
+        }
+        // ...and one per pane: type any pane's title to jump to it.
+        pane_rows: for (self.tabs.items, 0..) |*tab, ti| {
+            var it = tab.tree.iterator();
+            while (it.next()) |leaf| {
+                if (n >= cmds.len) break :pane_rows;
+                const surface = leaf.view;
+                const pane_title: []const u8 = if (surface.effectiveTitle()) |t| t else "shell";
+                const sid = surface.core().id;
+                const title = std.fmt.allocPrintSentinel(arena, "Go to Pane: {s} (workspace {d})", .{ pane_title[0..@min(pane_title.len, 40)], ti + 1 }, 0) catch break :pane_rows;
+                const action_str = std.fmt.allocPrintSentinel(arena, "focus_pane:{d}", .{sid}, 0) catch break :pane_rows;
+                cmds[n] = .{
+                    .action = .{ .focus_pane = sid },
+                    .title = title,
+                    .description = "Focus this pane.",
+                };
+                cvals[n] = .{
+                    .action_key = "focus_pane",
+                    .action = action_str.ptr,
+                    .title = title.ptr,
+                    .description = "Focus this pane.",
+                };
+                n += 1;
+            }
         }
         self.palette_dyn_commands = cmds[0..n];
         self.palette_dyn_cvals = cvals[0..n];

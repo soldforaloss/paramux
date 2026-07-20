@@ -559,6 +559,10 @@ fn actionCommands(action: Action.Key) []const Command {
             .description = "Edit this workspace's scratch note (saved with the session).",
         }},
 
+        // Pane ids are runtime values; the palette's dynamic entries
+        // supply real ones. No static entries.
+        .focus_pane => comptime &.{},
+
         .apply_layout => comptime &.{
             .{
                 .action = .{ .apply_layout = 1 },

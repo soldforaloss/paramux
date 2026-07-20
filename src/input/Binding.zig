@@ -575,6 +575,11 @@ pub const Action = union(enum) {
     /// Edit the active workspace's scratch note.
     workspace_note,
 
+    /// Focus the pane with this `list-windows` surface id. Emitted by
+    /// the palette's dynamic pane entries; bindable but ids are
+    /// runtime values.
+    focus_pane: u64,
+
     /// Recreate a saved layout slot (1-5) as a new workspace.
     apply_layout: u8,
 
@@ -1430,6 +1435,7 @@ pub const Action = union(enum) {
             .health_hud,
             .toggle_window_on_top,
             .workspace_note,
+            .focus_pane,
             .apply_layout,
             .move_tab,
             .toggle_tab_overview,

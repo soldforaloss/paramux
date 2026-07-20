@@ -163,6 +163,9 @@ pub const Action = union(Key) {
     /// Edit the active workspace's scratch note.
     workspace_note,
 
+    /// Focus a pane by surface id.
+    focus_pane: FocusPane,
+
     /// Jump to next/previous window.
     goto_window: GotoWindow,
 
@@ -400,6 +403,7 @@ pub const Action = union(Key) {
         toggle_window_on_top,
         apply_layout,
         workspace_note,
+        focus_pane,
         goto_window,
         resize_split,
         equalize_splits,
@@ -610,6 +614,11 @@ pub const NewWindow = struct {
 /// The tab to jump to. This is non-exhaustive so that integer values represent
 /// the index (zero-based) of the tab to jump to. Negative values are special
 /// values.
+/// A pane target for focus_pane.
+pub const FocusPane = extern struct {
+    id: u64,
+};
+
 /// A 1-based saved-layout slot for apply_layout.
 pub const ApplyLayout = enum(c_int) {
     _,
