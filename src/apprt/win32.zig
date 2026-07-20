@@ -13573,16 +13573,34 @@ const Host = struct {
     /// pane that needs attention right now, with the inbox chord.
     fn showAttentionDigest(self: *Host) void {
         const alloc = self.app.core_app.alloc;
-        const c = self.attentionCounts();
-        if (c.waiting + c.done + c.err == 0) {
+        // Aggregate across EVERY window: an agent in another window
+        // matters just as much.
+        var waiting: usize = 0;
+        var done: usize = 0;
+        var errs: usize = 0;
+        for (self.app.hosts.items) |host| {
+            const c = host.attentionCounts();
+            waiting += c.waiting;
+            done += c.done;
+            errs += c.err;
+        }
+        if (waiting + done + errs == 0) {
             self.setBanner(.info, "All quiet: no panes need attention.") catch {};
             return;
         }
-        const message = std.fmt.allocPrint(
-            alloc,
-            "While you were away: {d} waiting \u{00B7} {d} done \u{00B7} {d} failed. Ctrl+Alt+I to review.",
-            .{ c.waiting, c.done, c.err },
-        ) catch return;
+        const many_windows = self.app.hosts.items.len > 1;
+        const message = (if (many_windows)
+            std.fmt.allocPrint(
+                alloc,
+                "While you were away ({d} windows): {d} waiting \u{00B7} {d} done \u{00B7} {d} failed. Ctrl+Alt+I to review.",
+                .{ self.app.hosts.items.len, waiting, done, errs },
+            )
+        else
+            std.fmt.allocPrint(
+                alloc,
+                "While you were away: {d} waiting \u{00B7} {d} done \u{00B7} {d} failed. Ctrl+Alt+I to review.",
+                .{ waiting, done, errs },
+            )) catch return;
         defer alloc.free(message);
         self.setBanner(.info, message) catch {};
     }
@@ -13717,16 +13735,18 @@ const Host = struct {
         const alloc = self.app.core_app.alloc;
         const hwnd = self.hwnd orelse return;
 
-        const Entry = struct { tab_index: usize, surface: *Surface, seq: u64 };
+        const Entry = struct { host: *Host, tab_index: usize, surface: *Surface, seq: u64 };
         var entries: [64]Entry = undefined;
         var n: usize = 0;
-        for (self.tabs.items, 0..) |*tab, ti| {
-            var it = tab.tree.iterator();
-            while (it.next()) |leaf| {
-                if (!leaf.view.attention_state.isAlerting()) continue;
-                if (n >= entries.len) break;
-                entries[n] = .{ .tab_index = ti, .surface = leaf.view, .seq = leaf.view.attention_seq };
-                n += 1;
+        for (self.app.hosts.items) |entry_host| {
+            for (entry_host.tabs.items, 0..) |*tab, ti| {
+                var it = tab.tree.iterator();
+                while (it.next()) |leaf| {
+                    if (!leaf.view.attention_state.isAlerting()) continue;
+                    if (n >= entries.len) break;
+                    entries[n] = .{ .host = entry_host, .tab_index = ti, .surface = leaf.view, .seq = leaf.view.attention_seq };
+                    n += 1;
+                }
             }
         }
         // Newest first (insertion sort; n is small).
@@ -13770,11 +13790,24 @@ const Host = struct {
         const idx = cmd_id - CTX_ATTENTION_BASE;
         if (idx >= n) return;
         const chosen = entries[idx];
-        // Re-validate: the pane may have closed during the modal loop.
-        if (chosen.tab_index >= self.tabs.items.len) return;
-        const tab = &self.tabs.items[chosen.tab_index];
+        // Re-validate against the entry's own host: the pane may have
+        // closed during the modal loop, and it may live in another
+        // window entirely.
+        var host_alive = false;
+        for (self.app.hosts.items) |h| {
+            if (h == chosen.host) {
+                host_alive = true;
+                break;
+            }
+        }
+        if (!host_alive) return;
+        if (chosen.tab_index >= chosen.host.tabs.items.len) return;
+        const tab = &chosen.host.tabs.items[chosen.tab_index];
         const handle = tab.findHandle(chosen.surface) orelse return;
-        _ = self.activateSidebarRow(.{
+        if (chosen.host != self) {
+            if (chosen.host.hwnd) |other_hwnd| _ = SetForegroundWindow(other_hwnd);
+        }
+        _ = chosen.host.activateSidebarRow(.{
             .kind = .pane,
             .tab_index = chosen.tab_index,
             .surface = chosen.surface,
