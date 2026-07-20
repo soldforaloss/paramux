@@ -8683,7 +8683,9 @@ pub const App = struct {
         const attn = parseAttentionState(title);
         var budget_crossed = false;
         if (self.findSurfaceForTarget(target)) |surface| {
-            if (attn.state.isAlerting() and surface.attention_state != attn.state) {
+            // Every state CHANGE fans out (working and clear included)
+            // so webhooks see the full lifecycle; consumers filter.
+            if (surface.attention_state != attn.state) {
                 self.fanOutAttentionEvent(surface, attn.state, attn.title, body);
             }
             surface.setLastNotification(attn.title, body) catch {};
