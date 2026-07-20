@@ -8489,11 +8489,35 @@ pub const App = struct {
         body: [:0]const u8,
     ) !void {
         const attn = parseAttentionState(title);
+        var budget_crossed = false;
         if (self.findSurfaceForTarget(target)) |surface| {
             surface.setLastNotification(attn.title, body) catch {};
-            if (attn.tokens > 0) surface.agent_tokens = attn.tokens;
+            if (attn.tokens > 0) {
+                const budget = self.config.@"token-budget-alert";
+                if (budget > 0 and surface.agent_tokens < budget and attn.tokens >= budget) {
+                    budget_crossed = true;
+                }
+                surface.agent_tokens = attn.tokens;
+            }
+            // Agents can label their own pane: `paramux notify
+            // --title=review-bot --state=working`.
+            if (attn.rider_title.len > 0) {
+                surface.setTitleOverride(attn.rider_title) catch {};
+            }
             surface.setAttentionState(attn.state);
             if (surface.attentionMuted()) return;
+        }
+        if (budget_crossed) {
+            var budget_buf: [96]u8 = undefined;
+            const msg = std.fmt.bufPrint(
+                &budget_buf,
+                "Token budget exceeded: {d} tokens this session.",
+                .{attn.tokens},
+            ) catch "Token budget exceeded.";
+            const msg_z = self.core_app.alloc.dupeZ(u8, msg) catch null;
+            defer if (msg_z) |m| self.core_app.alloc.free(m);
+            if (msg_z) |m| try self.showDesktopNotification(target, "paramux.state:error", m);
+            return;
         }
         try self.showDesktopNotification(target, attn.title, body);
     }
@@ -17041,13 +17065,27 @@ const Host = struct {
                             const ports_seg = formatSidebarPorts(&ports_buf, surface.listening_ports);
                             var tok_buf: [24]u8 = undefined;
                             const tok_seg = formatSidebarTokens(&tok_buf, surface.agent_tokens);
+                            // Live age for panes needing attention:
+                            // "waiting 4m" leads the meta line.
+                            var age_buf: [32]u8 = undefined;
+                            const age_seg: []const u8 = age_blk: {
+                                if (!surface.attention_state.isAlerting()) break :age_blk "";
+                                const events = surface.attention_history.items;
+                                if (events.len == 0) break :age_blk "";
+                                var rel_buf: [16]u8 = undefined;
+                                const rel = formatRelativeMs(&rel_buf, std.time.milliTimestamp() - events[events.len - 1].wall_ms);
+                                break :age_blk std.fmt.bufPrint(&age_buf, "{s} {s}  ", .{ @tagName(surface.attention_state), rel }) catch "";
+                            };
                             break :blk if (surface.pwd) |pwd| pwd_blk: {
                                 const cwd = basename(pwd);
                                 break :pwd_blk if (surface.git_branch) |br|
-                                    (std.fmt.bufPrint(&meta_buf, "{s}{s}  {s}{s}{s}", .{ br, if (surface.git_dirty) "*" else "", cwd, ports_seg, tok_seg }) catch cwd)
+                                    (std.fmt.bufPrint(&meta_buf, "{s}{s}{s}  {s}{s}{s}", .{ age_seg, br, if (surface.git_dirty) "*" else "", cwd, ports_seg, tok_seg }) catch cwd)
                                 else
-                                    (std.fmt.bufPrint(&meta_buf, "{s}{s}{s}", .{ cwd, ports_seg, tok_seg }) catch cwd);
-                            } else std.mem.trimLeft(u8, ports_seg, " ");
+                                    (std.fmt.bufPrint(&meta_buf, "{s}{s}{s}{s}", .{ age_seg, cwd, ports_seg, tok_seg }) catch cwd);
+                            } else if (age_seg.len > 0)
+                                (std.fmt.bufPrint(&meta_buf, "{s}{s}", .{ age_seg, std.mem.trimLeft(u8, ports_seg, " ") }) catch age_seg)
+                            else
+                                std.mem.trimLeft(u8, ports_seg, " ");
                         };
                         if (secondary.len > 0) {
                             const prev_meta_font: ?HGDIOBJ = if (self.chrome_font_small) |f| SelectObject(hdc, f) else null;
@@ -25693,22 +25731,26 @@ test "formatSidebarTokens tiers" {
     try std.testing.expectEqualStrings("  \u{00B7} 1.2M tok", formatSidebarTokens(&buf, 1_234_567));
 }
 
-fn parseAttentionState(title: [:0]const u8) struct { state: AttentionState, title: [:0]const u8, tokens: u64 = 0 } {
+fn parseAttentionState(title: [:0]const u8) struct { state: AttentionState, title: [:0]const u8, tokens: u64 = 0, rider_title: []const u8 = "" } {
     if (std.mem.startsWith(u8, title, attention_state_marker)) {
         const rest = title[attention_state_marker.len..];
         // Optional rider: "paramux.state:<state>;tokens=<n>".
         if (std.mem.indexOfScalar(u8, rest, ';')) |semi| {
             var tokens: u64 = 0;
+            var rider_title: []const u8 = "";
             var it = std.mem.splitScalar(u8, rest[semi + 1 ..], ';');
             while (it.next()) |seg| {
                 if (std.mem.startsWith(u8, seg, "tokens=")) {
                     tokens = std.fmt.parseUnsigned(u64, seg["tokens=".len..], 10) catch 0;
+                } else if (std.mem.startsWith(u8, seg, "title=")) {
+                    rider_title = seg["title=".len..];
                 }
             }
             return .{
                 .state = AttentionState.parse(rest[0..semi]),
                 .title = "",
                 .tokens = tokens,
+                .rider_title = rider_title,
             };
         }
         return .{

@@ -189,13 +189,27 @@ pub fn run(alloc: Allocator) !u8 {
     // When a state is given, encode it in the OSC 777 title as the paramux
     // marker `paramux.state:<state>` (parsed by the win32 apprt's
     // `parseAttentionState`). Otherwise the title is the plain human title.
-    const osc_title: []const u8 = if (opts.state.len > 0)
-        (if (transcript_tokens > 0)
-            try std.fmt.allocPrint(arena, "paramux.state:{s};tokens={d}", .{ opts.state, transcript_tokens })
-        else
-            try std.fmt.allocPrint(arena, "paramux.state:{s}", .{opts.state}))
-    else
-        opts.title;
+    // Sanitize a human title for the marker rider: strip the rider
+    // separators so parsing stays unambiguous.
+    var title_rider_buf: [96]u8 = undefined;
+    const title_rider: []const u8 = blk: {
+        if (opts.title.len == 0) break :blk "";
+        var n: usize = 0;
+        for (opts.title) |c| {
+            if (n >= title_rider_buf.len) break;
+            if (c == ';' or c == ':' or c < 0x20) continue;
+            title_rider_buf[n] = c;
+            n += 1;
+        }
+        break :blk title_rider_buf[0..n];
+    };
+    const osc_title: []const u8 = if (opts.state.len > 0) state_blk: {
+        var parts: std.ArrayListUnmanaged(u8) = .empty;
+        try parts.writer(arena).print("paramux.state:{s}", .{opts.state});
+        if (transcript_tokens > 0) try parts.writer(arena).print(";tokens={d}", .{transcript_tokens});
+        if (title_rider.len > 0) try parts.writer(arena).print(";title={s}", .{title_rider});
+        break :state_blk parts.items;
+    } else opts.title;
 
     // Preferred path: deliver over IPC straight to the addressed pane. This is
     // console-independent, so it works from agent hooks whose console is hidden
