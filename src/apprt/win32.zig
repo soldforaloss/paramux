@@ -754,6 +754,7 @@ const CTX_PROMPT_PREV: usize = 4041;
 const CTX_PROMPT_NEXT: usize = 4042;
 const CTX_MOVE_WS_LEFT: usize = 4043;
 const CTX_MOVE_WS_RIGHT: usize = 4044;
+const CTX_WS_NOTE: usize = 4045;
 const CTX_RESTART_PANE: usize = 4037;
 const CTX_WORKTREE_SEED: usize = 4038;
 const CTX_RATIO_BASE: usize = 4720; // split ratio presets: base + index
@@ -4410,6 +4411,11 @@ pub const App = struct {
         const first = tab_surface orelse return error.EmptyLayout;
         const selected = selected_surface orelse first;
         if (self.findTabForSurface(selected)) |found| {
+            if (saved_tab.note) |note| {
+                if (note.len > 0) {
+                    found.tab.note = self.core_app.alloc.dupe(u8, note) catch null;
+                }
+            }
             var restored_tree = try buildRestoredSessionSplitTree(
                 self.core_app.alloc,
                 saved_tab.layout,
@@ -4615,6 +4621,7 @@ pub const App = struct {
         }
 
         return .{
+            .note = if (tab.note) |n| try alloc.dupe(u8, n) else null,
             .selected_leaf = selected_leaf,
             .layout = try buildSessionLayout(alloc, tab),
         };
@@ -9605,6 +9612,8 @@ const Tab = struct {
     /// User-assigned accent color (index into `workspace_accents`);
     /// null uses the theme accent. Right-click a pane > Workspace Color.
     accent_index: ?u8 = null,
+    /// Scratch note shown/edited via Ctrl+Alt+N; owned by core alloc.
+    note: ?[]u8 = null,
     /// Broadcast input: keystrokes typed into any pane of this
     /// workspace are mirrored to every other pane (tmux
     /// synchronize-panes). Toggled from the context menu.
@@ -12733,6 +12742,10 @@ const Host = struct {
             else
                 null,
             .worktree_branch => null,
+            .workspace_note => if (self.activeTab()) |note_tab|
+                (if (note_tab.note) |n| self.app.core_app.alloc.dupe(u8, n) catch null else null)
+            else
+                null,
             .profile => if (self.selectedProfile()) |profile|
                 self.app.core_app.alloc.dupe(u8, profile.key) catch null
             else
@@ -12823,6 +12836,12 @@ const Host = struct {
                 label_hwnd,
                 &self.cached_overlay_label,
                 "New workspace from branch",
+            ),
+            .workspace_note => return try syncWindowTextUtf8Cached(
+                alloc,
+                label_hwnd,
+                &self.cached_overlay_label,
+                "Workspace note",
             ),
             .command_palette => {
                 const text = std.mem.trim(u8, try overlayEditText(self), " \t\r\n");
@@ -13263,6 +13282,7 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB_HERE, std.unicode.utf8ToUtf16LeStringLiteral("New Workspace Here (same folder)"));
         _ = AppendMenuW(menu, MF_STRING, CTX_MOVE_WS_LEFT, std.unicode.utf8ToUtf16LeStringLiteral("Move Workspace Up"));
         _ = AppendMenuW(menu, MF_STRING, CTX_MOVE_WS_RIGHT, std.unicode.utf8ToUtf16LeStringLiteral("Move Workspace Down"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_WS_NOTE, std.unicode.utf8ToUtf16LeStringLiteral("Workspace Note..."));
         if (CreatePopupMenu()) |accent_menu| {
             for (workspace_accent_names, 0..) |name, ai| {
                 var label_buf: [32]u8 = undefined;
@@ -13448,6 +13468,11 @@ const Host = struct {
                         @intCast(pick);
                     self.invalidateSidebar();
                 }
+            },
+            CTX_WS_NOTE => {
+                self.showOverlay(.workspace_note, null) catch |err| {
+                    log.warn("workspace note overlay failed err={}", .{err});
+                };
             },
             CTX_MOVE_WS_LEFT => {
                 if (self.activeSurface()) |active| {
@@ -16029,6 +16054,14 @@ const Host = struct {
                 if (text.len == 0) return false;
                 self.runWorktreeAdd(text);
             },
+            .workspace_note => {
+                if (self.activeTab()) |note_tab| {
+                    const alloc2 = self.app.core_app.alloc;
+                    if (note_tab.note) |old_note| alloc2.free(old_note);
+                    note_tab.note = if (text.len == 0) null else alloc2.dupe(u8, text) catch null;
+                    self.invalidateSidebar();
+                }
+            },
             .confirm => {
                 // Enter maps to Accept.
                 self.invokeConfirmAccept();
@@ -17464,7 +17497,12 @@ const Host = struct {
                             (std.fmt.bufPrint(&label_buf, "Workspace {d}  ({d})", .{ row.tab_index + 1, pane_count }) catch "Workspace")
                         else
                             (std.fmt.bufPrint(&label_buf, "Workspace {d}", .{row.tab_index + 1}) catch "Workspace"));
-                    drawPaletteRowText(hdc, label, .{
+                    var note_label_buf: [200]u8 = undefined;
+                    const label_with_note: []const u8 = if (tab.note != null)
+                        (std.fmt.bufPrint(&note_label_buf, "{s}  \u{270E}", .{label}) catch label)
+                    else
+                        label;
+                    drawPaletteRowText(hdc, label_with_note, .{
                         .left = rect.left + pad,
                         .top = row.y + self.scaled(8),
                         .right = text_right,
@@ -22082,6 +22120,7 @@ fn buildOverlayPaintLabelText(
         .surface_title => try alloc.dupe(u8, "Window title"),
         .find_panes => try alloc.dupe(u8, "Find in all panes"),
         .worktree_branch => try alloc.dupe(u8, "New workspace from branch"),
+        .workspace_note => try alloc.dupe(u8, "Workspace note"),
         .tab_title => try alloc.dupe(u8, "Tab title"),
         .command_palette => try buildCommandPaletteOverlayLabel(alloc, palette, input_text),
         .profile => try alloc.dupe(u8, "Profile"),
@@ -22161,6 +22200,7 @@ fn buildOverlayAcceptLabel(
         },
         .find_panes => try alloc.dupe(u8, "Search"),
         .worktree_branch => try alloc.dupe(u8, "Create"),
+        .workspace_note => try alloc.dupe(u8, "Save"),
         .surface_title, .tab_title => if (input_text.len == 0)
             try alloc.dupe(u8, "Close")
         else
@@ -22229,6 +22269,7 @@ fn buildOverlayHintText(
         .surface_title => try alloc.dupe(u8, "Apply a window title override for this host. Submit empty text to clear it."),
         .find_panes => try alloc.dupe(u8, "Search the visible text of every pane in every workspace."),
         .worktree_branch => try alloc.dupe(u8, "Runs git worktree add for this branch in the current pane; then use New Workspace Here from the new folder."),
+        .workspace_note => try alloc.dupe(u8, "One scratch line for this workspace, saved with the session. Submit empty text to clear it."),
         .tab_title => blk: {
             if (pane_count > 1) {
                 break :blk try std.fmt.allocPrint(
@@ -22288,6 +22329,7 @@ fn overlayCancelLabel(mode: HostOverlayMode) []const u8 {
         .surface_title, .tab_title => "Cancel",
         .find_panes => "Cancel",
         .worktree_branch => "Cancel",
+        .workspace_note => "Cancel",
         // Confirm overlays override this via the payload.
         .confirm => "Cancel",
     };

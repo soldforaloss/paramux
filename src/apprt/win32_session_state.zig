@@ -56,6 +56,8 @@ pub const WindowState = enum {
 };
 
 pub const Tab = struct {
+    /// Workspace scratch note (Ctrl+Alt+N); additive, defaults empty.
+    note: ?[]const u8 = null,
     selected_leaf: usize,
     layout: LayoutTree,
 };

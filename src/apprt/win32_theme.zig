@@ -22,6 +22,9 @@ pub const HostOverlayMode = enum {
     /// Prompt for a git branch; commit runs `git worktree add` in the
     /// focused pane so a branch workspace is one Enter away.
     worktree_branch,
+    /// Edit the active workspace's scratch note (view + editor in one;
+    /// persisted with the session).
+    workspace_note,
     /// Non-modal Accept/Cancel prompt. Carried by `Host.confirm_payload`
     /// which owns the title / body / button labels / severity and the
     /// accept + cancel callbacks. Replaces the previous `MessageBoxW`
@@ -483,6 +486,7 @@ pub fn overlayAccentColor(mode: HostOverlayMode, is_dark: bool) u32 {
             .profile => rgb(136, 60, 160),
             .search, .find_panes => rgb(16, 124, 80),
             .worktree_branch => rgb(16, 124, 80),
+            .workspace_note => rgb(156, 112, 24),
             .surface_title, .tab_title => rgb(156, 112, 24),
             .tab_overview => rgb(102, 76, 180),
             // Destructive warning tone — muted red so the Accept
@@ -496,6 +500,7 @@ pub fn overlayAccentColor(mode: HostOverlayMode, is_dark: bool) u32 {
         .profile => rgb(192, 132, 214),
         .search, .find_panes => rgb(118, 196, 158),
         .worktree_branch => rgb(118, 196, 158),
+        .workspace_note => rgb(212, 170, 92),
         .surface_title, .tab_title => rgb(212, 170, 92),
         .tab_overview => rgb(168, 148, 228),
         .confirm => rgb(232, 104, 112),
@@ -711,6 +716,7 @@ pub fn semanticOverlayHue(mode: HostOverlayMode) f32 {
         .profile => 285.0, // violet
         .search, .find_panes => 150.0, // teal / emerald
         .worktree_branch => 150.0,
+        .workspace_note => 40.0,
         .surface_title, .tab_title => 40.0, // warm amber
         .tab_overview => 258.0, // periwinkle
         .confirm => 0.0, // warning red (destructive)
