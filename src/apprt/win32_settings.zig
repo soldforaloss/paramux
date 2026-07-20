@@ -79,6 +79,7 @@ const BTN_SECTION_KEYBINDINGS: usize = 204;
 const BTN_SECTION_ADVANCED: usize = 205;
 const BTN_SECTION_THEME: usize = 206;
 const BTN_SECTION_WINDOWS: usize = 207;
+const BTN_SECTION_AGENTS: usize = 208;
 const BTN_SAVE: usize = 301;
 const BTN_KEYBINDINGS_EDITOR: usize = 302;
 const EDIT_SCROLLBACK: usize = 401;
@@ -109,6 +110,12 @@ const COMBO_LINK_PREVIEWS: usize = 425;
 const EDIT_THEME_SEARCH: usize = 426;
 const LIST_THEMES: usize = 427;
 const CHK_EXPLORER_MENU: usize = 428;
+const EDIT_DIGEST_MIN: usize = 429;
+const EDIT_ALERT_KEYWORDS: usize = 430;
+const EDIT_TOKEN_BUDGET: usize = 431;
+const EDIT_AUTO_RESTART: usize = 432;
+const EDIT_WS_LAYOUT: usize = 433;
+const CHK_FOCUS_FOLLOWS: usize = 434;
 const ES_NUMBER: u32 = 0x2000;
 const ES_AUTOHSCROLL: u32 = 0x80;
 const EN_CHANGE: u16 = 0x0300;
@@ -177,6 +184,7 @@ pub const Section = enum(u32) {
     shell,
     keybindings,
     windows,
+    agents,
     advanced,
 
     fn fromButtonId(id: usize) ?Section {
@@ -187,6 +195,7 @@ pub const Section = enum(u32) {
             BTN_SECTION_SHELL => .shell,
             BTN_SECTION_KEYBINDINGS => .keybindings,
             BTN_SECTION_WINDOWS => .windows,
+            BTN_SECTION_AGENTS => .agents,
             BTN_SECTION_ADVANCED => .advanced,
             else => null,
         };
@@ -200,6 +209,7 @@ pub const Section = enum(u32) {
             .shell => std.unicode.utf8ToUtf16LeStringLiteral("Shell"),
             .keybindings => std.unicode.utf8ToUtf16LeStringLiteral("Keybindings"),
             .windows => std.unicode.utf8ToUtf16LeStringLiteral("Windows"),
+            .agents => std.unicode.utf8ToUtf16LeStringLiteral("Agents"),
             .advanced => std.unicode.utf8ToUtf16LeStringLiteral("Advanced"),
         };
     }
@@ -212,6 +222,7 @@ pub const Section = enum(u32) {
             .shell => "Shell",
             .keybindings => "Keybindings",
             .windows => "Windows",
+            .agents => "Agents",
             .advanced => "Advanced",
         };
     }
@@ -220,6 +231,7 @@ pub const Section = enum(u32) {
         return switch (self) {
             .appearance => "Font family, size, theme, opacity, cursor, padding, and background blur.",
             .theme => "Click a theme to select it; Save (or double-click) applies it live.",
+            .agents => "Attention digest, urgent keywords, token budgets, auto-restart, and workspace layout defaults for agent fleets.",
             .terminal => "Scrollback, close confirmation, clipboard policy, links, and notifications.",
             .shell => "Default shell command and shell integration detection mode.",
             .keybindings => "Open the config file for keybind edits; list defaults, actions, and docs from the CLI.",
@@ -564,6 +576,12 @@ pub const SettingsWindow = struct {
     combo_link_previews: ?HWND = null,
     combo_cursor_style: ?HWND = null,
     chk_bg_blur: ?HWND = null,
+    edit_digest_min: ?HWND = null,
+    edit_alert_keywords: ?HWND = null,
+    edit_token_budget: ?HWND = null,
+    edit_auto_restart: ?HWND = null,
+    edit_ws_layout: ?HWND = null,
+    chk_focus_follows: ?HWND = null,
     combo_pad_balance: ?HWND = null,
     combo_auto_update: ?HWND = null,
     combo_auto_update_channel: ?HWND = null,
@@ -752,6 +770,7 @@ pub const SettingsWindow = struct {
         const show_keybindings: i32 = if (self.active_section == .keybindings) SW_SHOWNORMAL else SW_HIDE;
         const show_theme: i32 = if (self.active_section == .theme) SW_SHOWNORMAL else SW_HIDE;
         const show_windows: i32 = if (self.active_section == .windows) SW_SHOWNORMAL else SW_HIDE;
+        const show_agents: i32 = if (self.active_section == .agents) SW_SHOWNORMAL else SW_HIDE;
 
         if (self.edit_theme_search) |e| _ = ShowWindow(e, show_theme);
         if (self.list_themes) |e| _ = ShowWindow(e, show_theme);
@@ -779,6 +798,12 @@ pub const SettingsWindow = struct {
         if (self.edit_pad_y) |e| _ = ShowWindow(e, show_appearance);
         if (self.chk_bg_blur) |e| _ = ShowWindow(e, show_appearance);
         if (self.combo_pad_balance) |e| _ = ShowWindow(e, show_appearance);
+        if (self.edit_digest_min) |e| _ = ShowWindow(e, show_agents);
+        if (self.edit_alert_keywords) |e| _ = ShowWindow(e, show_agents);
+        if (self.edit_token_budget) |e| _ = ShowWindow(e, show_agents);
+        if (self.edit_auto_restart) |e| _ = ShowWindow(e, show_agents);
+        if (self.edit_ws_layout) |e| _ = ShowWindow(e, show_agents);
+        if (self.chk_focus_follows) |e| _ = ShowWindow(e, show_agents);
         if (self.edit_command) |e| _ = ShowWindow(e, show_shell);
         if (self.combo_shell_integ) |e| _ = ShowWindow(e, show_shell);
         if (self.combo_auto_update) |e| _ = ShowWindow(e, show_advanced);
@@ -1545,6 +1570,84 @@ pub const SettingsWindow = struct {
     /// background-blur is a union (false / true / { radius: u8 }). The
     /// GUI exposes only the boolean path, so keep an existing numeric
     /// radius intact while the checkbox remains enabled.
+    fn pendingDigestMinutes(self: *SettingsWindow) u64 {
+        const p = self.pending orelse return 0;
+        return p.@"digest-after-away-minutes";
+    }
+    fn pendingTokenBudget(self: *SettingsWindow) u64 {
+        const p = self.pending orelse return 0;
+        return p.@"token-budget-alert";
+    }
+    fn pendingAutoRestart(self: *SettingsWindow) u64 {
+        const p = self.pending orelse return 0;
+        return p.@"pane-auto-restart";
+    }
+    fn pendingWsLayout(self: *SettingsWindow) u64 {
+        const p = self.pending orelse return 0;
+        return p.@"new-workspace-layout";
+    }
+
+    fn syncAgentNumberFromEdit(self: *SettingsWindow, edit_opt: ?HWND, comptime field: []const u8, comptime T: type) void {
+        if (self.suppress_edit_events) return;
+        const p = &(self.pending orelse return);
+        const edit = edit_opt orelse return;
+        var buf_w: [32]u16 = undefined;
+        const n = GetWindowTextW(edit, &buf_w, @intCast(buf_w.len));
+        var utf8_buf: [64]u8 = undefined;
+        const len = if (n > 0) (std.unicode.utf16LeToUtf8(&utf8_buf, buf_w[0..@intCast(n)]) catch return) else 0;
+        const trimmed = std.mem.trim(u8, utf8_buf[0..len], " \t");
+        const parsed = if (trimmed.len == 0) 0 else std.fmt.parseInt(T, trimmed, 10) catch return;
+        @field(p.*, field) = parsed;
+    }
+
+    fn displayAgentNumberInEdit(self: *SettingsWindow, edit_opt: ?HWND, value: u64) void {
+        const edit = edit_opt orelse return;
+        var buf: [32]u8 = undefined;
+        const text = std.fmt.bufPrintZ(&buf, "{d}", .{value}) catch return;
+        var buf_w: [32]u16 = undefined;
+        const w = utf8ToW(&buf_w, text);
+        self.suppress_edit_events = true;
+        _ = SendMessageW(edit, WM_SETTEXT, 0, @bitCast(@intFromPtr(w)));
+        self.suppress_edit_events = false;
+    }
+
+    fn syncAlertKeywordsFromEdit(self: *SettingsWindow) void {
+        if (self.suppress_edit_events) return;
+        const p = &(self.pending orelse return);
+        const arena = p.*._arena.?.allocator();
+        const edit = self.edit_alert_keywords orelse return;
+        var text_buf: [edit_text_max_utf8]u8 = undefined;
+        const text = readEditUtf8(edit, &text_buf) orelse return;
+        p.*.@"attention-alert-keywords" = arena.dupeZ(u8, std.mem.trim(u8, text, " \t")) catch return;
+    }
+
+    fn displayAlertKeywordsInEdit(self: *SettingsWindow) void {
+        const edit = self.edit_alert_keywords orelse return;
+        const p = self.pending orelse return;
+        var buf_w: [512]u16 = undefined;
+        const value = p.@"attention-alert-keywords";
+        const n = std.unicode.utf8ToUtf16Le(buf_w[0 .. buf_w.len - 1], value) catch return;
+        buf_w[n] = 0;
+        self.suppress_edit_events = true;
+        _ = SendMessageW(edit, WM_SETTEXT, 0, @bitCast(@intFromPtr(@as([*:0]const u16, @ptrCast(&buf_w)))));
+        self.suppress_edit_events = false;
+    }
+
+    fn syncFocusFollowsFromCheckbox(self: *SettingsWindow) void {
+        if (self.suppress_edit_events) return;
+        const p = &(self.pending orelse return);
+        const chk = self.chk_focus_follows orelse return;
+        p.*.@"focus-follows-attention" = SendMessageW(chk, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    }
+
+    fn displayFocusFollowsInCheckbox(self: *SettingsWindow) void {
+        const chk = self.chk_focus_follows orelse return;
+        const p = self.pending orelse return;
+        self.suppress_edit_events = true;
+        _ = SendMessageW(chk, BM_SETCHECK, if (p.@"focus-follows-attention") BST_CHECKED else BST_UNCHECKED, 0);
+        self.suppress_edit_events = false;
+    }
+
     fn syncBgBlurFromCheckbox(self: *SettingsWindow) void {
         if (self.suppress_edit_events) return;
         const p = &(self.pending orelse return);
@@ -1655,6 +1758,12 @@ pub const SettingsWindow = struct {
     /// `adoptCurrentConfig` and after a successful save.
     fn refreshAllControls(self: *SettingsWindow) void {
         self.displayScrollbackInEdit();
+        self.displayAgentNumberInEdit(self.edit_digest_min, self.pendingDigestMinutes());
+        self.displayAlertKeywordsInEdit();
+        self.displayAgentNumberInEdit(self.edit_token_budget, self.pendingTokenBudget());
+        self.displayAgentNumberInEdit(self.edit_auto_restart, self.pendingAutoRestart());
+        self.displayAgentNumberInEdit(self.edit_ws_layout, self.pendingWsLayout());
+        self.displayFocusFollowsInCheckbox();
         self.displayFontFamilyInEdit();
         self.displayFontSizeInEdit();
         self.displayThemeInEdit();
@@ -1743,6 +1852,7 @@ pub const SettingsWindow = struct {
     /// with a live HWND brings the existing window to the foreground
     /// instead of duplicating it.
     pub fn open(self: *SettingsWindow) !void {
+        @setEvalBranchQuota(20_000);
         if (self.hwnd) |h| {
             if (IsWindow(h) != 0) {
                 if (IsIconic(h) != 0) _ = ShowWindow(h, SW_RESTORE) else _ = ShowWindow(h, SW_SHOWNORMAL);
@@ -2034,6 +2144,18 @@ pub const SettingsWindow = struct {
             &.{ "bar", "block", "underline", "block_hollow" },
         );
 
+        self.edit_digest_min = makeEdit(hwnd, self.handle.hinstance, EDIT_DIGEST_MIN, 120, ES_NUMBER);
+        self.edit_alert_keywords = makeEdit(hwnd, self.handle.hinstance, EDIT_ALERT_KEYWORDS, 320, 0);
+        self.edit_token_budget = makeEdit(hwnd, self.handle.hinstance, EDIT_TOKEN_BUDGET, 140, ES_NUMBER);
+        self.edit_auto_restart = makeEdit(hwnd, self.handle.hinstance, EDIT_AUTO_RESTART, 120, ES_NUMBER);
+        self.edit_ws_layout = makeEdit(hwnd, self.handle.hinstance, EDIT_WS_LAYOUT, 120, ES_NUMBER);
+        self.chk_focus_follows = makeCheckbox(
+            hwnd,
+            self.handle.hinstance,
+            CHK_FOCUS_FOLLOWS,
+            std.unicode.utf8ToUtf16LeStringLiteral("Focus follows attention (only when idle 10s+)"),
+            320,
+        );
         self.chk_bg_blur = makeCheckbox(
             hwnd,
             self.handle.hinstance,
@@ -2214,6 +2336,7 @@ fn makeSectionButton(
         .shell => BTN_SECTION_SHELL,
         .keybindings => BTN_SECTION_KEYBINDINGS,
         .windows => BTN_SECTION_WINDOWS,
+        .agents => BTN_SECTION_AGENTS,
         .advanced => BTN_SECTION_ADVANCED,
     };
     return CreateWindowExW(
@@ -2305,6 +2428,15 @@ const shell_rows = [_]SectionRow{
     .{ .label = "Shell integration", .w = 220, .drop_h = 200 },
 };
 
+const agents_rows = [_]SectionRow{
+    .{ .label = "Away digest after (minutes, 0 = off)", .w = 120 },
+    .{ .label = "Urgent alert keywords (comma-separated)", .w = 320, .span = true },
+    .{ .label = "Token budget alert (tokens, 0 = off)", .w = 140 },
+    .{ .label = "Auto-restart crashed panes (max, 0 = off)", .w = 120 },
+    .{ .label = "New-workspace layout slot (0 = two columns)", .w = 120 },
+    .{ .w = 320, .h = 24 },
+};
+
 const advanced_rows = [_]SectionRow{
     .{ .label = "Auto-update mode", .w = 220, .drop_h = 160 },
     .{ .label = "Auto-update channel", .w = 220, .drop_h = 140 },
@@ -2317,6 +2449,7 @@ fn sectionGridRows(section: Section) []const SectionRow {
         .appearance => &appearance_rows,
         .shell => &shell_rows,
         .advanced => &advanced_rows,
+        .agents => &agents_rows,
         else => &[_]SectionRow{},
     };
 }
@@ -2352,6 +2485,15 @@ fn sectionGridControls(
         },
         .shell => {
             const list = [_]?HWND{ self.edit_command, self.combo_shell_integ };
+            @memcpy(buf[0..list.len], &list);
+            return list.len;
+        },
+        .agents => {
+            const list = [_]?HWND{
+                self.edit_digest_min,     self.edit_alert_keywords,
+                self.edit_token_budget,   self.edit_auto_restart,
+                self.edit_ws_layout,      self.chk_focus_follows,
+            };
             @memcpy(buf[0..list.len], &list);
             return list.len;
         },
@@ -2594,6 +2736,26 @@ fn wndProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.wina
                 if (owner) |o| o.save();
                 return 0;
             }
+            if (id == EDIT_DIGEST_MIN and notify == EN_CHANGE) {
+                if (owner) |o| o.syncAgentNumberFromEdit(o.edit_digest_min, "digest-after-away-minutes", u32);
+                return 0;
+            }
+            if (id == EDIT_ALERT_KEYWORDS and notify == EN_CHANGE) {
+                if (owner) |o| o.syncAlertKeywordsFromEdit();
+                return 0;
+            }
+            if (id == EDIT_TOKEN_BUDGET and notify == EN_CHANGE) {
+                if (owner) |o| o.syncAgentNumberFromEdit(o.edit_token_budget, "token-budget-alert", u64);
+                return 0;
+            }
+            if (id == EDIT_AUTO_RESTART and notify == EN_CHANGE) {
+                if (owner) |o| o.syncAgentNumberFromEdit(o.edit_auto_restart, "pane-auto-restart", u32);
+                return 0;
+            }
+            if (id == EDIT_WS_LAYOUT and notify == EN_CHANGE) {
+                if (owner) |o| o.syncAgentNumberFromEdit(o.edit_ws_layout, "new-workspace-layout", u32);
+                return 0;
+            }
             if (id == EDIT_SCROLLBACK and notify == EN_CHANGE) {
                 if (owner) |o| o.syncScrollbackFromEdit();
                 return 0;
@@ -2697,6 +2859,10 @@ fn wndProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.wina
             }
             if (id == COMBO_CURSOR_STYLE and notify == CBN_SELCHANGE) {
                 if (owner) |o| o.syncCursorStyleFromCombo();
+                return 0;
+            }
+            if (id == CHK_FOCUS_FOLLOWS and notify == BN_CLICKED) {
+                if (owner) |o| o.syncFocusFollowsFromCheckbox();
                 return 0;
             }
             if (id == CHK_BG_BLUR and notify == BN_CLICKED) {
