@@ -1820,6 +1820,19 @@ class: ?[:0]const u8 = null,
 /// demand at any time.
 @"digest-after-away-minutes": u32 = 5,
 
+/// POST a JSON body {"state","title","message","surface_id"} to this
+/// URL every time a pane enters an alerting attention state (waiting,
+/// done, error). Fire-and-forget on a worker thread; failures are
+/// logged and never block the UI. Empty disables. This is explicit
+/// user-configured output, consistent with the telemetry fence.
+@"attention-webhook-url": [:0]const u8 = "",
+
+/// Run this command (via cmd /C, detached, hidden) every time a pane
+/// enters an alerting attention state. The event arrives in
+/// PARAMUX_ATTENTION_STATE / _TITLE / _MESSAGE / _SURFACE_ID
+/// environment variables. Empty disables.
+@"on-attention-command": [:0]const u8 = "",
+
 /// Name this instance's saved session. The default (empty) uses
 /// `session-state.json`; a name uses `session-state-<name>.json`, so
 /// separate configs (via --config-file or profiles-by-shortcut) can

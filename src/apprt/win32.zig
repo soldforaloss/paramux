@@ -8611,6 +8611,9 @@ pub const App = struct {
         const attn = parseAttentionState(title);
         var budget_crossed = false;
         if (self.findSurfaceForTarget(target)) |surface| {
+            if (attn.state.isAlerting() and surface.attention_state != attn.state) {
+                self.fanOutAttentionEvent(surface, attn.state, attn.title, body);
+            }
             surface.setLastNotification(attn.title, body) catch {};
             if (attn.tokens > 0) {
                 const budget = self.config.@"token-budget-alert";
@@ -8640,6 +8643,103 @@ pub const App = struct {
             return;
         }
         try self.showDesktopNotification(target, attn.title, body);
+    }
+
+    /// Fire-and-forget fan-out for alerting attention transitions:
+    /// the configured webhook (worker thread) and/or command (detached
+    /// process). Neither blocks the UI thread.
+    fn fanOutAttentionEvent(
+        self: *App,
+        surface: *Surface,
+        state: AttentionState,
+        title: []const u8,
+        body: []const u8,
+    ) void {
+        const surface_id = surface.core().id;
+
+        const webhook = self.config.@"attention-webhook-url";
+        if (webhook.len > 0) {
+            const Payload = struct {
+                url: []u8,
+                json: []u8,
+                fn post(payload: *@This()) void {
+                    defer {
+                        const gpa = std.heap.smp_allocator;
+                        gpa.free(payload.url);
+                        gpa.free(payload.json);
+                        gpa.destroy(payload);
+                    }
+                    var client: std.http.Client = .{ .allocator = std.heap.smp_allocator };
+                    defer client.deinit();
+                    const uri = std.Uri.parse(payload.url) catch return;
+                    _ = client.fetch(.{
+                        .location = .{ .uri = uri },
+                        .method = .POST,
+                        .payload = payload.json,
+                        .headers = .{ .content_type = .{ .override = "application/json" } },
+                    }) catch |err| {
+                        std.log.warn("attention webhook failed err={}", .{err});
+                    };
+                }
+            };
+            const gpa = std.heap.smp_allocator;
+            webhook_blk: {
+                const payload = gpa.create(Payload) catch break :webhook_blk;
+                payload.url = gpa.dupe(u8, webhook) catch {
+                    gpa.destroy(payload);
+                    break :webhook_blk;
+                };
+                var out: std.Io.Writer.Allocating = .init(gpa);
+                defer out.deinit();
+                std.json.Stringify.value(.{
+                    .state = @tagName(state),
+                    .title = title,
+                    .message = body,
+                    .surface_id = surface_id,
+                }, .{}, &out.writer) catch {
+                    gpa.free(payload.url);
+                    gpa.destroy(payload);
+                    break :webhook_blk;
+                };
+                payload.json = gpa.dupe(u8, out.written()) catch {
+                    gpa.free(payload.url);
+                    gpa.destroy(payload);
+                    break :webhook_blk;
+                };
+                const thread = std.Thread.spawn(.{}, Payload.post, .{payload}) catch {
+                    gpa.free(payload.url);
+                    gpa.free(payload.json);
+                    gpa.destroy(payload);
+                    break :webhook_blk;
+                };
+                thread.detach();
+            }
+        }
+
+        const command = self.config.@"on-attention-command";
+        if (command.len > 0) {
+            const gpa = std.heap.smp_allocator;
+            cmd_blk: {
+                var env = std.process.getEnvMap(gpa) catch break :cmd_blk;
+                defer env.deinit();
+                var idbuf: [24]u8 = undefined;
+                env.put("PARAMUX_ATTENTION_STATE", @tagName(state)) catch break :cmd_blk;
+                env.put("PARAMUX_ATTENTION_TITLE", title) catch break :cmd_blk;
+                env.put("PARAMUX_ATTENTION_MESSAGE", body) catch break :cmd_blk;
+                env.put("PARAMUX_ATTENTION_SURFACE_ID", std.fmt.bufPrint(&idbuf, "{d}", .{surface_id}) catch "0") catch break :cmd_blk;
+                var child = std.process.Child.init(&.{ "cmd.exe", "/C", command }, gpa);
+                child.env_map = &env;
+                child.stdin_behavior = .Ignore;
+                child.stdout_behavior = .Ignore;
+                child.stderr_behavior = .Ignore;
+                child.spawn() catch |err| {
+                    std.log.warn("on-attention-command spawn failed err={}", .{err});
+                    break :cmd_blk;
+                };
+                // Detached: never wait; the child outlives our interest.
+                _ = child.id;
+            }
+        }
     }
 
     /// True when the notification text matches one of the configured
