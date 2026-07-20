@@ -34518,12 +34518,16 @@ test "automation-window-list win32 json includes host tab and pane ids" {
     var tab0_surface: Surface = undefined;
     tab0_surface.core_surface = undefined;
     tab0_surface.core_surface.id = 701;
+    tab0_surface.attention_state = .none;
+    tab0_surface.agent_tokens = 0;
     tab0_surface.host = &host;
     tab0_surface.host_id = host.id;
 
     var tab1_primary: Surface = undefined;
     tab1_primary.core_surface = undefined;
     tab1_primary.core_surface.id = 702;
+    tab1_primary.attention_state = .none;
+    tab1_primary.agent_tokens = 0;
     tab1_primary.host = &host;
     tab1_primary.host_id = host.id;
     tab1_primary.window_focused = true;
@@ -34531,6 +34535,8 @@ test "automation-window-list win32 json includes host tab and pane ids" {
     var tab1_split: Surface = undefined;
     tab1_split.core_surface = undefined;
     tab1_split.core_surface.id = 703;
+    tab1_split.attention_state = .none;
+    tab1_split.agent_tokens = 0;
     tab1_split.host = &host;
     tab1_split.host_id = host.id;
 
@@ -34597,6 +34603,8 @@ test "automation-window-list win32 json skips empty hosts kept alive for undo hi
     var surface: Surface = undefined;
     surface.core_surface = undefined;
     surface.core_surface.id = 801;
+    surface.attention_state = .none;
+    surface.agent_tokens = 0;
     surface.host = &live_host;
     surface.host_id = live_host.id;
     surface.window_focused = true;
