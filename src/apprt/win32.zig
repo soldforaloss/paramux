@@ -23,6 +23,7 @@ const win32_tween = @import("win32_tween.zig");
 const win32_uia = @import("win32_uia/mod.zig");
 const win32_palette = @import("win32_palette.zig");
 const win32_settings = @import("win32_settings.zig");
+const win32_strings = @import("win32_strings.zig");
 const win32_aumid = @import("win32_aumid.zig");
 const win32_explorer_menu = @import("win32_explorer_menu.zig");
 const win32_clipboard_html = @import("win32_clipboard_html.zig");
@@ -1528,27 +1529,27 @@ const quick_terminal_title = std.unicode.utf8ToUtf16LeStringLiteral("paramux qui
 const prompt_label_class = std.unicode.utf8ToUtf16LeStringLiteral("STATIC");
 const prompt_edit_class = std.unicode.utf8ToUtf16LeStringLiteral("EDIT");
 const prompt_button_class = std.unicode.utf8ToUtf16LeStringLiteral("BUTTON");
-const prompt_ok_label = std.unicode.utf8ToUtf16LeStringLiteral("OK");
-const prompt_cancel_label = std.unicode.utf8ToUtf16LeStringLiteral("Cancel");
-const search_prev_label = std.unicode.utf8ToUtf16LeStringLiteral("Prev match");
-const search_next_label = std.unicode.utf8ToUtf16LeStringLiteral("Next match");
-const search_regex_label = std.unicode.utf8ToUtf16LeStringLiteral("Regex");
-const search_case_label = std.unicode.utf8ToUtf16LeStringLiteral("Case sensitive");
-const search_word_label = std.unicode.utf8ToUtf16LeStringLiteral("Whole word");
-const search_close_label = std.unicode.utf8ToUtf16LeStringLiteral("Close search");
-const search_edit_cue = std.unicode.utf8ToUtf16LeStringLiteral("Find in scrollback");
+const prompt_ok_label = win32_strings.strings.prompt_ok_label;
+const prompt_cancel_label = win32_strings.strings.prompt_cancel_label;
+const search_prev_label = win32_strings.strings.search_prev_label;
+const search_next_label = win32_strings.strings.search_next_label;
+const search_regex_label = win32_strings.strings.search_regex_label;
+const search_case_label = win32_strings.strings.search_case_label;
+const search_word_label = win32_strings.strings.search_word_label;
+const search_close_label = win32_strings.strings.search_close_label;
+const search_edit_cue = win32_strings.strings.search_edit_cue;
 const scrollbar_transparent_key = rgb(0xFF, 0x00, 0xFF);
 const host_overlay_command_palette_label_utf8 = "Command:";
 const host_overlay_profile_label_utf8 = "Profile:";
 const host_overlay_surface_title_label_utf8 = "Window title:";
 const host_overlay_tab_title_label_utf8 = "Tab title:";
-const host_overlay_command_palette_label = std.unicode.utf8ToUtf16LeStringLiteral("Command:");
+const host_overlay_command_palette_label = win32_strings.strings.host_overlay_command_palette_label;
 const host_tab_new_button_label = std.unicode.utf8ToUtf16LeStringLiteral("+");
-const tooltip_new_tab = std.unicode.utf8ToUtf16LeStringLiteral("New workspace (Ctrl+Shift+T)\nRight-click: new window \u{00B7} Middle-click: split");
-const tooltip_split_right = std.unicode.utf8ToUtf16LeStringLiteral("Split right (Ctrl+Shift+O)");
-const tooltip_split_down = std.unicode.utf8ToUtf16LeStringLiteral("Split down (Ctrl+Shift+E)");
-const tooltip_settings = std.unicode.utf8ToUtf16LeStringLiteral("Settings (Ctrl+,)");
-const tooltip_help = std.unicode.utf8ToUtf16LeStringLiteral("Help");
+const tooltip_new_tab = win32_strings.strings.tooltip_new_tab;
+const tooltip_split_right = win32_strings.strings.tooltip_split_right;
+const tooltip_split_down = win32_strings.strings.tooltip_split_down;
+const tooltip_settings = win32_strings.strings.tooltip_settings;
+const tooltip_help = win32_strings.strings.tooltip_help;
 
 // Long help-dialog bodies need a raised quota for the comptime
 // UTF-8 → UTF-16 conversion.
@@ -1601,13 +1602,13 @@ const help_shortcuts_text: LPCWSTR = blk: {
             "Full list: run \"paramux list-keybinds\" in any pane.",
     );
 };
-const tooltip_more_actions = std.unicode.utf8ToUtf16LeStringLiteral("More actions");
-const tooltip_search_prev = std.unicode.utf8ToUtf16LeStringLiteral("Previous match (Shift+Enter)");
-const tooltip_search_next = std.unicode.utf8ToUtf16LeStringLiteral("Next match (Enter)");
-const tooltip_search_regex = std.unicode.utf8ToUtf16LeStringLiteral("Regular expression");
-const tooltip_search_case = std.unicode.utf8ToUtf16LeStringLiteral("Match case");
-const tooltip_search_word = std.unicode.utf8ToUtf16LeStringLiteral("Whole word");
-const tooltip_search_close = std.unicode.utf8ToUtf16LeStringLiteral("Close search (Esc)");
+const tooltip_more_actions = win32_strings.strings.tooltip_more_actions;
+const tooltip_search_prev = win32_strings.strings.tooltip_search_prev;
+const tooltip_search_next = win32_strings.strings.tooltip_search_next;
+const tooltip_search_regex = win32_strings.strings.tooltip_search_regex;
+const tooltip_search_case = win32_strings.strings.tooltip_search_case;
+const tooltip_search_word = win32_strings.strings.tooltip_search_word;
+const tooltip_search_close = win32_strings.strings.tooltip_search_close;
 const host_tab_split_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{25EB}"); // ◫ square bisected = split
 const host_tab_split_down_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{229F}"); // ⊟ squared minus = split down
 const host_tab_settings_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{2699}"); // ⚙ gear = settings
