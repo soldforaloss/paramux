@@ -47,6 +47,28 @@ if ((-not $CliOnly) -and (Test-Path $exe)) {
     }
 }
 
+# Comparative context, when competitors are installed: same
+# best-of-N spawn->exit loop on their version verbs. Absent tools are
+# skipped silently — receipts never guess.
+$compareRows = @()
+$competitors = @(
+    @{ Name = "Windows Terminal (wt.exe -v)"; Cmd = "wt.exe"; Cmd2 = "-v" },
+    @{ Name = "WezTerm (wezterm -V)"; Cmd = "wezterm.exe"; Cmd2 = "-V" }
+)
+foreach ($comp in $competitors) {
+    $found = Get-Command $comp.Cmd -ErrorAction SilentlyContinue
+    if (-not $found) { continue }
+    $times = @()
+    for ($i = 0; $i -lt $Runs; $i++) {
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        try { & $comp.Cmd $comp.Cmd2 2>$null | Out-Null } catch {}
+        $sw.Stop()
+        $times += $sw.Elapsed.TotalMilliseconds
+    }
+    $best = [math]::Round(($times | Measure-Object -Minimum).Minimum, 1)
+    $compareRows += "| $($comp.Name), best of $Runs | $best ms |"
+}
+
 $stamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd")
 $ver = (& $Binary version | Select-Object -First 1)
 $content = @"
@@ -59,6 +81,7 @@ performance-relevant changes; numbers are receipts, not promises.
 | Metric | Value |
 | --- | --- |
 | CLI cold start, best of $Runs (``paramux version``) | $cliMin ms |
+$($compareRows -join "`n")
 | CLI cold start, average of $Runs | $cliAvg ms |
 $guiRow
 

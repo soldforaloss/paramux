@@ -6,9 +6,10 @@ performance-relevant changes; numbers are receipts, not promises.
 
 | Metric | Value |
 | --- | --- |
-| CLI cold start, best of 5 (`paramux version`) | 14.5 ms |
-| CLI cold start, average of 5 | 36.3 ms |
-| GUI idle working set (5s after launch) | 143.8 MB |
+| CLI cold start, best of 5 (`paramux version`) | 13.8 ms |
+| Windows Terminal (wt.exe -v), best of 5 | 48.2 ms |
+| CLI cold start, average of 5 | 43 ms |
+| GUI idle working set (5s after launch) | 133.4 MB |
 
 The PRD targets: cold start under 500 ms, idle under 150 MB (release
 builds on real hardware). Release-build numbers belong here once
