@@ -38,7 +38,10 @@ pub const Options = struct {
 /// The update is refused while a paramux window is running from this
 /// folder — close the windows first. Configuration under
 /// `%LOCALAPPDATA%\paramux` is never touched. `--check` prints whether an
-/// update is available without changing anything.
+/// update is available without changing anything. `--rollback` renames the
+/// `*.old` files from the previous update back into place — one step back
+/// to the prior version; the window closes once a later update sweeps the
+/// leftovers.
 ///
 /// PATH and Explorer integration keep working because the folder path does
 /// not change; there is nothing to re-run after updating.
