@@ -5816,6 +5816,12 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool 
             {},
         ),
 
+        .toggle_window_on_top => return try self.rt_app.performAction(
+            .{ .surface = self },
+            .toggle_window_on_top,
+            {},
+        ),
+
         .move_tab => |position| return try self.rt_app.performAction(
             .{ .surface = self },
             .move_tab,

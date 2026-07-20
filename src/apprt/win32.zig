@@ -743,6 +743,11 @@ const CTX_SCROLLBACK_EDITOR: usize = 4027;
 const CTX_MUTE_PANE: usize = 4028;
 const CTX_NEW_TAB_HERE: usize = 4030;
 const CTX_WATCH_PANE: usize = 4031;
+const CTX_SCROLL_TOP: usize = 4032;
+const CTX_SCROLL_BOTTOM: usize = 4033;
+const CTX_WHATS_NEW: usize = 4034;
+const CTX_COPY_FLEET: usize = 4035;
+const CTX_RATIO_BASE: usize = 4720; // split ratio presets: base + index
 const CTX_LAYOUT_SAVE_BASE: usize = 4700; // save layout slots: base + slot
 const CTX_LAYOUT_APPLY_BASE: usize = 4710; // apply layout slots: base + slot
 const layout_slot_count: usize = 5;
@@ -5716,6 +5721,13 @@ pub const App = struct {
                 return true;
             },
 
+            .toggle_window_on_top => {
+                const surface = self.findSurfaceForTarget(target) orelse return false;
+                const host = surface.host orelse return false;
+                host.toggleAlwaysOnTop();
+                return true;
+            },
+
             .toggle_tab_overview => {
                 if (self.findSurfaceForTarget(target)) |surface| {
                     return try surface.toggleTabOverview();
@@ -6360,6 +6372,8 @@ pub const App = struct {
                 // True only for the focused pane in the active tab, not every
                 // tab-local focused pane.
                 .active = active and (if (focused_surface) |surface| surface == entry.view else false),
+                .attention = @tagName(entry.view.attention_state),
+                .tokens = entry.view.agent_tokens,
             });
         }
 
@@ -6436,7 +6450,8 @@ pub const App = struct {
 
         var wc: WNDCLASSEXW = .{
             .cbSize = @sizeOf(WNDCLASSEXW),
-            .style = 0,
+            // CS_DBLCLKS: sidebar rows rename on double-click.
+            .style = 0x0008,
             .lpfnWndProc = &hostWindowProc,
             .cbClsExtra = 0,
             .cbWndExtra = 0,
@@ -9568,6 +9583,8 @@ const Host = struct {
     /// When this host was last deactivated; drives the
     /// while-you-were-away digest on return.
     deactivated_at_ms: i64 = 0,
+    /// Whether this window is currently pinned above all others.
+    is_topmost: bool = false,
     /// Always-on-top watch window mirroring one pane's tail (Pop Out
     /// Watch Window): handle, owned text, and the watched pane.
     watch_hwnd: ?HWND = null,
@@ -12848,6 +12865,15 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_STRING, CTX_FIND_PANES, std.unicode.utf8ToUtf16LeStringLiteral("Find in All Panes...\tCtrl+Alt+F"));
         _ = AppendMenuW(menu, MF_STRING, CTX_SCROLLBACK_EDITOR, std.unicode.utf8ToUtf16LeStringLiteral("Open Scrollback in Editor"));
         _ = AppendMenuW(menu, MF_STRING, CTX_WATCH_PANE, std.unicode.utf8ToUtf16LeStringLiteral("Pop Out Watch Window"));
+        if (CreatePopupMenu()) |ratio_menu| {
+            _ = AppendMenuW(ratio_menu, MF_STRING, CTX_RATIO_BASE + 0, std.unicode.utf8ToUtf16LeStringLiteral("50 / 50"));
+            _ = AppendMenuW(ratio_menu, MF_STRING, CTX_RATIO_BASE + 1, std.unicode.utf8ToUtf16LeStringLiteral("70 / 30"));
+            _ = AppendMenuW(ratio_menu, MF_STRING, CTX_RATIO_BASE + 2, std.unicode.utf8ToUtf16LeStringLiteral("30 / 70"));
+            _ = AppendMenuW(menu, MF_POPUP, @intFromPtr(ratio_menu), std.unicode.utf8ToUtf16LeStringLiteral("Split Ratio"));
+        }
+        _ = AppendMenuW(menu, MF_STRING, CTX_SCROLL_TOP, std.unicode.utf8ToUtf16LeStringLiteral("Scroll to Top"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_SCROLL_BOTTOM, std.unicode.utf8ToUtf16LeStringLiteral("Scroll to Bottom"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_COPY_FLEET, std.unicode.utf8ToUtf16LeStringLiteral("Copy Fleet Status"));
         if (self.activeSurface()) |mute_target| {
             _ = AppendMenuW(menu, MF_STRING, CTX_MUTE_PANE, if (mute_target.attentionMuted())
                 std.unicode.utf8ToUtf16LeStringLiteral("Unmute Notifications")
@@ -13062,6 +13088,23 @@ const Host = struct {
             CTX_LAYOUT_APPLY_BASE...CTX_LAYOUT_APPLY_BASE + layout_slot_count - 1 => |picked_apply| {
                 self.applyLayoutSlot(picked_apply - CTX_LAYOUT_APPLY_BASE);
             },
+            CTX_RATIO_BASE...CTX_RATIO_BASE + 2 => |picked_ratio| {
+                const ratios = [_]f32{ 0.5, 0.7, 0.3 };
+                self.setFocusedSplitRatio(ratios[picked_ratio - CTX_RATIO_BASE]);
+            },
+            CTX_COPY_FLEET => {
+                self.copyFleetStatus();
+            },
+            CTX_SCROLL_TOP => {
+                if (self.activeSurface()) |active| {
+                    _ = active.core_surface.performBindingAction(.{ .scroll_to_top = {} }) catch {};
+                }
+            },
+            CTX_SCROLL_BOTTOM => {
+                if (self.activeSurface()) |active| {
+                    _ = active.core_surface.performBindingAction(.{ .scroll_to_bottom = {} }) catch {};
+                }
+            },
             CTX_WATCH_PANE => {
                 if (self.activeSurface()) |active| self.showPaneWatch(active);
             },
@@ -13156,6 +13199,10 @@ const Host = struct {
             return std.unicode.utf8ToUtf16LeStringLiteral("Drop: edges dock \u{00B7} center swaps");
         if (self.split_resize.active)
             return std.unicode.utf8ToUtf16LeStringLiteral("Drag to resize");
+        if (self.activeTab()) |hint_tab| {
+            if (hint_tab.tree.zoomed != null)
+                return std.unicode.utf8ToUtf16LeStringLiteral("Zoomed \u{00B7} Ctrl+Shift+Enter restores all panes");
+        }
         // Default hint, prefixed with the focused pane's git branch
         // when one is known: the status bar doubles as a git segment.
         const fallback = std.unicode.utf8ToUtf16LeStringLiteral("Ctrl+Alt+I inbox \u{00B7} Ctrl+Alt+U attention \u{00B7} Ctrl+Shift+P palette");
@@ -13277,6 +13324,87 @@ const Host = struct {
         var msg_buf: [72]u8 = undefined;
         const msg = std.fmt.bufPrint(&msg_buf, "Layout {d} applied as a new workspace.", .{slot + 1}) catch "Layout applied.";
         self.setBanner(.info, msg) catch {};
+    }
+
+    /// Copy a markdown snapshot of every workspace and pane (state,
+    /// title, last message, tokens) to the clipboard — a standup
+    /// artifact for the whole fleet.
+    fn copyFleetStatus(self: *Host) void {
+        const alloc = self.app.core_app.alloc;
+        var text: std.ArrayListUnmanaged(u8) = .empty;
+        defer text.deinit(alloc);
+        text.appendSlice(alloc, "# Paramux fleet status\n") catch return;
+        for (self.tabs.items, 0..) |*tab, ti| {
+            const override: ?[]const u8 = if (tab.focusedSurface()) |fs| fs.tab_title_override else null;
+            if (override) |name| {
+                text.writer(alloc).print("\n## Workspace {d} - {s}\n", .{ ti + 1, name }) catch return;
+            } else {
+                text.writer(alloc).print("\n## Workspace {d}\n", .{ti + 1}) catch return;
+            }
+            var it = tab.tree.iterator();
+            while (it.next()) |leaf| {
+                const surface = leaf.view;
+                const title: []const u8 = if (surface.effectiveTitle()) |t| t else "shell";
+                const state = @tagName(surface.attention_state);
+                text.writer(alloc).print("- [{s}] {s}", .{ state, title }) catch return;
+                if (surface.last_notification) |msg| {
+                    if (msg.len > 0) text.writer(alloc).print(" - {s}", .{msg[0..@min(msg.len, 120)]}) catch return;
+                }
+                if (surface.agent_tokens > 0) {
+                    var tok_buf: [24]u8 = undefined;
+                    const tok = formatSidebarTokens(&tok_buf, surface.agent_tokens);
+                    text.writer(alloc).print(" ({s})", .{std.mem.trimLeft(u8, tok, " \u{00B7}")}) catch return;
+                }
+                text.append(alloc, '\n') catch return;
+            }
+        }
+        const active = self.activeSurface() orelse return;
+        active.writeClipboardText(text.items) catch {
+            self.setBanner(.err, "Could not write the clipboard.") catch {};
+            return;
+        };
+        self.setBanner(.info, "Fleet status copied as markdown.") catch {};
+    }
+
+    /// Toggle WS_EX_TOPMOST on this window, with a banner naming the
+    /// new state.
+    fn toggleAlwaysOnTop(self: *Host) void {
+        const hwnd = self.hwnd orelse return;
+        self.is_topmost = !self.is_topmost;
+        _ = SetWindowPos(
+            hwnd,
+            if (self.is_topmost) HWND_TOPMOST else HWND_NOTOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
+        self.setBanner(.info, if (self.is_topmost)
+            "Window pinned on top. Ctrl+Alt+T releases it."
+        else
+            "Window no longer on top.") catch {};
+    }
+
+    /// Set the focused pane's parent split to `ratio` (0..1 toward the
+    /// first child) and re-lay out.
+    fn setFocusedSplitRatio(self: *Host, ratio: f32) void {
+        if (self.active_tab >= self.tabs.items.len) return;
+        const tab = &self.tabs.items[self.active_tab];
+        const focused = tab.focused;
+        for (tab.tree.nodes, 0..) |node, i| {
+            switch (node) {
+                .split => |split| {
+                    if (split.left == focused or split.right == focused) {
+                        tab.tree.resizeInPlace(@enumFromInt(i), @floatCast(ratio));
+                        self.layout() catch {};
+                        return;
+                    }
+                },
+                .leaf => {},
+            }
+        }
+        self.setBanner(.info, "Focused pane has no split to resize.") catch {};
     }
 
     /// Count panes by alerting attention state across every workspace.
@@ -13767,6 +13895,20 @@ const Host = struct {
                 const result = ShellExecuteW(null, shell_open, url, null, null, SW_SHOW);
                 if (@intFromPtr(result) <= 32) log.warn("help docs open failed code={d}", .{@intFromPtr(result)});
             },
+            CTX_WHATS_NEW => {
+                var url_buf: [128]u8 = undefined;
+                const url_utf8 = std.fmt.bufPrint(
+                    &url_buf,
+                    "https://github.com/soldforaloss/paramux/releases/tag/v{s}",
+                    .{build_config.version_string},
+                ) catch "https://github.com/soldforaloss/paramux/releases";
+                var url_w: [128:0]u16 = undefined;
+                const wn = std.unicode.utf8ToUtf16Le(&url_w, url_utf8) catch 0;
+                if (wn == 0) return;
+                url_w[wn] = 0;
+                const result = ShellExecuteW(null, shell_open, @ptrCast(&url_w), null, null, SW_SHOW);
+                if (@intFromPtr(result) <= 32) log.warn("whats new open failed code={d}", .{@intFromPtr(result)});
+            },
             CTX_HELP_ABOUT => {
                 var text_buf: [256]u8 = undefined;
                 const text = std.fmt.bufPrint(
@@ -14009,7 +14151,9 @@ const Host = struct {
                 } orelse return false;
                 _ = self.app.closeTab(.{ .surface = surface.core() }, .this) catch |err| {
                     log.warn("sidebar close workspace failed err={}", .{err});
+                    return true;
                 };
+                self.setBanner(.info, "Workspace closed. Ctrl+Shift+Z undoes.") catch {};
                 return true;
             },
             .new_workspace => return false,
@@ -23797,6 +23941,27 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
             if (host) |v| {
                 if (v.split_resize.active) v.split_resize.end();
                 if (v.pane_drag.armed or v.pane_drag.dragging) v.cancelPaneDrag();
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+
+        WM_LBUTTONDBLCLK => {
+            if (host) |v| {
+                const dx = signedLowWord(lParamBits(lParam));
+                const dy = signedHighWord(lParamBits(lParam));
+                if (v.sidebarRowIndexAt(dx, dy)) |row_index| {
+                    if (v.sidebarRowByIndex(row_index)) |row| {
+                        _ = v.activateSidebarRow(row);
+                        if (v.activeSurface()) |surface| {
+                            const kind: apprt.action.PromptTitle = switch (row.kind) {
+                                .workspace_header => .tab,
+                                else => .surface,
+                            };
+                            runUiActionOrLog("sidebar double-click rename failed", surface.promptTitle(kind));
+                        }
+                        return 0;
+                    }
+                }
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
@@ -34271,7 +34436,7 @@ test "automation-window-list win32 json includes host tab and pane ids" {
     defer std.testing.allocator.free(json);
 
     try std.testing.expectEqualStrings(
-        "{\"schema\":\"paramux.windows.v2\",\"api_version\":2,\"windows\":[{\"window_id\":17,\"focused\":true,\"active_tab_id\":4,\"tab_count\":2,\"pane_count\":3,\"tabs\":[{\"tab_id\":3,\"active\":false,\"focused_surface_id\":701,\"pane_count\":1,\"panes\":[{\"surface_id\":701,\"focused\":true,\"active\":false}]},{\"tab_id\":4,\"active\":true,\"focused_surface_id\":702,\"pane_count\":2,\"panes\":[{\"surface_id\":703,\"focused\":false,\"active\":false},{\"surface_id\":702,\"focused\":true,\"active\":true}]}]}]}",
+        "{\"schema\":\"paramux.windows.v2\",\"api_version\":2,\"windows\":[{\"window_id\":17,\"focused\":true,\"active_tab_id\":4,\"tab_count\":2,\"pane_count\":3,\"tabs\":[{\"tab_id\":3,\"active\":false,\"focused_surface_id\":701,\"pane_count\":1,\"panes\":[{\"surface_id\":701,\"focused\":true,\"active\":false,\"attention\":\"none\",\"tokens\":0}]},{\"tab_id\":4,\"active\":true,\"focused_surface_id\":702,\"pane_count\":2,\"panes\":[{\"surface_id\":703,\"focused\":false,\"active\":false,\"attention\":\"none\",\"tokens\":0},{\"surface_id\":702,\"focused\":true,\"active\":true,\"attention\":\"none\",\"tokens\":0}]}]}]}",
         json,
     );
 }
@@ -34319,7 +34484,7 @@ test "automation-window-list win32 json skips empty hosts kept alive for undo hi
     defer std.testing.allocator.free(json);
 
     try std.testing.expectEqualStrings(
-        "{\"schema\":\"paramux.windows.v2\",\"api_version\":2,\"windows\":[{\"window_id\":17,\"focused\":true,\"active_tab_id\":5,\"tab_count\":1,\"pane_count\":1,\"tabs\":[{\"tab_id\":5,\"active\":true,\"focused_surface_id\":801,\"pane_count\":1,\"panes\":[{\"surface_id\":801,\"focused\":true,\"active\":true}]}]}]}",
+        "{\"schema\":\"paramux.windows.v2\",\"api_version\":2,\"windows\":[{\"window_id\":17,\"focused\":true,\"active_tab_id\":5,\"tab_count\":1,\"pane_count\":1,\"tabs\":[{\"tab_id\":5,\"active\":true,\"focused_surface_id\":801,\"pane_count\":1,\"panes\":[{\"surface_id\":801,\"focused\":true,\"active\":true,\"attention\":\"none\",\"tokens\":0}]}]}]}",
         json,
     );
 }

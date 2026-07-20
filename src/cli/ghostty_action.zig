@@ -99,6 +99,10 @@ pub const Action = enum {
     // and print the new pane's surface id.
     run,
 
+    // Print every workspace and pane with attention state and token
+    // totals as a table.
+    status,
+
     pub fn detectSpecialCase(arg: []const u8) ?SpecialCase(Action) {
         // If we see a "-e" and we haven't seen a command yet, then
         // we are done looking for commands. This special case enables

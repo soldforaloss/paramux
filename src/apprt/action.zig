@@ -154,6 +154,9 @@ pub const Action = union(Key) {
     /// Show the health HUD.
     health_hud,
 
+    /// Toggle this window's always-on-top state.
+    toggle_window_on_top,
+
     /// Jump to next/previous window.
     goto_window: GotoWindow,
 
@@ -388,6 +391,7 @@ pub const Action = union(Key) {
         find_all_panes,
         show_digest,
         health_hud,
+        toggle_window_on_top,
         goto_window,
         resize_split,
         equalize_splits,

@@ -547,6 +547,12 @@ fn actionCommands(action: Action.Key) []const Command {
             .description = "Show workspace, pane, attention, and process health at a glance.",
         }},
 
+        .toggle_window_on_top => comptime &.{.{
+            .action = .toggle_window_on_top,
+            .title = "Toggle Always on Top",
+            .description = "Keep this window above every other window, or release it.",
+        }},
+
         .goto_window => comptime &.{
             .{
                 .action = .{ .goto_window = .previous },

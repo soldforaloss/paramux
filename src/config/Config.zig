@@ -6138,6 +6138,21 @@ pub const Keybinds = struct {
                 .{ .health_hud = {} },
                 .{ .performable = true },
             );
+            // Always-on-top toggle.
+            try self.set.putFlags(
+                alloc,
+                .{ .key = .{ .unicode = 't' }, .mods = .{ .ctrl = true, .alt = true } },
+                .{ .toggle_window_on_top = {} },
+                .{ .performable = true },
+            );
+            // Windows-reachable undo (the super+z default collides with
+            // the OS Win+Z snap overlay).
+            try self.set.putFlags(
+                alloc,
+                .{ .key = .{ .unicode = 'z' }, .mods = .{ .ctrl = true, .shift = true } },
+                .{ .undo = {} },
+                .{ .performable = true },
+            );
             try self.set.putFlags(
                 alloc,
                 .{ .key = .{ .unicode = '[' }, .mods = .{ .ctrl = true, .alt = true } },

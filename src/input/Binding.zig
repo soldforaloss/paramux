@@ -569,6 +569,9 @@ pub const Action = union(enum) {
     /// process memory, and where the config and control pipe live.
     health_hud,
 
+    /// Keep this window above all others (toggle).
+    toggle_window_on_top,
+
     /// Go to the tab with the specific index, starting from 1.
     ///
     /// If the tab number is higher than the number of tabs,
@@ -1419,6 +1422,7 @@ pub const Action = union(enum) {
             .find_all_panes,
             .show_digest,
             .health_hud,
+            .toggle_window_on_top,
             .move_tab,
             .toggle_tab_overview,
             .new_split,

@@ -107,6 +107,10 @@ pub const AutomationPane = struct {
     surface_id: u64,
     focused: bool,
     active: bool,
+    /// Additive v2 fields: agent attention state tag and the latest
+    /// reported session token total (0 = unknown).
+    attention: []const u8 = "none",
+    tokens: u64 = 0,
 };
 
 pub const AutomationActionTarget = union(enum) {

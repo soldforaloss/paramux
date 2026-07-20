@@ -769,6 +769,7 @@ fn isSafeAutomationAction(action: input.Binding.Action) bool {
         .attention_inbox,
         .find_all_panes,
         .show_digest,
+        .toggle_window_on_top,
         .move_tab,
         .toggle_tab_overview,
         .new_split,
