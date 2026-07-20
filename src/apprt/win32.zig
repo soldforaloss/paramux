@@ -8699,6 +8699,23 @@ pub const App = struct {
         return try core.renderer_state.terminal.plainString(alloc);
     }
 
+    /// Like `readPaneText` but spans the FULL scrollback, not just the
+    /// viewport. Same locking; can return megabytes for busy panes.
+    pub fn readPaneTextFull(
+        self: *App,
+        target: apprt.ipc.AutomationActionTarget,
+        alloc: Allocator,
+    ) ![]const u8 {
+        const surface = switch (target) {
+            .focused => self.focusedSurfaceForUndoRedo() orelse return error.NoAutomationTarget,
+            .surface_id => |id| self.findSurfaceById(id) orelse return error.NoAutomationTarget,
+        };
+        const core = surface.core();
+        core.renderer_state.mutex.lock();
+        defer core.renderer_state.mutex.unlock();
+        return try core.renderer_state.terminal.screens.active.dumpStringAlloc(alloc, .{ .screen = .{} });
+    }
+
     /// paramux FR-3: apply an async git-dirty result on the UI thread. Ignored
     /// if the surface is gone or the cwd changed again since the check began.
     pub fn applyGitDirty(self: *App, surface_id: u64, gen: u64, dirty: bool) void {
@@ -13885,11 +13902,14 @@ const Host = struct {
         outer: for (self.tabs.items, 0..) |*tab, ti| {
             var it = tab.tree.iterator();
             while (it.next()) |leaf| {
-                const text = self.app.readPaneText(
+                // Full scrollback, capped: matches far up an agent's
+                // history still surface, without unbounded scans.
+                const full = self.app.readPaneTextFull(
                     .{ .surface_id = leaf.view.core().id },
                     alloc,
                 ) catch continue;
-                defer alloc.free(text);
+                defer alloc.free(full);
+                const text = if (full.len > 512 * 1024) full[full.len - 512 * 1024 ..] else full;
 
                 var lines = std.mem.splitScalar(u8, text, 10);
                 while (lines.next()) |raw| {
