@@ -8,7 +8,8 @@
 //! on their own cadence rather than streaming.
 //!
 //! First-slice degradations, all within the UIA contract:
-//!   * Word / Format / Paragraph units behave as Line.
+//!   * Format / Paragraph units behave as Line (Word is real:
+//!     ink runs with trailing blanks).
 //!   * `GetBoundingRectangles` returns an empty array (no per-line
 //!     rects yet), `RangeFromPoint` returns a degenerate range.
 //!   * `GetVisibleRanges` reports the whole document instead of the
@@ -52,6 +53,44 @@ pub fn buildLineStarts(alloc: std.mem.Allocator, doc: []const u16) ![]usize {
     return try line_starts.toOwnedSlice(alloc);
 }
 
+/// Word separators for TextUnit_Word: blanks and the line break. The
+/// terminal has no richer segmentation to offer than runs of ink.
+fn isWordSep(unit: u16) bool {
+    return unit == ' ' or unit == '\t' or unit == '\n';
+}
+
+/// Start of the word containing `offset`. A word is a maximal run of
+/// non-separators plus its TRAILING separators (the UIA convention),
+/// so an offset inside blanks belongs to the word whose tail they are;
+/// leading separators at document start form a degenerate word at 0.
+pub fn wordStartAt(doc: []const u16, offset: usize) usize {
+    var i = @min(offset, doc.len);
+    if (i == doc.len) {
+        if (i == 0) return 0;
+        i -= 1; // the degenerate end position belongs to the last word
+    }
+    if (isWordSep(doc[i])) {
+        // Inside a trailing-separator run: back to its first separator,
+        // then over the ink run it terminates.
+        while (i > 0 and isWordSep(doc[i - 1])) i -= 1;
+        while (i > 0 and !isWordSep(doc[i - 1])) i -= 1;
+        return i;
+    }
+    while (i > 0 and !isWordSep(doc[i - 1])) i -= 1;
+    return i;
+}
+
+/// Start of the next word after the word containing `offset`
+/// (equivalently: end of that word, trailing separators included).
+pub fn wordEndAt(doc: []const u16, offset: usize) usize {
+    var i = @min(offset, doc.len);
+    // Forward over the ink run.
+    while (i < doc.len and !isWordSep(doc[i])) i += 1;
+    // Forward over the trailing separator run.
+    while (i < doc.len and isWordSep(doc[i])) i += 1;
+    return i;
+}
+
 /// Index of the line containing `offset` (last line whose start <= offset).
 pub fn lineIndexForOffset(line_starts: []const usize, offset: usize) usize {
     var lo: usize = 0;
@@ -65,17 +104,21 @@ pub fn lineIndexForOffset(line_starts: []const usize, offset: usize) usize {
 
 /// Expand `[start, end)` to enclosing `unit` boundaries.
 pub fn expandRange(
-    doc_len: usize,
+    doc: []const u16,
     line_starts: []const usize,
     start: usize,
     unit: i32,
 ) OffsetRange {
+    const doc_len = doc.len;
     switch (unit) {
         com.TextUnit_Character => {
             const s = @min(start, doc_len);
             return .{ .start = s, .end = @min(s + 1, doc_len) };
         },
-        com.TextUnit_Word,
+        com.TextUnit_Word => {
+            const s = @min(start, doc_len);
+            return .{ .start = wordStartAt(doc, s), .end = wordEndAt(doc, s) };
+        },
         com.TextUnit_Format,
         com.TextUnit_Paragraph,
         com.TextUnit_Line,
@@ -94,12 +137,13 @@ pub fn expandRange(
 /// Move a single endpoint by `count` units; reports how many units the
 /// endpoint actually crossed (clamped at the document edges).
 pub fn moveOffsetByUnit(
-    doc_len: usize,
+    doc: []const u16,
     line_starts: []const usize,
     offset: usize,
     unit: i32,
     count: i32,
 ) MoveResult {
+    const doc_len = doc.len;
     const clamped_offset = @min(offset, doc_len);
     if (count == 0) return .{ .offset = clamped_offset, .moved = 0 };
     switch (unit) {
@@ -111,7 +155,32 @@ pub fn moveOffsetByUnit(
                 .moved = @intCast(target_i64 - cur),
             };
         },
-        com.TextUnit_Word,
+        com.TextUnit_Word => {
+            var pos = clamped_offset;
+            var moved: i32 = 0;
+            if (count > 0) {
+                while (moved < count) {
+                    const next = wordEndAt(doc, pos);
+                    if (next == pos) break;
+                    pos = next;
+                    moved += 1;
+                }
+            } else {
+                while (moved > count) {
+                    const cur_start = wordStartAt(doc, pos);
+                    // Standing exactly on a word start steps to the
+                    // previous word; anywhere else snaps to this one.
+                    const target = if (cur_start == pos)
+                        (if (pos == 0) pos else wordStartAt(doc, pos - 1))
+                    else
+                        cur_start;
+                    if (target == pos) break;
+                    pos = target;
+                    moved -= 1;
+                }
+            }
+            return .{ .offset = pos, .moved = moved };
+        },
         com.TextUnit_Format,
         com.TextUnit_Paragraph,
         com.TextUnit_Line,
@@ -513,7 +582,7 @@ pub const TextRange = struct {
     ) callconv(.winapi) com.HRESULT {
         const self = fromBase(self_base);
         const expanded = expandRange(
-            self.doc().len,
+            self.doc(),
             self.pattern.line_starts,
             self.start,
             unit,
@@ -618,7 +687,7 @@ pub const TextRange = struct {
         // Normalize to a degenerate range at start, move, then expand —
         // the standard provider recipe for snapshot documents.
         const result = moveOffsetByUnit(
-            self.doc().len,
+            self.doc(),
             self.pattern.line_starts,
             self.start,
             unit,
@@ -627,7 +696,7 @@ pub const TextRange = struct {
         self.start = result.offset;
         self.end = result.offset;
         const expanded = expandRange(
-            self.doc().len,
+            self.doc(),
             self.pattern.line_starts,
             self.start,
             unit,
@@ -648,7 +717,7 @@ pub const TextRange = struct {
         const self = fromBase(self_base);
         const moving_start = endpoint == com.TextPatternRangeEndpoint_Start;
         const result = moveOffsetByUnit(
-            self.doc().len,
+            self.doc(),
             self.pattern.line_starts,
             self.endpointOffset(endpoint),
             unit,
@@ -750,47 +819,88 @@ test "win32 uia text pattern line index lookup" {
 
 test "win32 uia text pattern expand units" {
     // doc = "one\ntwo\n\nfour" (13 units), lines at 0/4/8/9.
+    const doc = std.unicode.utf8ToUtf16LeStringLiteral("one\ntwo\n\nfour");
     const starts = [_]usize{ 0, 4, 8, 9 };
-    const len: usize = 13;
 
-    const line = expandRange(len, &starts, 5, com.TextUnit_Line);
+    const line = expandRange(doc, &starts, 5, com.TextUnit_Line);
     try std.testing.expectEqual(OffsetRange{ .start = 4, .end = 8 }, line);
 
-    // Word degrades to line in this slice.
-    const word = expandRange(len, &starts, 5, com.TextUnit_Word);
-    try std.testing.expectEqual(OffsetRange{ .start = 4, .end = 8 }, word);
+    // "two" plus its whole trailing separator run — the newline AND the
+    // blank line's newline — so word navigation skips empty lines.
+    const word = expandRange(doc, &starts, 5, com.TextUnit_Word);
+    try std.testing.expectEqual(OffsetRange{ .start = 4, .end = 9 }, word);
 
-    const last = expandRange(len, &starts, 10, com.TextUnit_Line);
+    const last = expandRange(doc, &starts, 10, com.TextUnit_Line);
     try std.testing.expectEqual(OffsetRange{ .start = 9, .end = 13 }, last);
 
-    const char = expandRange(len, &starts, 12, com.TextUnit_Character);
+    const char = expandRange(doc, &starts, 12, com.TextUnit_Character);
     try std.testing.expectEqual(OffsetRange{ .start = 12, .end = 13 }, char);
 
-    const document = expandRange(len, &starts, 5, com.TextUnit_Document);
+    const document = expandRange(doc, &starts, 5, com.TextUnit_Document);
     try std.testing.expectEqual(OffsetRange{ .start = 0, .end = 13 }, document);
 }
 
 test "win32 uia text pattern endpoint moves clamp at edges" {
+    const doc = std.unicode.utf8ToUtf16LeStringLiteral("one\ntwo\n\nfour");
     const starts = [_]usize{ 0, 4, 8, 9 };
-    const len: usize = 13;
 
-    const fwd = moveOffsetByUnit(len, &starts, 0, com.TextUnit_Character, 5);
+    const fwd = moveOffsetByUnit(doc, &starts, 0, com.TextUnit_Character, 5);
     try std.testing.expectEqual(MoveResult{ .offset = 5, .moved = 5 }, fwd);
 
-    const clamped = moveOffsetByUnit(len, &starts, 10, com.TextUnit_Character, 99);
+    const clamped = moveOffsetByUnit(doc, &starts, 10, com.TextUnit_Character, 99);
     try std.testing.expectEqual(MoveResult{ .offset = 13, .moved = 3 }, clamped);
 
-    const back_line = moveOffsetByUnit(len, &starts, 9, com.TextUnit_Line, -2);
+    const back_line = moveOffsetByUnit(doc, &starts, 9, com.TextUnit_Line, -2);
     try std.testing.expectEqual(MoveResult{ .offset = 4, .moved = -2 }, back_line);
 
-    const line_clamp = moveOffsetByUnit(len, &starts, 0, com.TextUnit_Line, -5);
+    const line_clamp = moveOffsetByUnit(doc, &starts, 0, com.TextUnit_Line, -5);
     try std.testing.expectEqual(MoveResult{ .offset = 0, .moved = 0 }, line_clamp);
 
-    const doc_fwd = moveOffsetByUnit(len, &starts, 3, com.TextUnit_Document, 1);
+    const doc_fwd = moveOffsetByUnit(doc, &starts, 3, com.TextUnit_Document, 1);
     try std.testing.expectEqual(MoveResult{ .offset = 13, .moved = 1 }, doc_fwd);
 
-    const zero = moveOffsetByUnit(len, &starts, 3, com.TextUnit_Line, 0);
+    const zero = moveOffsetByUnit(doc, &starts, 3, com.TextUnit_Line, 0);
     try std.testing.expectEqual(MoveResult{ .offset = 3, .moved = 0 }, zero);
+}
+
+test "win32 uia text pattern word boundaries" {
+    // Offsets: alpha=0..5, blanks=5..7, beta=7..11, newline=11, gamma=12..17.
+    const doc = std.unicode.utf8ToUtf16LeStringLiteral("alpha  beta\ngamma");
+    const starts = [_]usize{ 0, 12 };
+
+    // A word is its ink plus trailing blanks; standing on a blank
+    // still belongs to the word whose tail it is.
+    try std.testing.expectEqual(
+        OffsetRange{ .start = 0, .end = 7 },
+        expandRange(doc, &starts, 2, com.TextUnit_Word),
+    );
+    try std.testing.expectEqual(
+        OffsetRange{ .start = 0, .end = 7 },
+        expandRange(doc, &starts, 5, com.TextUnit_Word),
+    );
+    try std.testing.expectEqual(
+        OffsetRange{ .start = 7, .end = 12 },
+        expandRange(doc, &starts, 8, com.TextUnit_Word),
+    );
+    try std.testing.expectEqual(
+        OffsetRange{ .start = 12, .end = 17 },
+        expandRange(doc, &starts, 16, com.TextUnit_Word),
+    );
+
+    // Forward moves land on successive word starts; clamp at the end.
+    const fwd = moveOffsetByUnit(doc, &starts, 0, com.TextUnit_Word, 2);
+    try std.testing.expectEqual(MoveResult{ .offset = 12, .moved = 2 }, fwd);
+    const fwd_clamp = moveOffsetByUnit(doc, &starts, 0, com.TextUnit_Word, 9);
+    try std.testing.expectEqual(MoveResult{ .offset = 17, .moved = 3 }, fwd_clamp);
+
+    // Backward from a word start steps to the previous word; from
+    // mid-word it snaps to this word's start first.
+    const back = moveOffsetByUnit(doc, &starts, 12, com.TextUnit_Word, -1);
+    try std.testing.expectEqual(MoveResult{ .offset = 7, .moved = -1 }, back);
+    const snap = moveOffsetByUnit(doc, &starts, 9, com.TextUnit_Word, -1);
+    try std.testing.expectEqual(MoveResult{ .offset = 7, .moved = -1 }, snap);
+    const back_clamp = moveOffsetByUnit(doc, &starts, 0, com.TextUnit_Word, -3);
+    try std.testing.expectEqual(MoveResult{ .offset = 0, .moved = 0 }, back_clamp);
 }
 
 test "win32 uia text pattern find text" {
