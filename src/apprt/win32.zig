@@ -15244,6 +15244,8 @@ const Host = struct {
             if (self.sidebarRowByIndex(row_index)) |row| {
                 if (row.kind == .pane and row.tab_index == self.active_tab) {
                     if (row.surface) |target| self.swapPanesInActiveTab(source, target);
+                } else if (row.kind == .workspace_header and row.tab_index != self.active_tab) {
+                    self.movePaneToWorkspace(source, row.tab_index);
                 }
             }
             return;
@@ -15331,6 +15333,65 @@ const Host = struct {
         self.layout() catch {};
         self.invalidateSidebar();
         self.app.activateSurface(source);
+    }
+
+    /// Move a pane out of the active workspace into `dest_index`,
+    /// splitting against that workspace's focused pane (auto side).
+    /// Dropping a sidebar pane row on another workspace's header.
+    fn movePaneToWorkspace(self: *Host, source: *Surface, dest_index: usize) void {
+        if (dest_index >= self.tabs.items.len) return;
+        const src_tab = self.activeTab() orelse return;
+        if (src_tab.leafCount() <= 1) {
+            self.setBanner(.info, "A workspace keeps its last pane; move the workspace instead.") catch {};
+            return;
+        }
+        const dest_tab = &self.tabs.items[dest_index];
+        const dest_anchor = dest_tab.focusedSurface() orelse blk: {
+            var it = dest_tab.tree.iterator();
+            break :blk if (it.next()) |entry| entry.view else null;
+        } orelse return;
+        const alloc = self.app.core_app.alloc;
+        const source_handle = src_tab.findHandle(source) orelse return;
+
+        var insert = SplitTreeSurface.init(alloc, source) catch |err| {
+            log.warn("cross-workspace move failed (insert tree) err={}", .{err});
+            return;
+        };
+        defer insert.deinit();
+
+        var src_removed = src_tab.tree.remove(alloc, source_handle) catch |err| {
+            log.warn("cross-workspace move failed (remove) err={}", .{err});
+            return;
+        };
+
+        const dest_anchor_handle = blk: {
+            var it = dest_tab.tree.iterator();
+            while (it.next()) |entry| {
+                if (entry.view == dest_anchor) break :blk entry.handle;
+            }
+            src_removed.deinit();
+            return;
+        };
+        const dest_next = dest_tab.tree.split(alloc, dest_anchor_handle, .right, 0.5, &insert) catch |err| {
+            log.warn("cross-workspace move failed (split) err={}", .{err});
+            src_removed.deinit();
+            return;
+        };
+
+        src_tab.clearRedoHistory();
+        dest_tab.clearRedoHistory();
+        self.clearStructuralHistory(.normal);
+        src_tab.tree.deinit();
+        src_tab.tree = src_removed;
+        dest_tab.tree.deinit();
+        dest_tab.tree = dest_next;
+        if (dest_tab.findHandle(source)) |h| dest_tab.focused = h;
+
+        self.active_tab = dest_index;
+        self.layout() catch {};
+        self.invalidateSidebar();
+        self.app.activateSurface(source);
+        self.setBanner(.info, "Pane moved to this workspace.") catch {};
     }
 
     fn isOverlayButton(self: *const Host, child: HWND) bool {
