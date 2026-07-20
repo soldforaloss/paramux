@@ -19688,19 +19688,48 @@ fn uiaFleetHelp(hwnd: HWND, buf: []u8) usize {
 }
 
 /// UIA TextPattern document snapshot: the active pane's plain text,
-/// screen + scrollback. Runs on UIA RPC threads, so it allocates with
-/// the SMP allocator (the contract in win32_uia.root.text_doc_fn) and
-/// only touches terminal state under the renderer mutex.
-fn uiaTextDocument(hwnd: HWND) ?[]const u8 {
+/// screen + scrollback, plus the viewport's byte range located
+/// pin-accurately within it. Runs on UIA RPC threads, so it allocates
+/// with the SMP allocator (the contract in win32_uia.root.text_doc_fn)
+/// and only touches terminal state under the renderer mutex.
+fn uiaTextDocument(hwnd: HWND) ?win32_uia.TextDoc {
     const host = getHost(hwnd) orelse return null;
     const surface = host.activeSurface() orelse return null;
     const core = surface.core();
     core.renderer_state.mutex.lock();
     defer core.renderer_state.mutex.unlock();
-    return core.renderer_state.terminal.screens.active.dumpStringAlloc(
-        std.heap.smp_allocator,
-        .{ .screen = .{} },
-    ) catch null;
+    const alloc = std.heap.smp_allocator;
+
+    var document = win32_uia.snapshotTerminalPlainText(
+        alloc,
+        core.renderer_state.terminal,
+    ) catch return null;
+
+    // Viewport bounds are best-effort: a failed viewport snapshot (or a
+    // pin sequence the document no longer contains) degrades to "the
+    // whole document is visible" rather than dropping the pattern.
+    var visible_range: win32_uia.OffsetRange = .{
+        .start = 0,
+        .end = document.text.len,
+    };
+    if (win32_uia.snapshotTerminalVisiblePlainText(
+        alloc,
+        core.renderer_state.terminal,
+    )) |visible_value| {
+        var visible = visible_value;
+        defer visible.deinit();
+        if (win32_uia.visibleRangeInDocument(&document, &visible)) |range| {
+            visible_range = range;
+        }
+    } else |_| {}
+
+    const text = document.takeText();
+    document.deinit();
+    return .{
+        .utf8 = text,
+        .visible_start = visible_range.start,
+        .visible_end = visible_range.end,
+    };
 }
 
 fn isHighContrastActive() bool {

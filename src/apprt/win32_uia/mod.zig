@@ -22,6 +22,7 @@ pub const widgets = @import("widgets.zig");
 pub const RootProvider = root.RootProvider;
 pub const setFleetHelpFn = root.setFleetHelpFn;
 pub const setTextDocFn = root.setTextDocFn;
+pub const TextDoc = root.TextDoc;
 pub const OffsetRange = text.OffsetRange;
 pub const TerminalTextSnapshot = text.TerminalTextSnapshot;
 pub const PaletteListProvider = widgets.PaletteListProvider;

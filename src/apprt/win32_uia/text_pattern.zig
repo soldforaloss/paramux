@@ -12,8 +12,6 @@
 //!     ink runs with trailing blanks).
 //!   * `GetBoundingRectangles` returns an empty array (no per-line
 //!     rects yet), `RangeFromPoint` returns a degenerate range.
-//!   * `GetVisibleRanges` reports the whole document instead of the
-//!     viewport slice.
 //!   * Selection is reported as unsupported (`SupportedTextSelection_None`).
 //!
 //! Threading: UIA invokes ServerSideProvider methods on RPC threads,
@@ -51,6 +49,31 @@ pub fn buildLineStarts(alloc: std.mem.Allocator, doc: []const u16) ![]usize {
         if (unit == '\n' and i + 1 < doc.len) try line_starts.append(alloc, i + 1);
     }
     return try line_starts.toOwnedSlice(alloc);
+}
+
+/// UTF-16 length of the UTF-8 prefix `utf8[0..byte_offset]`, tolerant
+/// of a mid-codepoint or out-of-range offset (clamps forward). Used to
+/// map the host's viewport byte range into snapshot UTF-16 offsets.
+pub fn utf16LenOfPrefix(utf8: []const u8, byte_offset: usize) usize {
+    const end = @min(byte_offset, utf8.len);
+    var i: usize = 0;
+    var n: usize = 0;
+    while (i < end) {
+        const seq_len = std.unicode.utf8ByteSequenceLength(utf8[i]) catch {
+            i += 1;
+            n += 1;
+            continue;
+        };
+        const cp_end = @min(i + seq_len, utf8.len);
+        const cp = std.unicode.utf8Decode(utf8[i..cp_end]) catch {
+            i += 1;
+            n += 1;
+            continue;
+        };
+        i += seq_len;
+        n += if (cp <= 0xFFFF) 1 else 2;
+    }
+    return n;
 }
 
 /// Word separators for TextUnit_Word: blanks and the line break. The
@@ -253,6 +276,9 @@ pub const TextPattern = struct {
     doc: []const u16,
     /// Owned UTF-16 line-start offsets.
     line_starts: []const usize,
+    /// Viewport bounds within `doc`, UTF-16 units (start <= end).
+    visible_start: usize,
+    visible_end: usize,
     /// The window element ranges report as enclosing. Holds a ref.
     root: *com.IRawElementProviderSimple,
 
@@ -268,16 +294,28 @@ pub const TextPattern = struct {
         .get_SupportedTextSelection = TextPattern.get_SupportedTextSelection,
     };
 
-    /// Takes a UTF-8 snapshot (not owned; copied) and the root element
-    /// (AddRef'd for the pattern's lifetime).
+    /// Takes a UTF-8 snapshot (not owned; copied), the viewport's byte
+    /// range within it, and the root element (AddRef'd for the
+    /// pattern's lifetime).
     pub fn create(
         root_provider: *com.IRawElementProviderSimple,
         utf8_doc: []const u8,
+        visible_start_byte: usize,
+        visible_end_byte: usize,
     ) !*TextPattern {
         const doc = try std.unicode.utf8ToUtf16LeAlloc(pattern_alloc, utf8_doc);
         errdefer pattern_alloc.free(doc);
         const line_starts = try buildLineStarts(pattern_alloc, doc);
         errdefer pattern_alloc.free(line_starts);
+
+        const vis_start = @min(
+            utf16LenOfPrefix(utf8_doc, visible_start_byte),
+            doc.len,
+        );
+        const vis_end = @min(
+            @max(utf16LenOfPrefix(utf8_doc, visible_end_byte), vis_start),
+            doc.len,
+        );
 
         const self = try pattern_alloc.create(TextPattern);
         self.* = .{
@@ -285,6 +323,8 @@ pub const TextPattern = struct {
             .refcount = std.atomic.Value(u32).init(1),
             .doc = doc,
             .line_starts = line_starts,
+            .visible_start = vis_start,
+            .visible_end = vis_end,
             .root = root_provider,
         };
         _ = root_provider.vtbl.AddRef(root_provider);
@@ -376,7 +416,7 @@ pub const TextPattern = struct {
         out.* = null;
         const array = com.SafeArrayCreateVector(com.VT_UNKNOWN, 0, 1) orelse
             return com.E_OUTOFMEMORY;
-        const range = self.newRange(0, self.doc.len) catch {
+        const range = self.newRange(self.visible_start, self.visible_end) catch {
             _ = com.SafeArrayDestroy(array);
             return com.E_OUTOFMEMORY;
         };
@@ -861,6 +901,16 @@ test "win32 uia text pattern endpoint moves clamp at edges" {
 
     const zero = moveOffsetByUnit(doc, &starts, 3, com.TextUnit_Line, 0);
     try std.testing.expectEqual(MoveResult{ .offset = 3, .moved = 0 }, zero);
+}
+
+test "win32 uia text pattern utf16 prefix lengths" {
+    const utf8 = "A\xf0\x9f\x94\xa5B"; // A + U+1F525 (surrogate pair) + B
+    try std.testing.expectEqual(@as(usize, 0), utf16LenOfPrefix(utf8, 0));
+    try std.testing.expectEqual(@as(usize, 1), utf16LenOfPrefix(utf8, 1));
+    try std.testing.expectEqual(@as(usize, 3), utf16LenOfPrefix(utf8, 5));
+    try std.testing.expectEqual(@as(usize, 4), utf16LenOfPrefix(utf8, 6));
+    // Out-of-range clamps to the full length.
+    try std.testing.expectEqual(@as(usize, 4), utf16LenOfPrefix(utf8, 99));
 }
 
 test "win32 uia text pattern word boundaries" {

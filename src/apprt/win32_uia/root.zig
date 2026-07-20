@@ -36,13 +36,20 @@ pub fn setFleetHelpFn(f: *const fn (com.HWND, []u8) usize) void {
     fleet_help_fn = f;
 }
 
-/// Optional callback that snapshots the active pane's plain text
-/// (screen + scrollback, UTF-8) for the UIA TextPattern. The returned
-/// buffer MUST be allocated with `std.heap.smp_allocator` — the caller
-/// frees it there, and the call may arrive on a UIA RPC thread.
-pub var text_doc_fn: ?*const fn (com.HWND) ?[]const u8 = null;
+/// Snapshot handed back by the host for the UIA TextPattern: the full
+/// document (screen + scrollback, UTF-8) plus the viewport's byte range
+/// within it. `utf8` MUST be allocated with `std.heap.smp_allocator` —
+/// the caller frees it there, and the call may arrive on a UIA RPC
+/// thread.
+pub const TextDoc = struct {
+    utf8: []const u8,
+    visible_start: usize,
+    visible_end: usize,
+};
 
-pub fn setTextDocFn(f: *const fn (com.HWND) ?[]const u8) void {
+pub var text_doc_fn: ?*const fn (com.HWND) ?TextDoc = null;
+
+pub fn setTextDocFn(f: *const fn (com.HWND) ?TextDoc) void {
     text_doc_fn = f;
 }
 
@@ -159,11 +166,13 @@ pub const RootProvider = struct {
         if (pattern_id == constants.UIA_TextPatternId) {
             const self = fromBase(self_base);
             const doc_fn = text_doc_fn orelse return com.S_OK;
-            const utf8_doc = doc_fn(self.hwnd) orelse return com.S_OK;
-            defer std.heap.smp_allocator.free(utf8_doc);
+            const doc = doc_fn(self.hwnd) orelse return com.S_OK;
+            defer std.heap.smp_allocator.free(doc.utf8);
             const pattern = text_pattern.TextPattern.create(
                 &self.base,
-                utf8_doc,
+                doc.utf8,
+                doc.visible_start,
+                doc.visible_end,
             ) catch return com.S_OK;
             // Ownership of the initial ref transfers to the caller.
             out.* = @ptrCast(&pattern.base);
