@@ -49,8 +49,45 @@ pub const Strings = struct {
     tooltip_more_actions: [:0]const u16 = w("More actions"),
 };
 
-/// The active string table. English defaults; a locale swaps this out.
-pub const strings: Strings = .{};
+/// The English table (the field defaults).
+pub const english: Strings = .{};
+
+/// de-DE proof-of-concept locale. Accelerator chords stay untranslated
+/// (they mirror keybinds, not language).
+pub const german: Strings = .{
+    .prompt_ok_label = w("OK"),
+    .prompt_cancel_label = w("Abbrechen"),
+    .search_prev_label = w("Vorheriger Treffer"),
+    .search_next_label = w("N\u{00E4}chster Treffer"),
+    .search_regex_label = w("Regex"),
+    .search_case_label = w("Gro\u{00DF}-/Kleinschreibung"),
+    .search_word_label = w("Ganzes Wort"),
+    .search_close_label = w("Suche schlie\u{00DF}en"),
+    .search_edit_cue = w("Im Verlauf suchen"),
+    .tooltip_search_prev = w("Vorheriger Treffer (Shift+Enter)"),
+    .tooltip_search_next = w("N\u{00E4}chster Treffer (Enter)"),
+    .tooltip_search_regex = w("Regul\u{00E4}rer Ausdruck"),
+    .tooltip_search_case = w("Gro\u{00DF}-/Kleinschreibung beachten"),
+    .tooltip_search_word = w("Ganzes Wort"),
+    .tooltip_search_close = w("Suche schlie\u{00DF}en (Esc)"),
+    .host_overlay_command_palette_label = w("Befehl:"),
+    .tooltip_new_tab = w("Neuer Arbeitsbereich (Ctrl+Shift+T)\nRechtsklick: neues Fenster \u{00B7} Mittelklick: teilen"),
+    .tooltip_split_right = w("Rechts teilen (Ctrl+Shift+O)"),
+    .tooltip_split_down = w("Unten teilen (Ctrl+Shift+E)"),
+    .tooltip_settings = w("Einstellungen (Ctrl+,)"),
+    .tooltip_help = w("Hilfe"),
+    .tooltip_more_actions = w("Weitere Aktionen"),
+};
+
+/// The active string table. Selected ONCE at startup, before any
+/// window chrome is created — call sites read fields at runtime, so a
+/// mid-session swap would work but is deliberately not exposed.
+pub var strings: Strings = english;
+
+/// Select the chrome locale from the `ui-language` config value.
+pub fn setLocale(tag: []const u8) void {
+    strings = if (std.mem.eql(u8, tag, "de")) german else english;
+}
 
 test "string table defaults are non-empty UTF-16" {
     inline for (@typeInfo(Strings).@"struct".fields) |field| {

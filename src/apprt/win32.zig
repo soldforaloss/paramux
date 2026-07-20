@@ -1529,27 +1529,12 @@ const quick_terminal_title = std.unicode.utf8ToUtf16LeStringLiteral("paramux qui
 const prompt_label_class = std.unicode.utf8ToUtf16LeStringLiteral("STATIC");
 const prompt_edit_class = std.unicode.utf8ToUtf16LeStringLiteral("EDIT");
 const prompt_button_class = std.unicode.utf8ToUtf16LeStringLiteral("BUTTON");
-const prompt_ok_label = win32_strings.strings.prompt_ok_label;
-const prompt_cancel_label = win32_strings.strings.prompt_cancel_label;
-const search_prev_label = win32_strings.strings.search_prev_label;
-const search_next_label = win32_strings.strings.search_next_label;
-const search_regex_label = win32_strings.strings.search_regex_label;
-const search_case_label = win32_strings.strings.search_case_label;
-const search_word_label = win32_strings.strings.search_word_label;
-const search_close_label = win32_strings.strings.search_close_label;
-const search_edit_cue = win32_strings.strings.search_edit_cue;
 const scrollbar_transparent_key = rgb(0xFF, 0x00, 0xFF);
 const host_overlay_command_palette_label_utf8 = "Command:";
 const host_overlay_profile_label_utf8 = "Profile:";
 const host_overlay_surface_title_label_utf8 = "Window title:";
 const host_overlay_tab_title_label_utf8 = "Tab title:";
-const host_overlay_command_palette_label = win32_strings.strings.host_overlay_command_palette_label;
 const host_tab_new_button_label = std.unicode.utf8ToUtf16LeStringLiteral("+");
-const tooltip_new_tab = win32_strings.strings.tooltip_new_tab;
-const tooltip_split_right = win32_strings.strings.tooltip_split_right;
-const tooltip_split_down = win32_strings.strings.tooltip_split_down;
-const tooltip_settings = win32_strings.strings.tooltip_settings;
-const tooltip_help = win32_strings.strings.tooltip_help;
 
 // Long help-dialog bodies need a raised quota for the comptime
 // UTF-8 → UTF-16 conversion.
@@ -1602,13 +1587,6 @@ const help_shortcuts_text: LPCWSTR = blk: {
             "Full list: run \"paramux list-keybinds\" in any pane.",
     );
 };
-const tooltip_more_actions = win32_strings.strings.tooltip_more_actions;
-const tooltip_search_prev = win32_strings.strings.tooltip_search_prev;
-const tooltip_search_next = win32_strings.strings.tooltip_search_next;
-const tooltip_search_regex = win32_strings.strings.tooltip_search_regex;
-const tooltip_search_case = win32_strings.strings.tooltip_search_case;
-const tooltip_search_word = win32_strings.strings.tooltip_search_word;
-const tooltip_search_close = win32_strings.strings.tooltip_search_close;
 const host_tab_split_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{25EB}"); // ◫ square bisected = split
 const host_tab_split_down_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{229F}"); // ⊟ squared minus = split down
 const host_tab_settings_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{2699}"); // ⚙ gear = settings
@@ -4036,6 +4014,9 @@ pub const App = struct {
 
         self.initComApartment();
         self.registerJumpList();
+        // Chrome locale is selected once, before any window chrome
+        // exists; call sites read the table at runtime.
+        win32_strings.setLocale(@tagName(self.config.@"ui-language"));
         // Screen readers get a live fleet summary on the window element,
         // and TextPattern serves the active pane's screen + scrollback.
         win32_uia.setFleetHelpFn(&uiaFleetHelp);
@@ -12378,7 +12359,7 @@ const Host = struct {
         self.overlay_label_hwnd = CreateWindowExW(
             0,
             prompt_label_class,
-            host_overlay_command_palette_label,
+            win32_strings.strings.host_overlay_command_palette_label,
             WS_CHILD,
             0,
             0,
@@ -12447,7 +12428,7 @@ const Host = struct {
         self.overlay_accept_hwnd = CreateWindowExW(
             0,
             prompt_button_class,
-            prompt_ok_label,
+            win32_strings.strings.prompt_ok_label,
             WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
             0,
             0,
@@ -12463,7 +12444,7 @@ const Host = struct {
         self.overlay_cancel_hwnd = CreateWindowExW(
             0,
             prompt_button_class,
-            prompt_cancel_label,
+            win32_strings.strings.prompt_cancel_label,
             WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
             0,
             0,
@@ -12579,7 +12560,7 @@ const Host = struct {
                 null,
             ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
             self.subclassButton(self.new_tab_hwnd.?, &hostButtonProc, &self.chrome_button_prev_proc);
-            self.addTooltip(self.new_tab_hwnd.?, tooltip_new_tab);
+            self.addTooltip(self.new_tab_hwnd.?, win32_strings.strings.tooltip_new_tab);
         }
 
         if (self.split_hwnd == null) {
@@ -12598,7 +12579,7 @@ const Host = struct {
                 null,
             ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
             self.subclassButton(self.split_hwnd.?, &hostButtonProc, &self.chrome_button_prev_proc);
-            self.addTooltip(self.split_hwnd.?, tooltip_split_right);
+            self.addTooltip(self.split_hwnd.?, win32_strings.strings.tooltip_split_right);
         }
 
         if (self.split_down_hwnd == null) {
@@ -12617,7 +12598,7 @@ const Host = struct {
                 null,
             ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
             self.subclassButton(self.split_down_hwnd.?, &hostButtonProc, &self.chrome_button_prev_proc);
-            self.addTooltip(self.split_down_hwnd.?, tooltip_split_down);
+            self.addTooltip(self.split_down_hwnd.?, win32_strings.strings.tooltip_split_down);
         }
 
         if (self.settings_hwnd == null) {
@@ -12636,7 +12617,7 @@ const Host = struct {
                 null,
             ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
             self.subclassButton(self.settings_hwnd.?, &hostButtonProc, &self.chrome_button_prev_proc);
-            self.addTooltip(self.settings_hwnd.?, tooltip_settings);
+            self.addTooltip(self.settings_hwnd.?, win32_strings.strings.tooltip_settings);
         }
 
         if (self.help_hwnd == null) {
@@ -12655,7 +12636,7 @@ const Host = struct {
                 null,
             ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
             self.subclassButton(self.help_hwnd.?, &hostButtonProc, &self.chrome_button_prev_proc);
-            self.addTooltip(self.help_hwnd.?, tooltip_help);
+            self.addTooltip(self.help_hwnd.?, win32_strings.strings.tooltip_help);
         }
 
         if (self.overflow_hwnd == null) {
@@ -12674,7 +12655,7 @@ const Host = struct {
                 null,
             ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
             self.subclassButton(self.overflow_hwnd.?, &hostButtonProc, &self.chrome_button_prev_proc);
-            self.addTooltip(self.overflow_hwnd.?, tooltip_more_actions);
+            self.addTooltip(self.overflow_hwnd.?, win32_strings.strings.tooltip_more_actions);
         }
     }
 
@@ -22238,23 +22219,23 @@ fn searchBarButtonCommandId(role: SearchBarButtonRole) usize {
 
 fn searchBarButtonLabel(role: SearchBarButtonRole) LPCWSTR {
     return switch (role) {
-        .prev => search_prev_label,
-        .next => search_next_label,
-        .regex => search_regex_label,
-        .case_sensitive => search_case_label,
-        .whole_word => search_word_label,
-        .close => search_close_label,
+        .prev => win32_strings.strings.search_prev_label,
+        .next => win32_strings.strings.search_next_label,
+        .regex => win32_strings.strings.search_regex_label,
+        .case_sensitive => win32_strings.strings.search_case_label,
+        .whole_word => win32_strings.strings.search_word_label,
+        .close => win32_strings.strings.search_close_label,
     };
 }
 
 fn searchBarButtonTooltip(role: SearchBarButtonRole) [*:0]const u16 {
     return switch (role) {
-        .prev => tooltip_search_prev,
-        .next => tooltip_search_next,
-        .regex => tooltip_search_regex,
-        .case_sensitive => tooltip_search_case,
-        .whole_word => tooltip_search_word,
-        .close => tooltip_search_close,
+        .prev => win32_strings.strings.tooltip_search_prev,
+        .next => win32_strings.strings.tooltip_search_next,
+        .regex => win32_strings.strings.tooltip_search_regex,
+        .case_sensitive => win32_strings.strings.tooltip_search_case,
+        .whole_word => win32_strings.strings.tooltip_search_word,
+        .close => win32_strings.strings.tooltip_search_close,
     };
 }
 
@@ -28859,7 +28840,7 @@ pub const Surface = struct {
             EC_LEFTMARGIN | EC_RIGHTMARGIN,
             packed_margins,
         );
-        _ = SendMessageW(edit_hwnd, EM_SETCUEBANNER, 0, @as(LPARAM, @intCast(@intFromPtr(search_edit_cue.ptr))));
+        _ = SendMessageW(edit_hwnd, EM_SETCUEBANNER, 0, @as(LPARAM, @intCast(@intFromPtr(win32_strings.strings.search_edit_cue.ptr))));
 
         self.search_bar_prev_hwnd = try self.createSearchBarButton(host, hwnd, .prev);
         self.search_bar_next_hwnd = try self.createSearchBarButton(host, hwnd, .next);

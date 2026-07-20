@@ -1854,6 +1854,14 @@ class: ?[:0]const u8 = null,
 /// segments untouched.
 @"hint-strip": bool = true,
 
+/// Language for window-chrome strings (labels, tooltips, cues).
+/// Proof-of-concept scope: only the converted chrome slice localizes
+/// today — menus, the settings window, CLI help, and config docs stay
+/// English, and keyboard chords shown in tooltips never translate.
+///
+/// Valid values: `en` (default), `de`.
+@"ui-language": UiLanguage = .en,
+
 /// Automatically restart a pane whose process exits with a non-zero
 /// code, up to this many times over the pane's lifetime (a fresh
 /// auto-placed shell opens in the same folder; the dead pane closes).
@@ -9800,6 +9808,12 @@ pub const WindowPadding = struct {
 pub const Scrollbar = enum {
     system,
     never,
+};
+
+/// See ui-language
+pub const UiLanguage = enum {
+    en,
+    de,
 };
 
 /// See scroll-to-bottom
