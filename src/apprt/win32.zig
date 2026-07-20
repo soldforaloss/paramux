@@ -4036,8 +4036,10 @@ pub const App = struct {
 
         self.initComApartment();
         self.registerJumpList();
-        // Screen readers get a live fleet summary on the window element.
+        // Screen readers get a live fleet summary on the window element,
+        // and TextPattern serves the active pane's screen + scrollback.
         win32_uia.setFleetHelpFn(&uiaFleetHelp);
+        win32_uia.setTextDocFn(&uiaTextDocument);
         self.taskbar_progress = win32_taskbar_progress.TaskbarProgress.init() catch |err| blk: {
             std.log.warn("taskbar progress init failed err={}; falling back to title-only progress", .{err});
             break :blk null;
@@ -19683,6 +19685,22 @@ fn uiaFleetHelp(hwnd: HWND, buf: []u8) usize {
         ) catch return 0;
         return text.len;
     }
+}
+
+/// UIA TextPattern document snapshot: the active pane's plain text,
+/// screen + scrollback. Runs on UIA RPC threads, so it allocates with
+/// the SMP allocator (the contract in win32_uia.root.text_doc_fn) and
+/// only touches terminal state under the renderer mutex.
+fn uiaTextDocument(hwnd: HWND) ?[]const u8 {
+    const host = getHost(hwnd) orelse return null;
+    const surface = host.activeSurface() orelse return null;
+    const core = surface.core();
+    core.renderer_state.mutex.lock();
+    defer core.renderer_state.mutex.unlock();
+    return core.renderer_state.terminal.screens.active.dumpStringAlloc(
+        std.heap.smp_allocator,
+        .{ .screen = .{} },
+    ) catch null;
 }
 
 fn isHighContrastActive() bool {

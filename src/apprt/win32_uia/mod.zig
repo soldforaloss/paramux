@@ -15,11 +15,13 @@ const com = @import("com.zig");
 const constants = @import("constants.zig");
 const root = @import("root.zig");
 const text = @import("text.zig");
+const text_pattern = @import("text_pattern.zig");
 pub const events = @import("events.zig");
 pub const widgets = @import("widgets.zig");
 
 pub const RootProvider = root.RootProvider;
 pub const setFleetHelpFn = root.setFleetHelpFn;
+pub const setTextDocFn = root.setTextDocFn;
 pub const OffsetRange = text.OffsetRange;
 pub const TerminalTextSnapshot = text.TerminalTextSnapshot;
 pub const PaletteListProvider = widgets.PaletteListProvider;
@@ -73,6 +75,7 @@ test {
     std.testing.refAllDecls(constants);
     std.testing.refAllDecls(root);
     std.testing.refAllDecls(text);
+    std.testing.refAllDecls(text_pattern);
     std.testing.refAllDecls(events);
     std.testing.refAllDecls(widgets);
 }

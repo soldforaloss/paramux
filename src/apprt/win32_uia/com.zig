@@ -289,6 +289,7 @@ pub extern "uiautomationcore" fn UiaGetReservedNotSupportedValue(value: *?*IUnkn
 
 /// BSTR alloc / free helpers for the string properties (Name, LocalizedControlType).
 pub extern "oleaut32" fn SysAllocString(psz: [*:0]const u16) callconv(.winapi) ?[*:0]u16;
+pub extern "oleaut32" fn SysAllocStringLen(strIn: ?[*]const u16, ui: u32) callconv(.winapi) ?[*:0]u16;
 pub extern "oleaut32" fn SysFreeString(bstr: ?[*:0]u16) callconv(.winapi) void;
 pub extern "oleaut32" fn SysStringLen(bstr: ?[*:0]const u16) callconv(.winapi) u32;
 pub extern "oleaut32" fn SafeArrayCreateVector(vt: u16, lLbound: i32, cElements: u32) callconv(.winapi) ?*SAFEARRAY;
