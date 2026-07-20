@@ -13,6 +13,9 @@ pub const Options = struct {
     /// Re-render the table every 2 seconds until interrupted.
     watch: bool = false,
 
+    /// Omit the column-header row (script-friendly output).
+    @"no-header": bool = false,
+
     pub fn deinit(self: *Options) void {
         if (self._arena) |arena| arena.deinit();
         self.* = undefined;
@@ -63,6 +66,10 @@ fn runArgs(
             opts.watch = true;
             continue;
         }
+        if (std.mem.eql(u8, arg, "--no-header")) {
+            opts.@"no-header" = true;
+            continue;
+        }
         try stderr.print("unknown option: {s}\n", .{arg});
         return 1;
     }
@@ -73,13 +80,13 @@ fn runArgs(
         while (true) {
             // ANSI clear + home keeps the table stable in place.
             try stdout.writeAll("\x1b[2J\x1b[H");
-            const code = try renderOnce(alloc, a, target, stdout, stderr);
+            const code = try renderOnce(alloc, a, target, stdout, stderr, opts.@"no-header");
             try stdout.flush();
             if (code != 0) return code;
             std.Thread.sleep(2 * std.time.ns_per_s);
         }
     }
-    return renderOnce(alloc, a, target, stdout, stderr);
+    return renderOnce(alloc, a, target, stdout, stderr, opts.@"no-header");
 }
 
 fn renderOnce(
@@ -88,6 +95,7 @@ fn renderOnce(
     target: apprt.ipc.Target,
     stdout: *std.Io.Writer,
     stderr: *std.Io.Writer,
+    no_header: bool,
 ) !u8 {
     const payload = (apprt.App.queryAutomationWindowList(alloc, target) catch |err| {
         try stderr.print("could not reach a running paramux instance (err={})\n", .{err});
@@ -104,7 +112,9 @@ fn renderOnce(
     };
     defer parsed.deinit();
 
-    try stdout.print("{s:<10} {s:<20} {s:<10} {s:<10} {s}\n", .{ "WORKSPACE", "SURFACE", "STATE", "TOKENS", "FLAGS" });
+    if (!no_header) {
+        try stdout.print("{s:<10} {s:<20} {s:<10} {s:<10} {s}\n", .{ "WORKSPACE", "SURFACE", "STATE", "TOKENS", "FLAGS" });
+    }
     const windows = parsed.value.object.get("windows") orelse return 1;
     for (windows.array.items) |win| {
         const tabs = win.object.get("tabs") orelse continue;
