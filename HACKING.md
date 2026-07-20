@@ -114,7 +114,7 @@ If a change touches input, rendering, splits, sidebar state, or chrome:
 ## Distribution status
 
 The current user artifact is the public, unsigned x64 portable prerelease
-`v0.1.3`. See [PACKAGING.md](PACKAGING.md) before changing release
+`v0.1.4`. See [PACKAGING.md](PACKAGING.md) before changing release
 copy or packaging behavior. Signed installers, WinGet, Scoop, and ARM64 release
 artifacts remain future work.
 

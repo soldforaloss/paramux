@@ -83,23 +83,26 @@ path today.
 ## Try the current prerelease
 
 The current test build is
-[`v0.1.3`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.3),
-published 2026-07-14 for Windows x64:
+[`v0.1.4`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.4),
+published 2026-07-20 for Windows x64:
 
-- [`paramux-0.1.3-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.3/paramux-0.1.3-windows-x64-portable.zip)
-- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.3/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.4-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.4/paramux-0.1.4-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.4/SHA256SUMS-windows-x64.txt)
 
-This build is the awareness release: an **agent watchdog** flags any
-pane whose process crashes or finishes while you're elsewhere (green
-done / red error dot plus a toast), and toasts now carry an **Open
-Inbox** button that lands you in the attention inbox. **Hover a
-sidebar row** to peek at that pane's last output without focusing it.
-**Click a file path** in any pane (`C:\repo\main.zig:42`) to open it
-in your editor at that line (`open-file-command`, VS Code by default).
-"Find in All Panes..." (right-click menu) searches the visible text of
-every pane and jumps to the match. It sits on top of `v0.1.2`'s
-command-center chrome (attention inbox, activity timeline, hint strip)
-and `v0.1.1`'s agent-integration upgrade. Releases from
+This build is the fleet release — twenty improvements in one cut.
+**`paramux run "claude -p '...'"`** spawns a pane, types the command,
+and prints its id for scripting; the `+` chooser lists every profile
+as a one-click **agent preset**; the Claude Stop hook reports the
+session's **token total** in the sidebar. Come back after being away
+and a **digest banner** summarizes the fleet (`Ctrl+Alt+D` on
+demand); per-pane **mute**, urgent `attention-alert-keywords`, opt-in
+**focus-follows-attention**, an always-on-top **watch window**, and a
+**health HUD** (`Ctrl+Alt+H`) round out awareness. The palette now
+jumps to workspaces by name, `Ctrl+Alt+F` re-finds across panes,
+right-click saves/applies **layout snapshots** (5 slots), exports
+**scrollback to your editor**, opens a **workspace in this folder**,
+and assigns **workspace accent colors**. It sits on top of `v0.1.3`'s
+awareness features and `v0.1.2`'s command-center chrome. Releases from
 `v0.1.0-paramux.7` onward apply with `paramux update`
 (`v0.1.0-paramux.4` remains a legacy test artifact).
 
@@ -108,7 +111,7 @@ and `v0.1.1`'s agent-integration upgrade. Releases from
    release checksum:
 
 ```powershell
-Get-FileHash .\paramux-0.1.3-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\paramux-0.1.4-windows-x64-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 
@@ -175,6 +178,10 @@ Useful defaults:
 | Focus previous / next pane | `Ctrl+Alt+[` / `Ctrl+Alt+]` |
 | Recent workspace / pane (toggle) | `Ctrl+Alt+L` / `Ctrl+Alt+;` |
 | Jump to newest agent notification | `Ctrl+Alt+U` |
+| Attention inbox | `Ctrl+Alt+I` |
+| Find in all panes | `Ctrl+Alt+F` |
+| Attention digest | `Ctrl+Alt+D` |
+| Health HUD | `Ctrl+Alt+H` |
 | Resize focused pane | `Ctrl+Alt+Shift+Arrow` |
 | Next / previous workspace | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
 | Command palette | `Ctrl+Shift+P` |
