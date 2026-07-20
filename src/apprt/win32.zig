@@ -9590,6 +9590,8 @@ const Host = struct {
     deactivated_at_ms: i64 = 0,
     /// Whether this window is currently pinned above all others.
     is_topmost: bool = false,
+    /// Ports-timer tick counter driving the 60s session autosave.
+    autosave_ticks: u32 = 0,
     /// Always-on-top watch window mirroring one pane's tail (Pop Out
     /// Watch Window): handle, owned text, and the watched pane.
     watch_hwnd: ?HWND = null,
@@ -23188,7 +23190,16 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                 return 0;
             }
             if (wParam == PORTS_TIMER_ID) {
-                if (host) |v| v.tickPorts();
+                if (host) |v| {
+                    v.tickPorts();
+                    // Crash-safe session autosave: persist layout every
+                    // ~60s, not only at exit.
+                    v.autosave_ticks += 1;
+                    if (v.autosave_ticks >= 20) {
+                        v.autosave_ticks = 0;
+                        v.app.saveSessionState();
+                    }
+                }
                 return 0;
             }
             if (wParam == BANNER_TIMER_ID) {
