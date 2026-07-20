@@ -36,6 +36,7 @@ const status_cmd = @import("status.zig");
 const open_cmd = @import("open.zig");
 const export_config_cmd = @import("export_config.zig");
 const record_cmd = @import("record.zig");
+const serve_cmd = @import("serve.zig");
 
 pub const Action = @import("ghostty_action.zig").Action;
 
@@ -105,6 +106,7 @@ fn runMain(self: Action, alloc: Allocator) !u8 {
         .open => try open_cmd.run(alloc),
         .@"export-config" => try export_config_cmd.run(alloc),
         .record => try record_cmd.run(alloc),
+        .serve => try serve_cmd.run(alloc),
     };
 }
 
@@ -147,6 +149,7 @@ pub fn options(comptime self: Action) type {
             .open => open_cmd.Options,
             .@"export-config" => export_config_cmd.Options,
             .record => record_cmd.Options,
+            .serve => serve_cmd.Options,
         };
     }
 }

@@ -1,0 +1,116 @@
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+const ArenaAllocator = std.heap.ArenaAllocator;
+const apprt = @import("../apprt.zig");
+const actionpkg = @import("action.zig");
+const args = @import("args.zig");
+const lib = @import("../lib/main.zig");
+
+pub const Options = struct {
+    _arena: ?ArenaAllocator = null,
+    class: ?[:0]const u8 = null,
+
+    /// Port on 127.0.0.1 (default 7877).
+    port: u16 = 7877,
+
+    pub fn deinit(self: *Options) void {
+        if (self._arena) |arena| arena.deinit();
+        self.* = undefined;
+    }
+
+    pub fn help(_: Options) !void {
+        return actionpkg.help_error;
+    }
+};
+
+/// Serve the running instance's fleet structure as JSON over
+/// localhost HTTP: `GET /status` returns exactly what
+/// `paramux list-windows` prints (structure, attention states, token
+/// totals — never pane text). Binds 127.0.0.1 only; this is a
+/// separate bridge process, so the GUI's attack surface is unchanged.
+/// Stop with Ctrl+C.
+///
+///   * `paramux serve` then `curl http://127.0.0.1:7877/status`
+pub fn run(alloc: Allocator) !u8 {
+    var iter = try args.argsIterator(alloc);
+    defer iter.deinit();
+
+    var stdout_buf: [1024]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buf);
+    var stderr_buf: [1024]u8 = undefined;
+    var stderr_writer = std.fs.File.stderr().writer(&stderr_buf);
+    const result = runArgs(alloc, &iter, &stdout_writer.interface, &stderr_writer.interface);
+    try stdout_writer.interface.flush();
+    try stderr_writer.interface.flush();
+    return result;
+}
+
+fn runArgs(
+    alloc: Allocator,
+    args_iter: anytype,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    var opts: Options = .{ ._arena = ArenaAllocator.init(alloc) };
+    defer opts.deinit();
+    const a = opts._arena.?.allocator();
+
+    while (args_iter.next()) |arg| {
+        if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
+            return actionpkg.help_error;
+        }
+        if (lib.cutPrefix(u8, arg, "--class=")) |class| {
+            opts.class = try a.dupeZ(u8, class);
+            continue;
+        }
+        if (lib.cutPrefix(u8, arg, "--port=")) |rest| {
+            opts.port = std.fmt.parseInt(u16, rest, 10) catch {
+                try stderr.print("bad --port value: {s}\n", .{rest});
+                return 1;
+            };
+            continue;
+        }
+        try stderr.print("unknown option: {s}\n", .{arg});
+        return 1;
+    }
+
+    const target: apprt.ipc.Target = if (opts.class) |class| .{ .class = class } else .detect;
+
+    const address = std.net.Address.parseIp4("127.0.0.1", opts.port) catch unreachable;
+    var listener = address.listen(.{ .reuse_address = true }) catch |err| {
+        try stderr.print("could not bind 127.0.0.1:{d} (err={})\n", .{ opts.port, err });
+        return 1;
+    };
+    defer listener.deinit();
+    try stdout.print("Serving fleet status on http://127.0.0.1:{d}/status (Ctrl+C stops).\n", .{opts.port});
+    try stdout.flush();
+
+    while (true) {
+        const conn = listener.accept() catch continue;
+        defer conn.stream.close();
+
+        var recv_buf: [4096]u8 = undefined;
+        var send_buf: [4096]u8 = undefined;
+        var reader = conn.stream.reader(&recv_buf);
+        var writer = conn.stream.writer(&send_buf);
+        var server: std.http.Server = .init(reader.interface(), &writer.interface);
+        var request = server.receiveHead() catch continue;
+
+        const path = request.head.target;
+        if (std.mem.eql(u8, path, "/status") or std.mem.eql(u8, path, "/")) {
+            const payload = (apprt.App.queryAutomationWindowList(alloc, target) catch null) orelse {
+                request.respond("{\"error\":\"no running paramux instance\"}", .{
+                    .status = .service_unavailable,
+                    .extra_headers = &.{.{ .name = "content-type", .value = "application/json" }},
+                }) catch {};
+                continue;
+            };
+            defer alloc.free(payload);
+            request.respond(payload, .{
+                .extra_headers = &.{.{ .name = "content-type", .value = "application/json" }},
+            }) catch {};
+        } else {
+            request.respond("not found\n", .{ .status = .not_found }) catch {};
+        }
+    }
+}

@@ -112,6 +112,10 @@ pub const Action = enum {
     // Sample a pane into an asciinema v2 .cast file.
     record,
 
+    // Serve fleet status JSON on localhost HTTP (a separate bridge
+    // process; the GUI's pipe surface is unchanged).
+    serve,
+
     pub fn detectSpecialCase(arg: []const u8) ?SpecialCase(Action) {
         // If we see a "-e" and we haven't seen a command yet, then
         // we are done looking for commands. This special case enables
