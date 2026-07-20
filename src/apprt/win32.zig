@@ -752,6 +752,8 @@ const CTX_OPEN_DATA_DIR: usize = 4039;
 const CTX_PIN_PANE: usize = 4040;
 const CTX_PROMPT_PREV: usize = 4041;
 const CTX_PROMPT_NEXT: usize = 4042;
+const CTX_MOVE_WS_LEFT: usize = 4043;
+const CTX_MOVE_WS_RIGHT: usize = 4044;
 const CTX_RESTART_PANE: usize = 4037;
 const CTX_WORKTREE_SEED: usize = 4038;
 const CTX_RATIO_BASE: usize = 4720; // split ratio presets: base + index
@@ -1466,6 +1468,11 @@ const help_shortcuts_text: LPCWSTR = blk: {
             "Recent pane (toggle)\tCtrl+Alt+;\n" ++
             "Jump to attention\tCtrl+Alt+U\n" ++
             "Attention inbox\tCtrl+Alt+I\n" ++
+            "Find in all panes\tCtrl+Alt+F\n" ++
+            "Attention digest\tCtrl+Alt+D\n" ++
+            "Health HUD\tCtrl+Alt+H\n" ++
+            "Always on top\tCtrl+Alt+T\n" ++
+            "Undo close\tCtrl+Shift+Z\n" ++
             "Focus next / previous pane\tCtrl+Alt+] / [\n" ++
             "Focus pane by direction\tCtrl+Alt+Arrows\n" ++
             "Resize pane\tCtrl+Alt+Shift+Arrows\n" ++
@@ -12992,6 +12999,8 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New Workspace\tCtrl+Shift+T"));
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB_HERE, std.unicode.utf8ToUtf16LeStringLiteral("New Workspace Here (same folder)"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_MOVE_WS_LEFT, std.unicode.utf8ToUtf16LeStringLiteral("Move Workspace Up"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_MOVE_WS_RIGHT, std.unicode.utf8ToUtf16LeStringLiteral("Move Workspace Down"));
         if (CreatePopupMenu()) |accent_menu| {
             for (workspace_accent_names, 0..) |name, ai| {
                 var label_buf: [32]u8 = undefined;
@@ -13178,6 +13187,16 @@ const Host = struct {
                     self.invalidateSidebar();
                 }
             },
+            CTX_MOVE_WS_LEFT => {
+                if (self.activeSurface()) |active| {
+                    _ = active.core_surface.performBindingAction(.{ .move_tab = -1 }) catch {};
+                }
+            },
+            CTX_MOVE_WS_RIGHT => {
+                if (self.activeSurface()) |active| {
+                    _ = active.core_surface.performBindingAction(.{ .move_tab = 1 }) catch {};
+                }
+            },
             CTX_NEW_TAB_HERE => {
                 self.postDeferredNewTab();
                 if (self.activeSurface()) |src| {
@@ -13344,6 +13363,8 @@ const Host = struct {
     /// hints; otherwise the default teaches the highest-value chords.
     fn currentHintTextW(self: *Host) [:0]const u16 {
         @setEvalBranchQuota(20_000);
+        if (!self.app.config.@"hint-strip")
+            return std.unicode.utf8ToUtf16LeStringLiteral("");
         if (self.overlay_mode == .confirm)
             return std.unicode.utf8ToUtf16LeStringLiteral("Enter accept \u{00B7} Esc cancel");
         if (self.pane_drag.dragging)
@@ -13735,10 +13756,11 @@ const Host = struct {
             mem_mb = pmc.WorkingSetSize / (1024 * 1024);
         }
 
+        const uptime_min = @divTrunc(GetTickCount64(), std.time.ms_per_min);
         const text_utf8 = std.fmt.allocPrint(
             alloc,
-            "Workspaces: {d}\nPanes: {d}\nAttention: {d} waiting, {d} done, {d} failed\nMemory (working set): {d} MB\nControl pipe: \\\\.\\pipe\\paramux\nConfig dir: %LOCALAPPDATA%\\paramux\n\nRun `paramux doctor` in a pane for the full hook-integration report.",
-            .{ self.tabs.items.len, c.panes, c.waiting, c.done, c.err, mem_mb },
+            "Windows: {d}\nWorkspaces: {d}\nPanes: {d}\nAttention: {d} waiting, {d} done, {d} failed\nMemory (working set): {d} MB\nDPI: {d}\nSystem uptime: {d} min\nControl pipe: \\\\.\\pipe\\paramux\nConfig dir: %LOCALAPPDATA%\\paramux\n\nRun `paramux doctor` in a pane for the full hook-integration report.",
+            .{ self.app.hosts.items.len, self.tabs.items.len, c.panes, c.waiting, c.done, c.err, mem_mb, self.current_dpi, uptime_min },
         ) catch return;
         defer alloc.free(text_utf8);
         const text_w = std.unicode.utf8ToUtf16LeAllocZ(alloc, text_utf8) catch return;

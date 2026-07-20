@@ -10,6 +10,9 @@ pub const Options = struct {
     _arena: ?ArenaAllocator = null,
     class: ?[:0]const u8 = null,
 
+    /// Re-render the table every 2 seconds until interrupted.
+    watch: bool = false,
+
     pub fn deinit(self: *Options) void {
         if (self._arena) |arena| arena.deinit();
         self.* = undefined;
@@ -21,8 +24,9 @@ pub const Options = struct {
 };
 
 /// Print the fleet as a table: every workspace and pane with its
-/// attention state and reported token total. Scriptable observability
-/// for the whole instance (`paramux list-windows` remains the raw JSON).
+/// attention state and reported token total. `--watch` re-renders
+/// every 2 seconds. For machine-readable output use
+/// `paramux list-windows` (the same data as JSON).
 pub fn run(alloc: Allocator) !u8 {
     var iter = try args.argsIterator(alloc);
     defer iter.deinit();
@@ -55,11 +59,36 @@ fn runArgs(
             opts.class = try a.dupeZ(u8, class);
             continue;
         }
+        if (std.mem.eql(u8, arg, "--watch")) {
+            opts.watch = true;
+            continue;
+        }
         try stderr.print("unknown option: {s}\n", .{arg});
         return 1;
     }
 
     const target: apprt.ipc.Target = if (opts.class) |class| .{ .class = class } else .detect;
+
+    if (opts.watch) {
+        while (true) {
+            // ANSI clear + home keeps the table stable in place.
+            try stdout.writeAll("\x1b[2J\x1b[H");
+            const code = try renderOnce(alloc, a, target, stdout, stderr);
+            try stdout.flush();
+            if (code != 0) return code;
+            std.Thread.sleep(2 * std.time.ns_per_s);
+        }
+    }
+    return renderOnce(alloc, a, target, stdout, stderr);
+}
+
+fn renderOnce(
+    alloc: Allocator,
+    a: Allocator,
+    target: apprt.ipc.Target,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
     const payload = (apprt.App.queryAutomationWindowList(alloc, target) catch |err| {
         try stderr.print("could not reach a running paramux instance (err={})\n", .{err});
         return 1;

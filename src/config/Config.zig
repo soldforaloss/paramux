@@ -1820,6 +1820,12 @@ class: ?[:0]const u8 = null,
 /// demand at any time.
 @"digest-after-away-minutes": u32 = 5,
 
+/// Show the contextual hint strip in the status bar (the line that
+/// teaches the shortcuts valid right now, doubles as the git segment,
+/// and is clickable). Turning it off leaves the status bar's other
+/// segments untouched.
+@"hint-strip": bool = true,
+
 /// Automatically restart a pane whose process exits with a non-zero
 /// code, up to this many times over the pane's lifetime (a fresh
 /// auto-placed shell opens in the same folder; the dead pane closes).
