@@ -7,12 +7,12 @@ uninstall it.
 ## 1. Get the x64 prerelease
 
 The current build is
-[`v0.1.5`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.5)
+[`v0.1.6`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.6)
 in the public `soldforaloss/paramux` repository.
 
 Download both assets:
 
-- `paramux-0.1.5-windows-x64-portable.zip`
+- `paramux-0.1.6-windows-x64-portable.zip`
 - `SHA256SUMS-windows-x64.txt`
 
 This is an **unsigned x64 portable prerelease**. There is no current Paramux
@@ -38,7 +38,7 @@ From the folder containing both downloaded files:
 
 ```powershell
 Get-FileHash `
-  .\paramux-0.1.5-windows-x64-portable.zip `
+  .\paramux-0.1.6-windows-x64-portable.zip `
   -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```

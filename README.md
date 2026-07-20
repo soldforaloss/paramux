@@ -87,25 +87,28 @@ path today.
 ## Try the current prerelease
 
 The current test build is
-[`v0.1.5`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.5),
+[`v0.1.6`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.6),
 published 2026-07-20 for Windows x64:
 
-- [`paramux-0.1.5-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.5/paramux-0.1.5-windows-x64-portable.zip)
-- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.5/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.6-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.6/paramux-0.1.6-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.6/SHA256SUMS-windows-x64.txt)
 
-This build is the conductor release. **Broadcast input** mirrors your
-typing into every pane of a workspace (right-click toggle; keybinds
-never mirror), `paramux send --all-panes`, **`paramux status`** (fleet
-table with attention + tokens), and **`paramux open <dir>`** make the
-fleet scriptable, and **Copy Fleet Status** drops a markdown standup
-snapshot on your clipboard. Workspaces reproduce: a **default layout
-slot** for the `+` button, **Restart Pane** (fresh shell, same
-folder), **worktree seeding**, and a **60-second session autosave**
-that survives crashes. Plus double-click renames, a stuck-agent
-nudge, Always on Top (`Ctrl+Alt+T`), reachable undo (`Ctrl+Shift+Z`),
-split-ratio presets, a first-run tour, and published
-**performance receipts** (`docs/paramux/perf.md`). It sits on top of
-`v0.1.4`'s fleet tooling. Releases from
+This build is the horizon release. Alerting panes show a **live
+waiting age** in the sidebar, the digest and attention inbox span
+**every window**, agents **label their own panes**
+(`notify --title=...`), **token budgets** fire audible alerts, and
+crashed agent panes can **auto-restart** with a crash-loop guard —
+all configurable in the new **Agents section of Settings**. **New
+Workspace from Branch** runs `git worktree add` from an overlay
+prompt, projects can commit a **`.paramux/layout`** file that
+`paramux open .` recreates, **Alt+drag any pane body** to rearrange,
+pin critical panes first, and jump **Previous/Next Command Output**
+from the right-click menu. `paramux update` links its release notes
+before applying, the Help menu opens your **data folder**, the ARM64
+CI lane can package a native artifact on demand
+(`docs/paramux/distribution.md`), and the README now opens with a
+recorded fleet demo. It sits on top of
+`v0.1.5`'s conductor tooling. Releases from
 `v0.1.0-paramux.7` onward apply with `paramux update`
 (`v0.1.0-paramux.4` remains a legacy test artifact).
 
@@ -114,7 +117,7 @@ split-ratio presets, a first-run tour, and published
    release checksum:
 
 ```powershell
-Get-FileHash .\paramux-0.1.5-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\paramux-0.1.6-windows-x64-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 
