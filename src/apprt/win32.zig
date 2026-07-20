@@ -1376,6 +1376,53 @@ extern "kernel32" fn K32GetProcessMemoryInfo(hProcess: ?*anyopaque, ppsmemCounte
 extern "kernel32" fn GetCurrentProcess() callconv(.winapi) ?*anyopaque;
 const LASTINPUTINFO = extern struct { cbSize: u32, dwTime: u32 };
 extern "user32" fn GetLastInputInfo(plii: *LASTINPUTINFO) callconv(.winapi) BOOL;
+const TH32CS_SNAPPROCESS: u32 = 0x00000002;
+const PROCESSENTRY32W = extern struct {
+    dwSize: u32,
+    cntUsage: u32,
+    th32ProcessID: u32,
+    th32DefaultHeapID: usize,
+    th32ModuleID: u32,
+    cntThreads: u32,
+    th32ParentProcessID: u32,
+    pcPriClassBase: i32,
+    dwFlags: u32,
+    szExeFile: [260]u16,
+};
+extern "kernel32" fn CreateToolhelp32Snapshot(dwFlags: u32, th32ProcessID: u32) callconv(.winapi) ?*anyopaque;
+extern "kernel32" fn Process32FirstW(hSnapshot: ?*anyopaque, lppe: *PROCESSENTRY32W) callconv(.winapi) BOOL;
+extern "kernel32" fn Process32NextW(hSnapshot: ?*anyopaque, lppe: *PROCESSENTRY32W) callconv(.winapi) BOOL;
+extern "kernel32" fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: BOOL, dwProcessId: u32) callconv(.winapi) ?*anyopaque;
+const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+
+/// Direct children of this process: count + summed working set MB.
+/// ConPTY shells and conhosts are direct children, so this is the
+/// honest "what the panes cost" number (grandchildren excluded).
+const ChildFootprint = struct { count: usize, mb: u64 };
+fn childProcessFootprint() ChildFootprint {
+    var result: ChildFootprint = .{ .count = 0, .mb = 0 };
+    const snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) orelse return result;
+    defer _ = windows.CloseHandle(@ptrCast(snapshot));
+    var entry: PROCESSENTRY32W = undefined;
+    entry.dwSize = @sizeOf(PROCESSENTRY32W);
+    if (Process32FirstW(snapshot, &entry) == 0) return result;
+    const self_pid = windows.GetCurrentProcessId();
+    while (true) {
+        if (entry.th32ParentProcessID == self_pid) {
+            result.count += 1;
+            if (OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, entry.th32ProcessID)) |proc| {
+                defer _ = windows.CloseHandle(@ptrCast(proc));
+                var pmc: PROCESS_MEMORY_COUNTERS = std.mem.zeroes(PROCESS_MEMORY_COUNTERS);
+                pmc.cb = @sizeOf(PROCESS_MEMORY_COUNTERS);
+                if (K32GetProcessMemoryInfo(proc, &pmc, pmc.cb) != 0) {
+                    result.mb += pmc.WorkingSetSize / (1024 * 1024);
+                }
+            }
+        }
+        if (Process32NextW(snapshot, &entry) == 0) break;
+    }
+    return result;
+}
 
 /// Milliseconds since the last user keyboard/mouse input, system-wide.
 fn userIdleMs() u64 {
@@ -13972,10 +14019,11 @@ const Host = struct {
         }
 
         const uptime_min = @divTrunc(GetTickCount64(), std.time.ms_per_min);
+        const children = childProcessFootprint();
         const text_utf8 = std.fmt.allocPrint(
             alloc,
-            "Windows: {d}\nWorkspaces: {d}\nPanes: {d}\nAttention: {d} waiting, {d} done, {d} failed\nMemory (working set): {d} MB\nDPI: {d}\nSystem uptime: {d} min\nControl pipe: \\\\.\\pipe\\paramux\nConfig dir: %LOCALAPPDATA%\\paramux\n\nRun `paramux doctor` in a pane for the full hook-integration report.",
-            .{ self.app.hosts.items.len, self.tabs.items.len, c.panes, c.waiting, c.done, c.err, mem_mb, self.current_dpi, uptime_min },
+            "Windows: {d}\nWorkspaces: {d}\nPanes: {d}\nAttention: {d} waiting, {d} done, {d} failed\nMemory (working set): {d} MB\nChild processes: {d} (\u{2248}{d} MB)\nDPI: {d}\nSystem uptime: {d} min\nControl pipe: \\\\.\\pipe\\paramux\nConfig dir: %LOCALAPPDATA%\\paramux\n\nRun `paramux doctor` in a pane for the full hook-integration report.",
+            .{ self.app.hosts.items.len, self.tabs.items.len, c.panes, c.waiting, c.done, c.err, mem_mb, children.count, children.mb, self.current_dpi, uptime_min },
         ) catch return;
         defer alloc.free(text_utf8);
         const text_w = std.unicode.utf8ToUtf16LeAllocZ(alloc, text_utf8) catch return;
