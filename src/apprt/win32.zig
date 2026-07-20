@@ -2715,6 +2715,64 @@ test "automation-input ipc rejects malformed decoded payloads" {
     }
 }
 
+test "ipc header decoder rejects malformed frames" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+    const t = std.testing;
+
+    const Case = struct {
+        name: []const u8,
+        bytes: []const u8,
+    };
+    // Wire form: u32 version LE, u8 kind, u16 token_len LE, token bytes.
+    const cases = [_]Case{
+        .{ .name = "empty", .bytes = &.{} },
+        .{ .name = "short header", .bytes = &.{ 1, 0 } },
+        .{ .name = "bad version", .bytes = &.{ 0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 0 } },
+        .{ .name = "bad kind", .bytes = &.{ 2, 0, 0, 0, 0xEE, 0, 0 } },
+        .{ .name = "oversized token len", .bytes = &.{ 2, 0, 0, 0, 0, 0xFF, 0xFF } },
+        .{ .name = "truncated token", .bytes = &.{ 2, 0, 0, 0, 0, 8, 0, 'a', 'b' } },
+    };
+
+    for (cases) |case| {
+        var tmp = std.testing.tmpDir(.{});
+        defer tmp.cleanup();
+        var file = try tmp.dir.createFile("ipc-fuzz.bin", .{ .read = true, .truncate = true });
+        defer file.close();
+        try file.writeAll(case.bytes);
+        try file.seekTo(0);
+
+        // Any malformed frame must produce a clean error, never a
+        // crash, hang, or accepted request.
+        const result = decodeIpcRequestHeader(file.handle);
+        if (result) |_| {
+            // A frame with the right version, a valid kind byte, and a
+            // consistent token length CAN decode; none of these should.
+            std.debug.print("fuzz case unexpectedly decoded: {s}\n", .{case.name});
+            return error.TestUnexpectedResult;
+        } else |err| {
+            t.expect(err == error.InvalidIpcRequest or err == error.BrokenPipe or err == error.Unexpected or err == error.EndOfStream) catch |e| {
+                std.debug.print("fuzz case {s} -> unexpected err {}\n", .{ case.name, err });
+                return e;
+            };
+        }
+    }
+}
+
+test "ipc new-window payload rejects oversized argc" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var file = try tmp.dir.createFile("ipc-fuzz-argc.bin", .{ .read = true, .truncate = true });
+    defer file.close();
+    // argc = 0xFFFFFFFF: must reject before attempting any allocation.
+    try file.writeAll(&.{ 0xFF, 0xFF, 0xFF, 0xFF });
+    try file.seekTo(0);
+    try std.testing.expectError(
+        error.InvalidIpcRequest,
+        decodeNewWindowIpcPayload(std.testing.allocator, file.handle),
+    );
+}
+
 test "automation-input ipc rejects missing and wrong auth before payload decode" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 

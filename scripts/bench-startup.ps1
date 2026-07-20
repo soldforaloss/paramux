@@ -9,7 +9,12 @@
 param(
     [string]$Binary = "zig-out/bin/paramux.com",
     [string]$OutFile = "docs/paramux/perf.md",
-    [int]$Runs = 5
+    [int]$Runs = 5,
+    # CI budget: nonzero fails the script when median CLI cold-start
+    # exceeds this many milliseconds. 0 = measure only.
+    [int]$MaxCliMs = 0,
+    # CI mode skips the GUI memory sample (no interactive desktop).
+    [switch]$CliOnly
 )
 $ErrorActionPreference = "Stop"
 if (-not (Test-Path $Binary)) { Write-Error "Binary not found: $Binary" }
@@ -28,7 +33,8 @@ $cliAvg = [math]::Round(($cliTimes | Measure-Object -Average).Average, 1)
 # GUI idle memory: launch, wait, sample, close.
 $exe = Join-Path (Split-Path (Resolve-Path $Binary)) "paramux.exe"
 $guiRow = "| GUI idle working set (5s after launch) | not sampled (paramux.exe missing) |"
-if (Test-Path $exe) {
+if ($CliOnly) { $guiRow = "| GUI idle working set | skipped (-CliOnly) |" }
+if ((-not $CliOnly) -and (Test-Path $exe)) {
     $proc = Start-Process -FilePath $exe -PassThru
     Start-Sleep -Seconds 5
     try {
@@ -62,5 +68,12 @@ measured on the target machine.
 "@
 $dir = Split-Path $OutFile -Parent
 if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force $dir | Out-Null }
-[System.IO.File]::WriteAllText($OutFile, $content, (New-Object System.Text.UTF8Encoding $false))
-Write-Host "Wrote $OutFile (CLI best $cliMin ms, avg $cliAvg ms)."
+if (-not $CliOnly) { [System.IO.File]::WriteAllText($OutFile, $content, (New-Object System.Text.UTF8Encoding $false)) }
+if (-not $CliOnly) { Write-Host "Wrote $OutFile (CLI best $cliMin ms, avg $cliAvg ms)." }
+
+if ($MaxCliMs -gt 0) {
+    if ($cliAvg -gt $MaxCliMs) {
+        Write-Error "CLI cold-start average ${cliAvg}ms exceeds the ${MaxCliMs}ms budget."
+    }
+    Write-Host "Perf budget OK: average ${cliAvg}ms <= ${MaxCliMs}ms."
+}

@@ -87,6 +87,12 @@ jobs:
           scripts/package-windows.ps1 -Version 0.0.1 -Architecture x64 -SkipBuild -SkipInstaller
           test/windows/package-portable-cli.ps1 -Version 0.0.1 -Architecture x64 -SkipPackage
 
+      - name: Perf budget (CLI cold start)
+        shell: pwsh
+        # ReleaseFast build from the step above; 250ms is ~6x the local
+        # average — a genuine regression gate, not a flaky race.
+        run: scripts/bench-startup.ps1 -CliOnly -MaxCliMs 250
+
       - name: Build ARM64 executable
         env:
           ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}\.zig-global-cache
