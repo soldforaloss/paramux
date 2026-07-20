@@ -1820,6 +1820,13 @@ class: ?[:0]const u8 = null,
 /// demand at any time.
 @"digest-after-away-minutes": u32 = 5,
 
+/// Capture each pane's running child command line at session save so
+/// restore relaunches it (via the same per-pane command machinery as
+/// layout templates). Off by default: restored commands re-execute,
+/// which is not always what you want after a crash. The capture reads
+/// only your own child processes.
+@"restore-commands": bool = false,
+
 /// POST a JSON body {"state","title","message","surface_id"} to this
 /// URL on every attention state CHANGE (working, waiting, done,
 /// error, and none/clear) — consumers filter by state. Fire-and-

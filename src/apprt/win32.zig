@@ -1400,6 +1400,71 @@ const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
 /// Direct children of this process: count + summed working set MB.
 /// ConPTY shells and conhosts are direct children, so this is the
 /// honest "what the panes cost" number (grandchildren excluded).
+const PROCESS_VM_READ: u32 = 0x0010;
+const PROCESS_BASIC_INFORMATION = extern struct {
+    ExitStatus: i32,
+    PebBaseAddress: usize,
+    AffinityMask: usize,
+    BasePriority: i32,
+    UniqueProcessId: usize,
+    InheritedFromUniqueProcessId: usize,
+};
+extern "ntdll" fn NtQueryInformationProcess(
+    ProcessHandle: ?*anyopaque,
+    ProcessInformationClass: u32,
+    ProcessInformation: *anyopaque,
+    ProcessInformationLength: u32,
+    ReturnLength: ?*u32,
+) callconv(.winapi) i32;
+extern "kernel32" fn ReadProcessMemory(
+    hProcess: ?*anyopaque,
+    lpBaseAddress: usize,
+    lpBuffer: [*]u8,
+    nSize: usize,
+    lpNumberOfBytesRead: ?*usize,
+) callconv(.winapi) BOOL;
+
+/// Best-effort command line of `pid` (own child processes only) via
+/// the documented PEB->ProcessParameters walk. Any failure -> null.
+fn readProcessCommandLine(alloc: Allocator, pid: u32) ?[]u8 {
+    const proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, 0, pid) orelse return null;
+    defer _ = windows.CloseHandle(@ptrCast(proc));
+
+    var pbi: PROCESS_BASIC_INFORMATION = std.mem.zeroes(PROCESS_BASIC_INFORMATION);
+    if (NtQueryInformationProcess(proc, 0, &pbi, @sizeOf(PROCESS_BASIC_INFORMATION), null) != 0) return null;
+    if (pbi.PebBaseAddress == 0) return null;
+
+    // PEB64 +0x20 = ProcessParameters; RTL_USER_PROCESS_PARAMETERS
+    // +0x70 = CommandLine (UNICODE_STRING { u16 len, u16 max, pad, ptr }).
+    var params_addr: usize = 0;
+    var got: usize = 0;
+    if (ReadProcessMemory(proc, pbi.PebBaseAddress + 0x20, @ptrCast(&params_addr), @sizeOf(usize), &got) == 0 or got != @sizeOf(usize)) return null;
+    if (params_addr == 0) return null;
+    const UnicodeString = extern struct { Length: u16, MaximumLength: u16, _pad: u32, Buffer: usize };
+    var ustr: UnicodeString = std.mem.zeroes(UnicodeString);
+    if (ReadProcessMemory(proc, params_addr + 0x70, @ptrCast(&ustr), @sizeOf(UnicodeString), &got) == 0 or got != @sizeOf(UnicodeString)) return null;
+    if (ustr.Buffer == 0 or ustr.Length == 0 or ustr.Length > 4096) return null;
+
+    const wide = alloc.alloc(u16, ustr.Length / 2) catch return null;
+    defer alloc.free(wide);
+    if (ReadProcessMemory(proc, ustr.Buffer, @ptrCast(wide.ptr), ustr.Length, &got) == 0 or got != ustr.Length) return null;
+    return std.unicode.utf16LeToUtf8Alloc(alloc, wide) catch null;
+}
+
+/// The first direct child of `parent_pid` (the shell's foreground
+/// command, for restore-commands). 0 when none.
+fn firstChildPid(parent_pid: u32) u32 {
+    const snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) orelse return 0;
+    defer _ = windows.CloseHandle(@ptrCast(snapshot));
+    var entry: PROCESSENTRY32W = undefined;
+    entry.dwSize = @sizeOf(PROCESSENTRY32W);
+    if (Process32FirstW(snapshot, &entry) == 0) return 0;
+    while (true) {
+        if (entry.th32ParentProcessID == parent_pid) return entry.th32ProcessID;
+        if (Process32NextW(snapshot, &entry) == 0) return 0;
+    }
+}
+
 const ChildFootprint = struct { count: usize, mb: u64 };
 fn childProcessFootprint() ChildFootprint {
     var result: ChildFootprint = .{ .count = 0, .mb = 0 };
@@ -4595,7 +4660,7 @@ pub const App = struct {
         for (host.tabs.items, 0..) |*tab, i| {
             if (tabContainsQuickTerminal(tab)) continue;
             if (i <= host.active_tab) selected_tab = built;
-            tabs[built] = try buildSessionTab(alloc, tab);
+            tabs[built] = try buildSessionTab(alloc, tab, self.config.@"restore-commands");
             built += 1;
         }
 
@@ -4612,13 +4677,13 @@ pub const App = struct {
         if (host.hwnd) |hwnd| {
             window.state = if (IsZoomed(hwnd) != 0) .maximized else .normal;
         }
-        _ = self;
         return window;
     }
 
     fn buildSessionTab(
         alloc: Allocator,
         tab: *const Tab,
+        capture_commands: bool,
     ) !win32_session_state.Tab {
         var selected_leaf: usize = 0;
         var leaf_index: usize = 0;
@@ -4629,6 +4694,20 @@ pub const App = struct {
             }
             if (tab.focused.idx() == node_index) selected_leaf = leaf_index;
             leaf_index += 1;
+        }
+
+        if (capture_commands) {
+            var cap_it = tab.tree.iterator();
+            while (cap_it.next()) |leaf| {
+                const surface = leaf.view;
+                // Overwrite, never free: any prior value belonged to a
+                // previous save's arena (see the field doc).
+                surface.captured_command = null;
+                const shell_pid = surface.child_pid orelse continue;
+                const cmd_pid = firstChildPid(shell_pid);
+                if (cmd_pid == 0) continue;
+                surface.captured_command = readProcessCommandLine(alloc, cmd_pid);
+            }
         }
 
         return .{
@@ -4651,6 +4730,7 @@ pub const App = struct {
                     .profile = surface.launch_profile_key,
                     .title_override = surface.title_override,
                     .tab_title_override = surface.tab_title_override,
+                    .command = surface.captured_command,
                 } },
                 .split => |split| .{ .split = .{
                     .axis = switch (split.layout) {
@@ -13816,7 +13896,7 @@ const Host = struct {
             } else |_| {}
         } else |_| {}
 
-        slots.slots[slot] = App.buildSessionTab(a, tab) catch {
+        slots.slots[slot] = App.buildSessionTab(a, tab, false) catch {
             self.setBanner(.err, "Could not capture this workspace's layout.") catch {};
             return;
         };
@@ -26694,6 +26774,11 @@ pub const Surface = struct {
     pinned: bool = false,
     /// Excluded from broadcast-input mirroring (right-click toggle).
     broadcast_opt_out: bool = false,
+    /// restore-commands scratch: the child command line captured by
+    /// the CURRENT session-save pass. Owned by that save's arena, so
+    /// it dangles after the save completes — only the same-pass pane
+    /// emit may read it, and it is overwritten (never freed) next save.
+    captured_command: ?[]const u8 = null,
     /// Recent attention transitions (oldest first), capped at
     /// `attention_history_max` - the pane's activity timeline shown in
     /// the Activity submenu and the attention inbox.
