@@ -10,8 +10,8 @@
 //! First-slice degradations, all within the UIA contract:
 //!   * Format / Paragraph units behave as Line (Word is real:
 //!     ink runs with trailing blanks).
-//!   * `GetBoundingRectangles` returns an empty array (no per-line
-//!     rects yet), `RangeFromPoint` returns a degenerate range.
+//!   * Bounding rects are line-granular with column ≈ UTF-16 unit
+//!     (wide glyphs approximate); `RangeFromPoint` stays degenerate.
 //!   * Selection is reported as unsupported (`SupportedTextSelection_None`).
 //!
 //! Threading: UIA invokes ServerSideProvider methods on RPC threads,
@@ -30,6 +30,29 @@ fn iidEqual(a: *const com.GUID, b: *const com.GUID) bool {
 pub const OffsetRange = struct {
     start: usize,
     end: usize,
+};
+
+/// Host snapshot for pattern creation: the full document (UTF-8), the
+/// viewport's byte range within it, and the viewport's screen geometry
+/// (all zeros when unknown — bounding rects then come back empty).
+/// `origin_*` is the top-left of the viewport's first text cell in
+/// physical screen pixels; `cell_*` the glyph cell size in pixels.
+pub const TextDoc = struct {
+    utf8: []const u8,
+    visible_start: usize,
+    visible_end: usize,
+    cell_w: f64 = 0,
+    cell_h: f64 = 0,
+    origin_x: f64 = 0,
+    origin_y: f64 = 0,
+    viewport_cols: usize = 0,
+};
+
+pub const LineRect = struct {
+    left: f64,
+    top: f64,
+    width: f64,
+    height: f64,
 };
 
 pub const MoveResult = struct {
@@ -74,6 +97,60 @@ pub fn utf16LenOfPrefix(utf8: []const u8, byte_offset: usize) usize {
         n += if (cp <= 0xFFFF) 1 else 2;
     }
     return n;
+}
+
+/// Per-line screen rectangles for `[start, end)` clipped to the
+/// viewport. Column ≈ UTF-16 unit offset within the line, so wide
+/// glyphs make widths approximate; line breaks and empty segments
+/// produce no rect. Geometry zeros (cell_w <= 0) → empty result.
+pub fn boundingLineRects(
+    alloc: std.mem.Allocator,
+    doc: []const u16,
+    line_starts: []const usize,
+    visible_start: usize,
+    visible_end: usize,
+    start: usize,
+    end: usize,
+    geo: TextDoc,
+) ![]LineRect {
+    var rects: std.ArrayList(LineRect) = .empty;
+    defer rects.deinit(alloc);
+
+    const clip_start = @max(start, visible_start);
+    const clip_end = @min(end, visible_end);
+    if (geo.cell_w <= 0 or geo.cell_h <= 0 or clip_start >= clip_end)
+        return try rects.toOwnedSlice(alloc);
+
+    const first_visible_line = lineIndexForOffset(line_starts, visible_start);
+    var line = lineIndexForOffset(line_starts, clip_start);
+    while (line < line_starts.len and line_starts[line] < clip_end) : (line += 1) {
+        const line_start = line_starts[line];
+        const line_end = if (line + 1 < line_starts.len)
+            line_starts[line + 1]
+        else
+            doc.len;
+        // The newline unit occupies no cell.
+        var content_end = line_end;
+        if (content_end > line_start and doc[content_end - 1] == '\n')
+            content_end -= 1;
+
+        const seg_start = @max(clip_start, line_start);
+        const seg_end = @min(clip_end, content_end);
+        if (seg_end <= seg_start) continue;
+
+        const col_start = @min(seg_start - line_start, geo.viewport_cols);
+        const col_end = @min(seg_end - line_start, geo.viewport_cols);
+        if (col_end <= col_start) continue;
+
+        const row = line - first_visible_line;
+        try rects.append(alloc, .{
+            .left = geo.origin_x + @as(f64, @floatFromInt(col_start)) * geo.cell_w,
+            .top = geo.origin_y + @as(f64, @floatFromInt(row)) * geo.cell_h,
+            .width = @as(f64, @floatFromInt(col_end - col_start)) * geo.cell_w,
+            .height = geo.cell_h,
+        });
+    }
+    return try rects.toOwnedSlice(alloc);
 }
 
 /// Word separators for TextUnit_Word: blanks and the line break. The
@@ -279,6 +356,8 @@ pub const TextPattern = struct {
     /// Viewport bounds within `doc`, UTF-16 units (start <= end).
     visible_start: usize,
     visible_end: usize,
+    /// Viewport screen geometry as captured (utf8/visible fields unused).
+    geo: TextDoc,
     /// The window element ranges report as enclosing. Holds a ref.
     root: *com.IRawElementProviderSimple,
 
@@ -294,26 +373,23 @@ pub const TextPattern = struct {
         .get_SupportedTextSelection = TextPattern.get_SupportedTextSelection,
     };
 
-    /// Takes a UTF-8 snapshot (not owned; copied), the viewport's byte
-    /// range within it, and the root element (AddRef'd for the
-    /// pattern's lifetime).
+    /// Takes a host snapshot (utf8 not owned; copied) and the root
+    /// element (AddRef'd for the pattern's lifetime).
     pub fn create(
         root_provider: *com.IRawElementProviderSimple,
-        utf8_doc: []const u8,
-        visible_start_byte: usize,
-        visible_end_byte: usize,
+        source: TextDoc,
     ) !*TextPattern {
-        const doc = try std.unicode.utf8ToUtf16LeAlloc(pattern_alloc, utf8_doc);
+        const doc = try std.unicode.utf8ToUtf16LeAlloc(pattern_alloc, source.utf8);
         errdefer pattern_alloc.free(doc);
         const line_starts = try buildLineStarts(pattern_alloc, doc);
         errdefer pattern_alloc.free(line_starts);
 
         const vis_start = @min(
-            utf16LenOfPrefix(utf8_doc, visible_start_byte),
+            utf16LenOfPrefix(source.utf8, source.visible_start),
             doc.len,
         );
         const vis_end = @min(
-            @max(utf16LenOfPrefix(utf8_doc, visible_end_byte), vis_start),
+            @max(utf16LenOfPrefix(source.utf8, source.visible_end), vis_start),
             doc.len,
         );
 
@@ -325,6 +401,16 @@ pub const TextPattern = struct {
             .line_starts = line_starts,
             .visible_start = vis_start,
             .visible_end = vis_end,
+            .geo = .{
+                .utf8 = &.{},
+                .visible_start = 0,
+                .visible_end = 0,
+                .cell_w = source.cell_w,
+                .cell_h = source.cell_h,
+                .origin_x = source.origin_x,
+                .origin_y = source.origin_y,
+                .viewport_cols = source.viewport_cols,
+            },
             .root = root_provider,
         };
         _ = root_provider.vtbl.AddRef(root_provider);
@@ -681,12 +767,40 @@ pub const TextRange = struct {
     }
 
     fn GetBoundingRectangles(
-        _: *com.ITextRangeProvider,
+        self_base: *com.ITextRangeProvider,
         out: *?*com.SAFEARRAY,
     ) callconv(.winapi) com.HRESULT {
-        // No per-line rectangles yet; empty array per contract.
-        out.* = com.SafeArrayCreateVector(com.VT_R8, 0, 0) orelse
-            return com.E_OUTOFMEMORY;
+        const self = fromBase(self_base);
+        out.* = null;
+        const rects = boundingLineRects(
+            pattern_alloc,
+            self.doc(),
+            self.pattern.line_starts,
+            self.pattern.visible_start,
+            self.pattern.visible_end,
+            self.start,
+            self.end,
+            self.pattern.geo,
+        ) catch return com.E_OUTOFMEMORY;
+        defer pattern_alloc.free(rects);
+
+        const array = com.SafeArrayCreateVector(
+            com.VT_R8,
+            0,
+            @intCast(rects.len * 4),
+        ) orelse return com.E_OUTOFMEMORY;
+        var index: i32 = 0;
+        for (rects) |rect| {
+            for ([_]f64{ rect.left, rect.top, rect.width, rect.height }) |value| {
+                var v = value;
+                if (com.SafeArrayPutElement(array, &index, @ptrCast(&v)) != com.S_OK) {
+                    _ = com.SafeArrayDestroy(array);
+                    return com.E_OUTOFMEMORY;
+                }
+                index += 1;
+            }
+        }
+        out.* = array;
         return com.S_OK;
     }
 
@@ -911,6 +1025,86 @@ test "win32 uia text pattern utf16 prefix lengths" {
     try std.testing.expectEqual(@as(usize, 4), utf16LenOfPrefix(utf8, 6));
     // Out-of-range clamps to the full length.
     try std.testing.expectEqual(@as(usize, 4), utf16LenOfPrefix(utf8, 99));
+}
+
+test "win32 uia text pattern bounding rects" {
+    const doc = std.unicode.utf8ToUtf16LeStringLiteral("one\ntwo\n\nfour");
+    const starts = [_]usize{ 0, 4, 8, 9 };
+    const geo: TextDoc = .{
+        .utf8 = &.{},
+        .visible_start = 0,
+        .visible_end = 0,
+        .cell_w = 8,
+        .cell_h = 16,
+        .origin_x = 100,
+        .origin_y = 200,
+        .viewport_cols = 80,
+    };
+
+    // Range over the first two lines: one rect per ink segment, the
+    // newline occupies no cell.
+    {
+        const rects = try boundingLineRects(
+            std.testing.allocator,
+            doc,
+            &starts,
+            0,
+            doc.len,
+            0,
+            7,
+            geo,
+        );
+        defer std.testing.allocator.free(rects);
+        try std.testing.expectEqual(@as(usize, 2), rects.len);
+        try std.testing.expectEqual(
+            LineRect{ .left = 100, .top = 200, .width = 24, .height = 16 },
+            rects[0],
+        );
+        try std.testing.expectEqual(
+            LineRect{ .left = 100, .top = 216, .width = 24, .height = 16 },
+            rects[1],
+        );
+    }
+
+    // A range crossing the blank line skips it; the viewport clip
+    // shifts rows relative to the first visible line.
+    {
+        const rects = try boundingLineRects(
+            std.testing.allocator,
+            doc,
+            &starts,
+            4,
+            doc.len,
+            4,
+            13,
+            geo,
+        );
+        defer std.testing.allocator.free(rects);
+        try std.testing.expectEqual(@as(usize, 2), rects.len);
+        try std.testing.expectEqual(@as(f64, 200), rects[0].top);
+        try std.testing.expectEqual(
+            LineRect{ .left = 100, .top = 232, .width = 32, .height = 16 },
+            rects[1],
+        );
+    }
+
+    // Unknown geometry → no rects.
+    {
+        var no_geo = geo;
+        no_geo.cell_w = 0;
+        const rects = try boundingLineRects(
+            std.testing.allocator,
+            doc,
+            &starts,
+            0,
+            doc.len,
+            0,
+            13,
+            no_geo,
+        );
+        defer std.testing.allocator.free(rects);
+        try std.testing.expectEqual(@as(usize, 0), rects.len);
+    }
 }
 
 test "win32 uia text pattern word boundaries" {

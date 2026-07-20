@@ -19762,12 +19762,39 @@ fn uiaTextDocument(hwnd: HWND) ?win32_uia.TextDoc {
         }
     } else |_| {}
 
+    // Viewport screen geometry for line-granular bounding rects: the
+    // pane child window's origin plus the renderer's text padding,
+    // and the glyph cell size. Zeros (window hidden, metrics not yet
+    // delivered) mean "geometry unknown" — rects come back empty.
+    var cell_w: f64 = 0;
+    var cell_h: f64 = 0;
+    var origin_x: f64 = 0;
+    var origin_y: f64 = 0;
+    if (surface.placement.hwnd) |surface_hwnd| {
+        if (surface.cell_size_pixels.width > 0 and surface.cell_size_pixels.height > 0) {
+            var pt: POINT = .{ .x = 0, .y = 0 };
+            if (ClientToScreen(surface_hwnd, &pt) != 0) {
+                const padding = core.size.padding;
+                origin_x = @floatFromInt(pt.x + @as(i32, @intCast(padding.left)));
+                origin_y = @floatFromInt(pt.y + @as(i32, @intCast(padding.top)));
+                cell_w = @floatFromInt(surface.cell_size_pixels.width);
+                cell_h = @floatFromInt(surface.cell_size_pixels.height);
+            }
+        }
+    }
+    const viewport_cols: usize = core.renderer_state.terminal.cols;
+
     const text = document.takeText();
     document.deinit();
     return .{
         .utf8 = text,
         .visible_start = visible_range.start,
         .visible_end = visible_range.end,
+        .cell_w = cell_w,
+        .cell_h = cell_h,
+        .origin_x = origin_x,
+        .origin_y = origin_y,
+        .viewport_cols = viewport_cols,
     };
 }
 

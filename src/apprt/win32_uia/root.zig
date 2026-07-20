@@ -36,16 +36,11 @@ pub fn setFleetHelpFn(f: *const fn (com.HWND, []u8) usize) void {
     fleet_help_fn = f;
 }
 
-/// Snapshot handed back by the host for the UIA TextPattern: the full
-/// document (screen + scrollback, UTF-8) plus the viewport's byte range
-/// within it. `utf8` MUST be allocated with `std.heap.smp_allocator` —
-/// the caller frees it there, and the call may arrive on a UIA RPC
-/// thread.
-pub const TextDoc = struct {
-    utf8: []const u8,
-    visible_start: usize,
-    visible_end: usize,
-};
+/// Snapshot handed back by the host for the UIA TextPattern. See
+/// `text_pattern.TextDoc` for the field contract; `utf8` MUST be
+/// allocated with `std.heap.smp_allocator` — the caller frees it
+/// there, and the call may arrive on a UIA RPC thread.
+pub const TextDoc = text_pattern.TextDoc;
 
 pub var text_doc_fn: ?*const fn (com.HWND) ?TextDoc = null;
 
@@ -170,9 +165,7 @@ pub const RootProvider = struct {
             defer std.heap.smp_allocator.free(doc.utf8);
             const pattern = text_pattern.TextPattern.create(
                 &self.base,
-                doc.utf8,
-                doc.visible_start,
-                doc.visible_end,
+                doc,
             ) catch return com.S_OK;
             // Ownership of the initial ref transfers to the caller.
             out.* = @ptrCast(&pattern.base);
