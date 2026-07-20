@@ -108,7 +108,28 @@ pub fn run(alloc: Allocator) !u8 {
         return 1;
     };
 
-    const data = std.fs.cwd().readFileAlloc(arena, file, 8 * 1024 * 1024) catch |err| {
+    // https:// inputs fetch to memory; anything else reads from disk.
+    const data = if (std.mem.startsWith(u8, file, "https://")) blk: {
+        var client: std.http.Client = .{ .allocator = arena };
+        defer client.deinit();
+        var out: std.Io.Writer.Allocating = .init(arena);
+        const uri = std.Uri.parse(file) catch |err| {
+            try stderr.print("Bad URL {s}: {}\n", .{ file, err });
+            return 1;
+        };
+        const result = client.fetch(.{
+            .location = .{ .uri = uri },
+            .response_writer = &out.writer,
+        }) catch |err| {
+            try stderr.print("Could not fetch {s}: {}\n", .{ file, err });
+            return 1;
+        };
+        if (result.status != .ok) {
+            try stderr.print("Fetch of {s} returned HTTP {d}\n", .{ file, @intFromEnum(result.status) });
+            return 1;
+        }
+        break :blk out.written();
+    } else std.fs.cwd().readFileAlloc(arena, file, 8 * 1024 * 1024) catch |err| {
         try stderr.print("Could not read {s}: {}\n", .{ file, err });
         return 1;
     };
