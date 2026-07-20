@@ -81,6 +81,9 @@ pub const Pane = struct {
     /// Never emitted by session SAVE (running commands are not
     /// captured); honored on restore/apply when present.
     command: ?[]const u8 = null,
+    /// Layout templates only: extra environment for the pane, as
+    /// "KEY=value" strings. Same save/apply semantics as `command`.
+    env: ?[]const []const u8 = null,
 };
 
 pub const Split = struct {

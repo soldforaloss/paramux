@@ -4462,6 +4462,16 @@ pub const App = struct {
                 config.command = .{ .shell = try alloc.dupeZ(u8, cmd_str) };
             }
         }
+        // ...and extra environment ("KEY=value" entries), merged over
+        // the config's env map like repeated `env` config lines.
+        if (pane.env) |env_entries| {
+            const alloc = config._arena.?.allocator();
+            for (env_entries) |entry| {
+                config.env.parseCLI(alloc, entry) catch |err| {
+                    log.warn("layout env entry ignored ({s}): {}", .{ entry, err });
+                };
+            }
+        }
 
         const tab_id = if (tab_surface) |source|
             (self.findTabForSurface(source) orelse return error.NoActiveSurface).tab.id
