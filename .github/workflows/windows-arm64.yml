@@ -5,7 +5,12 @@ on:
     branches:
       - paramux
   pull_request: {}
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version string for the packaged artifact (e.g. 0.1.6)"
+        required: false
+        default: "0.0.1"
 
 permissions:
   contents: read
@@ -20,7 +25,7 @@ jobs:
     runs-on: windows-11-arm
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-      PARAMUX_CI_VERSION: 0.0.1
+      PARAMUX_CI_VERSION: ${{ inputs.version || '0.0.1' }}
       ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}\.zig-global-cache
 
     steps:
@@ -93,3 +98,13 @@ jobs:
           if ($themesText -notmatch "0x96f") {
             throw "Packaged ARM64 +list-themes did not find packaged resources."
           }
+
+      - name: Upload ARM64 portable artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: paramux-${{ env.PARAMUX_CI_VERSION }}-windows-arm64
+          path: |
+            dist/artifacts/paramux-${{ env.PARAMUX_CI_VERSION }}-windows-arm64/paramux-${{ env.PARAMUX_CI_VERSION }}-windows-arm64-portable.zip
+            dist/artifacts/paramux-${{ env.PARAMUX_CI_VERSION }}-windows-arm64/SHA256SUMS-windows-arm64.txt
+          if-no-files-found: error
+          retention-days: 14
