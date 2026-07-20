@@ -15,7 +15,7 @@ mapping.
   current prerelease.
 
 The current user artifact is the unsigned x64 portable prerelease
-`v0.1.8`. ARM64 artifacts, signed installers, WinGet, Scoop, and a
+`v0.1.9`. ARM64 artifacts, signed installers, WinGet, Scoop, and a
 public stable channel are planned rather than current.
 
 Paramux is a native Win32 application. This repository does not ship macOS,
@@ -26,7 +26,7 @@ retained library surface.
 
 Download these two release assets:
 
-- `paramux-0.1.8-windows-x64-portable.zip`
+- `paramux-0.1.9-windows-x64-portable.zip`
 - `SHA256SUMS-windows-x64.txt`
 
 Verify the checksum, extract the ZIP, and keep the full resource tree together.

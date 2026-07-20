@@ -87,31 +87,30 @@ path today.
 ## Try the current prerelease
 
 The current test build is
-[`v0.1.8`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.8),
+[`v0.1.9`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.9),
 published 2026-07-20 for Windows x64 and ARM64:
 
-- [`paramux-0.1.8-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.8/paramux-0.1.8-windows-x64-portable.zip)
-- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.8/SHA256SUMS-windows-x64.txt)
-- [`paramux-0.1.8-windows-arm64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.8/paramux-0.1.8-windows-arm64-portable.zip) (first native ARM64 build)
-- [`SHA256SUMS-windows-arm64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.8/SHA256SUMS-windows-arm64.txt)
+- [`paramux-0.1.9-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.9/paramux-0.1.9-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.9/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.9-windows-arm64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.9/paramux-0.1.9-windows-arm64-portable.zip)
+- [`SHA256SUMS-windows-arm64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.9/SHA256SUMS-windows-arm64.txt)
 
-This build is the reach release — and the first to ship a **native
-ARM64 build** alongside x64. The fleet becomes an ecosystem:
-**attention webhooks** POST state changes to your own endpoint,
-**`on-attention-command`** runs your script on every transition,
-**`paramux serve`** bridges fleet status to localhost HTTP,
-**`paramux record`** captures a pane as an asciinema cast, and layout
-templates can now **launch a command per pane** — `paramux open .`
-starts your whole agent formation. **Find in All Panes searches full
-scrollback**, every workspace takes a **scratch note** (`Ctrl+Alt+N`,
-session-persisted), `import-theme` accepts **https:// URLs**, doctor
-times the **IPC round-trip**, the HUD counts **child-process
-memory**, and receipts now include a **cold-start comparison** with
-Windows Terminal when installed. The repo grew its **community kit**
-(CONTRIBUTING, templates), a **1.0 roadmap with receipt-gated
-stability gates**, and design fences for remote fleets and i18n. It
-sits on top of
-`v0.1.7`'s foundation hardening. Releases from
+This build is the conductor release — the panes answer back. The
+terminal is now **readable by screen readers**: a real UIA
+TextPattern serves the active pane's screen and scrollback to
+Narrator/NVDA with line navigation and in-document search. Fleets
+**come back running**: opt-in **`restore-commands`** captures each
+pane's live command line at save and relaunches it on restore. The
+**palette jumps to any pane** by fuzzy title, panes can **opt out of
+broadcast input**, pane rows **drag across workspaces**, and a
+**quick terminal** is one keypress away. Scripts get
+**`status --watch`**, **`serve /panes/<id>/text`** behind the
+instance token, and **`update --rollback`**. Settings grew a
+**search box** that jumps to the matching section, i18n took its
+**first mechanical step** (a real string table behind the chrome),
+and the **72-hour soak harness** landed alongside the signing
+decision pack and the config-deprecation policy. It builds on
+`v0.1.8`'s dual-arch reach. Releases from
 `v0.1.0-paramux.7` onward apply with `paramux update`
 (`v0.1.0-paramux.4` remains a legacy test artifact).
 
@@ -120,7 +119,7 @@ sits on top of
    release checksum:
 
 ```powershell
-Get-FileHash .\paramux-0.1.8-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\paramux-0.1.9-windows-x64-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 
