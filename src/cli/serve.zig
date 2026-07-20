@@ -97,6 +97,57 @@ fn runArgs(
         var request = server.receiveHead() catch continue;
 
         const path = request.head.target;
+        if (lib.cutPrefix(u8, path, "/panes/")) |rest| {
+            // /panes/<id>/text — pane CONTENT, so it requires the
+            // instance token as `Authorization: Bearer <token>`.
+            pane_route: {
+                const slash = std.mem.indexOfScalar(u8, rest, '/') orelse break :pane_route;
+                if (!std.mem.eql(u8, rest[slash..], "/text")) break :pane_route;
+                const id = std.fmt.parseInt(u64, rest[0..slash], 10) catch break :pane_route;
+
+                const token = apprt.App.readClientIpcTokenFromFile(alloc) orelse {
+                    request.respond("{\"error\":\"no instance token on this machine\"}", .{
+                        .status = .service_unavailable,
+                        .extra_headers = &.{.{ .name = "content-type", .value = "application/json" }},
+                    }) catch {};
+                    continue;
+                };
+                defer alloc.free(token);
+                var authed = false;
+                var head_it = request.iterateHeaders();
+                while (head_it.next()) |h| {
+                    if (!std.ascii.eqlIgnoreCase(h.name, "authorization")) continue;
+                    const prefix = "Bearer ";
+                    if (h.value.len != prefix.len + token.len) continue;
+                    if (!std.ascii.startsWithIgnoreCase(h.value, prefix)) continue;
+                    var diff: u8 = 0;
+                    for (h.value[prefix.len..], token) |ca, cb| diff |= ca ^ cb;
+                    if (diff == 0) authed = true;
+                }
+                if (!authed) {
+                    request.respond("{\"error\":\"missing or wrong bearer token\"}", .{
+                        .status = .unauthorized,
+                        .extra_headers = &.{.{ .name = "content-type", .value = "application/json" }},
+                    }) catch {};
+                    continue;
+                }
+
+                const text = (apprt.App.performReadPane(alloc, target, .{ .surface_id = id }) catch null) orelse {
+                    request.respond("{\"error\":\"pane not found or instance gone\"}", .{
+                        .status = .not_found,
+                        .extra_headers = &.{.{ .name = "content-type", .value = "application/json" }},
+                    }) catch {};
+                    continue;
+                };
+                defer alloc.free(text);
+                request.respond(text, .{
+                    .extra_headers = &.{.{ .name = "content-type", .value = "text/plain; charset=utf-8" }},
+                }) catch {};
+                continue;
+            }
+            request.respond("not found\n", .{ .status = .not_found }) catch {};
+            continue;
+        }
         if (std.mem.eql(u8, path, "/status") or std.mem.eql(u8, path, "/")) {
             const payload = (apprt.App.queryAutomationWindowList(alloc, target) catch null) orelse {
                 request.respond("{\"error\":\"no running paramux instance\"}", .{
