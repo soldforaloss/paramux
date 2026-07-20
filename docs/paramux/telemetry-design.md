@@ -35,6 +35,16 @@ their maintenance cost. Local, user-readable tallies answer that for
 users who choose to share them in an issue — which may be all the
 telemetry this project ever needs.
 
+## Crash minidumps (same fence)
+
+Crash reports are the one place opt-in sharing is actively useful.
+Current state: `paramux crash-report` lists LOCAL crash dumps (Sentry's
+in-process handler writes them under the data folder); nothing
+uploads. Any future "send this crash" flow must be per-crash consent
+(a visible prompt naming the file), never a standing toggle, and the
+dump must be inspectable before sending (`Open Data Folder` shows it).
+Automatic upload is rejected by this document.
+
 ## Decision
 
 Adopting even the local file is deferred until a concrete decision it

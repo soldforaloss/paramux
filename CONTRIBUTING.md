@@ -2,10 +2,10 @@
 
 Thanks for working on Paramux.
 
-`soldforaloss/paramux` is currently a private Windows-first repository.
-Invited collaborators can use its Issues and pull requests for focused,
-actionable work. Bug reports should be reproducible; feature requests should
-state the user problem and stay within the Windows product scope.
+`soldforaloss/paramux` is a public, Windows-first repository. Issues
+and pull requests are open for focused, actionable work. Bug reports
+should be reproducible; feature requests should state the user problem
+and stay within the Windows product scope.
 
 Paramux descends from Winghostty and Ghostty. That lineage remains relevant to
 the terminal core, but repository operations, product identity, commands,
@@ -21,9 +21,16 @@ paths, release links, and pull requests must target
 4. Preserve `libghostty-vt`; it remains a supported retained deliverable.
 5. Keep docs, packaging, and user-visible strings aligned with the Paramux
    identity.
-6. Keep current distribution claims truthful: today that means the private,
-   unsigned x64 portable prerelease. Signed installers, WinGet, Scoop, and
-   ARM64 releases are planned rather than current.
+6. Keep current distribution claims truthful: today that means the
+   public, unsigned x64 portable prerelease. Signed installers, WinGet,
+   Scoop, and default ARM64 artifacts are planned rather than current
+   (see docs/paramux/distribution.md for the exact gates).
+7. Nothing phones home except `paramux update`'s release check; read
+   docs/paramux/telemetry-design.md before proposing data collection.
+8. Enum additions (actions, overlay modes) require sweeping every
+   exhaustive switch site — Zig's lazy analysis hides missed arms from
+   local builds until CI. `zig build test -Dtest-filter=win32` is the
+   same gate CI runs; run it on every change.
 
 ## Before opening a pull request
 
@@ -52,6 +59,12 @@ as well:
 2. Verify the affected behavior on Windows.
 3. Re-check the adjacent behavior that the change could reasonably affect,
    such as scrolling, keybindings, split focus, repainting, IPC, or packaging.
+
+## Good first issues
+
+- Teach `paramux status` a `--no-header` flag for scripting.
+- Add a layout template to `docs/paramux/layouts/`.
+- Extend `scripts/bench-startup.ps1` with JSON output.
 
 ## Scope guard
 
