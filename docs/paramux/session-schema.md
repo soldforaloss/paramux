@@ -64,6 +64,22 @@ format (`layouts.json` slots, `.paramux/layout`,
   pane's own entries win.
 - Window rect fields are all-or-nothing; sizes must be positive.
 
+## layouts.json
+
+`%LOCALAPPDATA%\paramux\layouts.json` wraps five optional `Tab`
+bodies plus display names (both arrays are additive):
+
+```jsonc
+{
+  "slots": [ <Tab|null>, null, null, null, null ],
+  "names": [ "api-fleet", null, null, null, null ]
+}
+```
+
+`names` feeds the menus, `open --list`, and `--name=` addressing on
+`open` / `import-layout` / `export-layout` (case-insensitive). The
+file is hand-editable; readers tolerate a UTF-8 BOM.
+
 ## Lifecycle
 
 Saves happen on the ~60s autosave, the `save_session` action, and
