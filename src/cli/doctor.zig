@@ -302,6 +302,19 @@ fn fireTestSignals(report: *Report, alloc: Allocator, arena: Allocator, id: u64)
         }
         std.Thread.sleep(600 * std.time.ns_per_ms);
     }
+
+    // Round-trip the timeline read too: the signals just fired must
+    // appear in the read_attention snapshot.
+    if (apprt.App.performReadAttention(alloc, .detect) catch null) |json| {
+        defer alloc.free(json);
+        if (std.mem.indexOf(u8, json, "doctor") != null or std.mem.indexOf(u8, json, "waiting") != null) {
+            try report.line(.ok, "read_attention round-trip sees the fired signals", .{});
+        } else {
+            try report.line(.warn, "read_attention answered but the fired signals are not in the snapshot", .{});
+        }
+    } else {
+        try report.line(.fail, "read_attention round-trip failed", .{});
+    }
 }
 
 /// Search the PATH directories for `name`; returns the first hit's full
