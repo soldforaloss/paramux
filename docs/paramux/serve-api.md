@@ -52,7 +52,9 @@ Every pane's attention timeline (states, timestamps, notify
 messages) as JSON — the same shape `Export Attention Log` writes.
 Timelines are bounded: each pane keeps its most recent 8
 transitions, so pollers that need full history must poll and
-accumulate (the ETag makes unchanged polls free).
+accumulate (the ETag makes unchanged polls free). For one-shot
+local reads, `paramux attention` prints the same JSON with no serve
+process involved.
 Timeline messages are content, so this route requires the same
 `Authorization: Bearer <token>` header as pane text; it is served
 through a dedicated token-gated IPC method (`read_attention`).
