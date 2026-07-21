@@ -160,6 +160,9 @@ pub const Action = union(Key) {
     /// Forget the quick terminal's remembered frame.
     reset_quick_terminal_frame,
 
+    /// Clear every pane's attention state.
+    clear_all_attention,
+
     /// Show the health HUD.
     health_hud,
 
@@ -411,6 +414,7 @@ pub const Action = union(Key) {
         save_session,
         export_attention,
         reset_quick_terminal_frame,
+        clear_all_attention,
         health_hud,
         toggle_window_on_top,
         apply_layout,

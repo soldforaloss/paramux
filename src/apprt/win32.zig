@@ -6064,6 +6064,34 @@ pub const App = struct {
                 return true;
             },
 
+            .clear_all_attention => {
+                var cleared: usize = 0;
+                for (self.hosts.items) |host| {
+                    for (host.tabs.items) |*tab| {
+                        var it = tab.tree.iterator();
+                        while (it.next()) |leaf| {
+                            if (leaf.view.attention_state != .none) {
+                                leaf.view.setAttentionState(.none);
+                                cleared += 1;
+                            }
+                        }
+                    }
+                    host.invalidateSidebar();
+                }
+                if (self.findSurfaceForTarget(target)) |surface| {
+                    if (surface.host) |host| {
+                        var msg_buf: [64]u8 = undefined;
+                        const msg = std.fmt.bufPrint(
+                            &msg_buf,
+                            "Cleared attention on {d} pane(s).",
+                            .{cleared},
+                        ) catch "Attention cleared.";
+                        host.setBanner(.info, msg) catch {};
+                    }
+                }
+                return true;
+            },
+
             .reset_quick_terminal_frame => {
                 self.quick_terminal_rect = null;
                 self.quick_terminal_rect_loaded = true;

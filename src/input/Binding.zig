@@ -584,6 +584,10 @@ pub const Action = union(enum) {
     /// change strands the frame off-screen.
     reset_quick_terminal_frame,
 
+    /// Clear every pane's attention state at once — acknowledge the
+    /// whole fleet after reviewing a wave of done/waiting agents.
+    clear_all_attention,
+
     /// Keep this window above all others (toggle).
     toggle_window_on_top,
 
@@ -1451,6 +1455,7 @@ pub const Action = union(enum) {
             .save_session,
             .export_attention,
             .reset_quick_terminal_frame,
+            .clear_all_attention,
             .toggle_window_on_top,
             .workspace_note,
             .focus_pane,

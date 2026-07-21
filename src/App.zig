@@ -772,6 +772,7 @@ fn isSafeAutomationAction(action: input.Binding.Action) bool {
         .save_session,
         .export_attention,
         .reset_quick_terminal_frame,
+        .clear_all_attention,
         .toggle_window_on_top,
         .apply_layout,
         .workspace_note,

@@ -559,6 +559,12 @@ fn actionCommands(action: Action.Key) []const Command {
             .description = "Forget the remembered quick-terminal position and use the configured geometry again.",
         }},
 
+        .clear_all_attention => comptime &.{.{
+            .action = .clear_all_attention,
+            .title = "Clear All Attention",
+            .description = "Acknowledge every pane: reset all attention states to none.",
+        }},
+
         .health_hud => comptime &.{.{
             .action = .health_hud,
             .title = "Health HUD",
