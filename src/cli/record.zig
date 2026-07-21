@@ -27,6 +27,9 @@ pub const Options = struct {
     /// between agent bursts play back at this pace instead.
     @"idle-limit": u32 = 0,
 
+    /// Suppress the summary line (scripts that only want the exit code).
+    quiet: bool = false,
+
     pub fn deinit(self: *Options) void {
         if (self._arena) |arena| arena.deinit();
         self.* = undefined;
@@ -95,6 +98,10 @@ fn runArgs(
                 try stderr.print("bad --seconds value: {s}\n", .{rest});
                 return 1;
             };
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "--quiet")) {
+            opts.quiet = true;
             continue;
         }
         if (lib.cutPrefix(u8, arg, "--idle-limit=")) |rest| {
@@ -168,6 +175,8 @@ fn runArgs(
         std.Thread.sleep(interval_ns);
     }
     try w.flush();
-    try stdout.print("Wrote {s} ({d} frames, {d}s).\n", .{ out_path, frames, seconds });
+    if (!opts.quiet) {
+        try stdout.print("Wrote {s} ({d} frames, {d}s).\n", .{ out_path, frames, seconds });
+    }
     return 0;
 }
