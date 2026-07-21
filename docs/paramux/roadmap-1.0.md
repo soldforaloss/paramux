@@ -31,8 +31,15 @@ remaining "Missing" rows of capability-parity.md close —
 1. **Notification history / inbox persistence** — the attention
    inbox survives restarts and the history is queryable (the current
    8-transition in-memory timeline becomes a bounded on-disk log).
-2. **`new_window` IPC authentication** — the last unauthenticated
-   mutation gains the token gate (resolves the PRD conflict).
+2. **`new_window` IPC auth design** — the naive token gate has been
+   tried and reverted twice: transient `-e` processes clobber the
+   shared token file and multiple paramux processes share one pipe
+   name, so gating regresses `-e` fleet dedup into duplicate
+   windows. Closing this row means the real design (per-instance
+   token discovery or per-process pipe naming), not a predicate
+   flip. Interim stance, documented: the token file is same-user
+   readable anyway, so the open method adds no same-user attack
+   surface beyond what a local process already has.
 3. **Hookless agent detection (bounded)** — process/output signals
    for agents with no usable hook API, opt-in and documented.
 
