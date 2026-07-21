@@ -91,28 +91,28 @@ path today.
 ## Try the current prerelease
 
 The current test build is
-[`v0.1.15`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.15),
+[`v0.1.16`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.16),
 published 2026-07-21 for Windows x64 and ARM64:
 
-- [`paramux-0.1.15-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.15/paramux-0.1.15-windows-x64-portable.zip)
-- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.15/SHA256SUMS-windows-x64.txt)
-- [`paramux-0.1.15-windows-arm64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.15/paramux-0.1.15-windows-arm64-portable.zip)
-- [`SHA256SUMS-windows-arm64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.15/SHA256SUMS-windows-arm64.txt)
+- [`paramux-0.1.16-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.16/paramux-0.1.16-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.16/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.16-windows-arm64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.16/paramux-0.1.16-windows-arm64-portable.zip)
+- [`SHA256SUMS-windows-arm64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.16/SHA256SUMS-windows-arm64.txt)
 
-This build is the courtesy release: the fleet CLI grows softer
-edges. **`import-layout` with no slot number lands in the first
-empty slot**, **`send --all-panes` respects solo (opt-out) panes**
-the way GUI broadcast typing always has (the flag now rides the v2
-wire), and every automation verb is on one page in
-[docs/paramux/fleet-cli.md](docs/paramux/fleet-cli.md). Hardening
-continued: IPC clients retry a busy pipe under a 3-second deadline,
-`serve` logs one line per request, the soak gate fails if the
-`/attention` probe misses a single sample, `doctor` validates the
-embedded layout gallery, and the serve E2E grew to nine checks.
-The attention timeline (IPC, HTTP, and JSON/CSV exports) carries
-each pane's **workspace note**, and the pane context menu speaks
-de-DE (i18n slice 7). It builds on `v0.1.14`'s trustworthiness.
-Releases from `v0.1.0-paramux.7` onward apply with `paramux update`
+This build is the reachability release: things that existed but
+hid. **`paramux attention`** prints every pane's timeline JSON with
+no serve process (the CLI twin of `GET /attention`), and
+**`restart_pane` is a real action** — Command Palette and IPC, not
+just the context menu — so restarting a crashed agent no longer
+needs the mouse. `serve --quiet` calms the new request log. i18n
+slices 8 and 9 put the navigation/workspace and splits/window menu
+blocks through the strings table: under `ui-language = de` the pane
+context menu is now almost entirely German, with the locale-swap
+mechanism test-locked. Attention timelines are documented as
+bounded (8 transitions per pane), and a new layout round-trip E2E
+proves gallery → slot → file → slot → file byte-identical against
+any binary. It builds on `v0.1.15`'s courtesy. Releases from
+`v0.1.0-paramux.7` onward apply with `paramux update`
 (`v0.1.0-paramux.4` remains a legacy test artifact).
 
 1. Download both the portable ZIP and `SHA256SUMS-windows-x64.txt`.
@@ -120,7 +120,7 @@ Releases from `v0.1.0-paramux.7` onward apply with `paramux update`
    release checksum:
 
 ```powershell
-Get-FileHash .\paramux-0.1.15-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\paramux-0.1.16-windows-x64-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 
