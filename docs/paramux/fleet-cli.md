@@ -40,7 +40,10 @@ paramux notify --focused --state=error "look"     # the focused pane
 States color the sidebar: `working` blue, `waiting` amber, `done`
 green, `error` red, `none` clears. Attention timelines export via the
 Command Palette (JSON + CSV, per-pane workspace note included) and
-over `GET /attention` (see [serve-api.md](serve-api.md)).
+over `GET /attention` (see [serve-api.md](serve-api.md)). There is
+deliberately no `attention --csv`: the palette export already writes
+the CSV to the state dir, and scripted consumers get JSON from
+`paramux attention` to shape as they like.
 
 ## Layouts
 
