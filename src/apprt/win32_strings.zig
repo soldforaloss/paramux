@@ -48,6 +48,9 @@ pub const Strings = struct {
     tooltip_help: [:0]const u16 = w("Help"),
     tooltip_more_actions: [:0]const u16 = w("More actions"),
 
+    // Accessibility strings (spoken by screen readers).
+    uia_localized_control_type: [:0]const u16 = w("terminal window"),
+
     // Banner texts (UTF-8 - setBanner takes []const u8). Chord names
     // inside the text stay untranslated, same rule as tooltips.
     banner_nothing_to_undo: []const u8 = "Nothing to undo.",
@@ -90,6 +93,7 @@ pub const german: Strings = .{
     .tooltip_settings = w("Einstellungen (Ctrl+,)"),
     .tooltip_help = w("Hilfe"),
     .tooltip_more_actions = w("Weitere Aktionen"),
+    .uia_localized_control_type = w("Terminalfenster"),
     .banner_nothing_to_undo = "Nichts r\u{00FC}ckg\u{00E4}ngig zu machen.",
     .banner_nothing_to_redo = "Nichts wiederherzustellen.",
     .banner_session_saved = "Sitzung gespeichert.",

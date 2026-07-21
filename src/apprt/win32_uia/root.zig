@@ -26,6 +26,7 @@ const std = @import("std");
 const com = @import("com.zig");
 const constants = @import("constants.zig");
 const text_pattern = @import("text_pattern.zig");
+const win32_strings = @import("../win32_strings.zig");
 
 /// Optional callback the host registers so the window's UIA HelpText
 /// can carry a live fleet summary ("2 waiting, 1 done; 4 panes").
@@ -203,7 +204,7 @@ pub const RootProvider = struct {
                 }
             },
             constants.UIA_LocalizedControlTypePropertyId => {
-                const literal = std.unicode.utf8ToUtf16LeStringLiteral("terminal window");
+                const literal = win32_strings.strings.uia_localized_control_type;
                 out.* = com.VARIANT.fromBstr(allocBstrFromLiteral(literal));
             },
             constants.UIA_FrameworkIdPropertyId => {
