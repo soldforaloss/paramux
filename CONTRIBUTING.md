@@ -82,3 +82,13 @@ reintroduce:
 - Call out risks or follow-up work if a change is intentionally partial.
 - Do not claim a distribution channel or platform is supported until its
   release artifacts and install path have been verified.
+
+## Agent/tooling gotcha: escaped strings in generated patches
+
+If you script edits to Zig sources (agents, codegen), never route
+source text containing `\n`, `\u{...}`, or `\x..` escapes through a
+shell heredoc - POSIX shells collapse the backslashes and the escape
+lands in the file as a raw byte (build errors like "string literal
+contains invalid byte"). Write patch scripts to a file first, or
+build the strings with explicit chr()-style constructions.
+

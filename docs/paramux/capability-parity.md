@@ -77,3 +77,11 @@ Sources were reviewed on 2026-07-09:
 - openwong2kim/wmux: [repository](https://github.com/openwong2kim/wmux)
 
 The repo and current runtime remain the source of truth for Paramux status.
+
+## Accessibility
+
+| Capability | paramux | web-view muxes (cmux/wmux ports) | Windows Terminal |
+| --- | --- | --- | --- |
+| Screen-reader pane text | UIA TextPattern (document/line/word/page, live re-reads, true wide-glyph geometry) | depends on xterm.js DOM a11y mode | UIA TextPattern |
+| Fleet summary for readers | window HelpText carries live waiting/done counts | none | n/a (no fleet concept) |
+

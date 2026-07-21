@@ -32,7 +32,12 @@ pane, plus a workspace-level `env` applied to every pane (pane
 entries win on conflict) — see `agents-with-env.layout.json`.
 
 Slots have display names: saving from the menu names the slot after
-the workspace, and the `names` array in `layouts.json` is plain text
-you can edit by hand — the Save/Apply menus and `paramux open --list`
-show whatever it says. A rename UI is deliberately deferred until the
-prompt-overlay infrastructure exists.
+the workspace, right-click → Save Layout To → **Rename Slot N...**
+renames in place, and the `names` array in `layouts.json` remains
+hand-editable — the menus and `paramux open --list` show whatever it
+says.
+
+Slots round-trip as files: `paramux export-layout <slot> [file]`
+(or `--all=<dir>` for every occupied slot) writes this format, and
+`paramux import-layout <slot> <file> [--name=...]` validates and
+installs a template.

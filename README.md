@@ -70,6 +70,9 @@ lineage and compatibility names; **Paramux is the product and executable.**
 - Four agent states: working, waiting, done, and error. The same color appears
   in the sidebar, tab strip, and pane ring.
 - Windows toast notifications and taskbar attention for agent events.
+- Screen-reader support: Narrator/NVDA read pane text (screen and
+  scrollback) with line, word, and page navigation, live re-reads on
+  agent attention changes, and wide-glyph-accurate highlights.
 - Hooks and fallbacks for Claude Code, Codex CLI, Gemini CLI, and OpenCode.
 - Local control surface for listing windows, splitting panes, reading pane
   output, and setting notifications. Sensitive calls use a per-instance token.
