@@ -758,6 +758,7 @@ const CTX_MOVE_WS_RIGHT: usize = 4044;
 const CTX_WS_NOTE: usize = 4045;
 const CTX_BROADCAST_OPTOUT: usize = 4046;
 const CTX_QUICK_TERMINAL: usize = 4047;
+const CTX_PANE_RENAME: usize = 4048;
 const CTX_RESTART_PANE: usize = 4037;
 const CTX_WORKTREE_SEED: usize = 4038;
 const CTX_RATIO_BASE: usize = 4720; // split ratio presets: base + index
@@ -14233,6 +14234,11 @@ const Host = struct {
                     _ = active.core_surface.performBindingAction(.{ .toggle_quick_terminal = {} }) catch {};
                 }
             },
+            CTX_PANE_RENAME => {
+                if (self.activeSurface()) |active| {
+                    _ = active.core_surface.performBindingAction(.{ .prompt_surface_title = {} }) catch {};
+                }
+            },
             CTX_WS_NOTE => {
                 self.showOverlay(.workspace_note, null) catch |err| {
                     log.warn("workspace note overlay failed err={}", .{err});
@@ -14377,6 +14383,7 @@ const Host = struct {
         const menu = CreatePopupMenu() orelse return;
         defer _ = DestroyMenu(menu);
 
+        _ = AppendMenuW(menu, MF_STRING, CTX_PANE_RENAME, std.unicode.utf8ToUtf16LeStringLiteral("Rename Pane"));
         _ = AppendMenuW(menu, MF_STRING, CTX_TAB_RENAME, std.unicode.utf8ToUtf16LeStringLiteral("Rename Workspace"));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
         _ = AppendMenuW(menu, MF_STRING, CTX_TAB_MOVE_LEFT, std.unicode.utf8ToUtf16LeStringLiteral("Move Workspace Left"));
