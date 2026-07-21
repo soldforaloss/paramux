@@ -18263,7 +18263,20 @@ const Host = struct {
                     }
 
                     const half = @divTrunc(row.h, 2);
-                    const label: []const u8 = if (surface.effectiveTitle()) |t| t else "shell";
+                    const base_label: []const u8 = if (surface.effectiveTitle()) |t| t else "shell";
+                    // Invisible states earn visible markers: muted panes
+                    // and broadcast opt-outs read differently only here.
+                    var state_label_buf: [208]u8 = undefined;
+                    const label: []const u8 = state_blk: {
+                        const muted = surface.attentionMuted();
+                        const solo = surface.broadcast_opt_out;
+                        if (!muted and !solo) break :state_blk base_label;
+                        break :state_blk std.fmt.bufPrint(&state_label_buf, "{s}{s}{s}", .{
+                            base_label,
+                            if (muted) "  \u{1F507}" else "",
+                            if (solo) "  \u{2298}" else "",
+                        }) catch base_label;
+                    };
                     drawPaletteRowText(hdc, label, .{
                         .left = rect.left + pad + indent,
                         .top = row.y + self.scaled(4),
