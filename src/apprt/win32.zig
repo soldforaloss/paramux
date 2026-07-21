@@ -3885,6 +3885,7 @@ pub const App = struct {
     /// Guard so the first-run marker file is probed at most once per
     /// process (the hint itself is once per INSTALL via the marker).
     first_run_hint_done: bool = false,
+    crash_notice_done: bool = false,
     /// True on the very first launch: `paintSidebar` shows a small
     /// getting-started block in the sidebar's empty space until the user
     /// makes their first split.
@@ -7218,6 +7219,7 @@ pub const App = struct {
         _ = UpdateWindow(hwnd);
         self.maybeScheduleAutomaticUpdateCheck();
         self.maybeShowFirstRunHint(host);
+        self.maybeShowCrashDumpNotice(host);
         return host;
     }
 
@@ -7225,6 +7227,32 @@ pub const App = struct {
     /// block that `paintSidebar` renders in the sidebar's empty space.
     /// First run is tracked by a marker file next to the config; the hint
     /// stays for this session (until the user splits) and never returns.
+    /// One banner per run when crash dumps from a previous run exist:
+    /// the user opted into crash-minidumps, so tell them a dump landed
+    /// and where, instead of leaving it silently on disk.
+    fn maybeShowCrashDumpNotice(self: *App, host: *Host) void {
+        if (self.crash_notice_done) return;
+        self.crash_notice_done = true;
+        const alloc = self.core_app.alloc;
+        const path = self.localAppDataPath("crash") orelse return;
+        defer alloc.free(path);
+        var dir = std.fs.openDirAbsolute(path, .{ .iterate = true }) catch return;
+        defer dir.close();
+        var count: usize = 0;
+        var it = dir.iterate();
+        while (it.next() catch null) |entry| {
+            if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".dmp")) count += 1;
+        }
+        if (count == 0) return;
+        var buf: [192]u8 = undefined;
+        const text = std.fmt.bufPrint(
+            &buf,
+            "{d} crash dump(s) from earlier runs in %LOCALAPPDATA%\\paramux\\crash - attach to a GitHub issue or delete.",
+            .{count},
+        ) catch return;
+        host.setBanner(.warn, text) catch {};
+    }
+
     fn maybeShowFirstRunHint(self: *App, host: *Host) void {
         _ = host;
         if (self.first_run_hint_done) return;
