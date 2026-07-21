@@ -70,6 +70,10 @@ so an unchanged timeline revalidates even though the stamp moves.
   through the IPC pipe with its token gate, not HTTP.
 - **No streaming.** Poll `/status`; the payload is small. Recording a
   pane over time is `paramux record`'s job.
+- **No long-poll (`?wait=`).** The server is a deliberately
+  single-threaded accept loop, so holding one request open would
+  starve every other poller. Poll with `If-None-Match` instead — an
+  unchanged timeline costs one 304 with no body.
 
 ## Stability
 
