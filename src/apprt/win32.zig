@@ -15729,33 +15729,42 @@ const Host = struct {
     /// last non-empty lines in a floating card beside the sidebar.
     fn showPanePeek(self: *Host, row_index: usize, row: SidebarRow) void {
         const hwnd = self.hwnd orelse return;
-        const surface = row.surface orelse return;
         const alloc = self.app.core_app.alloc;
-
-        const full = self.app.readPaneText(.{ .surface_id = surface.core().id }, alloc) catch return;
-        defer alloc.free(full);
-
-        // Tail: the last few non-empty lines, each column-capped.
-        var lines_buf: [pane_peek_max_lines][]const u8 = undefined;
-        var count: usize = 0;
-        var it = std.mem.splitBackwardsScalar(u8, full, '\n');
-        while (it.next()) |raw| {
-            const line = std.mem.trimRight(u8, raw, " \r");
-            if (line.len == 0) continue;
-            lines_buf[count] = line[0..@min(line.len, 90)];
-            count += 1;
-            if (count >= pane_peek_max_lines) break;
-        }
-        if (count == 0) return;
 
         var text = std.ArrayList(u8).initCapacity(alloc, 1024) catch return;
         defer text.deinit(alloc);
-        var i: usize = count;
-        while (i > 0) {
-            i -= 1;
-            text.appendSlice(alloc, lines_buf[i]) catch return;
-            if (i > 0) text.append(alloc, '\n') catch return;
-        }
+        var count: usize = 0;
+
+        if (row.surface) |surface| {
+            const full = self.app.readPaneText(.{ .surface_id = surface.core().id }, alloc) catch return;
+            defer alloc.free(full);
+
+            // Tail: the last few non-empty lines, each column-capped.
+            var lines_buf: [pane_peek_max_lines][]const u8 = undefined;
+            var it = std.mem.splitBackwardsScalar(u8, full, '\n');
+            while (it.next()) |raw| {
+                const line = std.mem.trimRight(u8, raw, " \r");
+                if (line.len == 0) continue;
+                lines_buf[count] = line[0..@min(line.len, 90)];
+                count += 1;
+                if (count >= pane_peek_max_lines) break;
+            }
+            if (count == 0) return;
+
+            var i: usize = count;
+            while (i > 0) {
+                i -= 1;
+                text.appendSlice(alloc, lines_buf[i]) catch return;
+                if (i > 0) text.append(alloc, '\n') catch return;
+            }
+        } else if (row.kind == .workspace_header) {
+            // Header rows peek the workspace note, when one is set.
+            if (row.tab_index >= self.tabs.items.len) return;
+            const note = self.tabs.items[row.tab_index].note orelse return;
+            if (note.len == 0) return;
+            text.appendSlice(alloc, note[0..@min(note.len, 90)]) catch return;
+            count = 1;
+        } else return;
 
         if (self.peek_text) |old_text| alloc.free(old_text);
         self.peek_text = alloc.dupe(u8, text.items) catch null;
@@ -25672,7 +25681,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                 };
                 const row_index = v.sidebarRowIndexAt(point.x, point.y) orelse break :hover;
                 const row = v.sidebarRowByIndex(row_index) orelse break :hover;
-                if (row.kind != .pane) break :hover;
+                if (row.kind != .pane and row.kind != .workspace_header) break :hover;
                 v.showPanePeek(row_index, row);
             }
             return 0;
