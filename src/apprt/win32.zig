@@ -18608,11 +18608,26 @@ const Host = struct {
                     // another workspace (still one click away).
                     const dim = !in_active_ws;
 
+                    // Pane rows inherit the workspace accent: the
+                    // focused stripe takes it over the theme accent,
+                    // and other rows in an accented workspace get a
+                    // half-width tick so grouping reads down the tree.
+                    // High contrast keeps the fixed palette out.
+                    const pane_ws_accent: ?u32 = if (isHighContrastActive())
+                        null
+                    else if (tab.accent_index) |ai|
+                        workspace_accents[ai % workspace_accents.len]
+                    else
+                        null;
                     if (is_focused_pane) {
                         fillSolidRect(hdc, .{ .left = rect.left, .top = row.y, .right = rect.right - border, .bottom = row_bottom }, theme.button_active_bg);
-                        fillSolidRect(hdc, .{ .left = rect.left, .top = row.y, .right = rect.left + stripe_w, .bottom = row_bottom }, theme.accent);
+                        fillSolidRect(hdc, .{ .left = rect.left, .top = row.y, .right = rect.left + stripe_w, .bottom = row_bottom }, pane_ws_accent orelse theme.accent);
                     } else if (hovered) {
                         fillSolidRect(hdc, .{ .left = rect.left, .top = row.y, .right = rect.right - border, .bottom = row_bottom }, blendColorRGB(theme.chrome_bg, theme.text_primary, 0.05));
+                        if (pane_ws_accent) |wsa| fillSolidRect(hdc, .{ .left = rect.left, .top = row.y, .right = rect.left + @max(1, @divTrunc(stripe_w, 2)), .bottom = row_bottom }, wsa);
+                    } else if (pane_ws_accent) |wsa| {
+                        const tick = if (dim) blendColorRGB(theme.chrome_bg, wsa, 0.55) else wsa;
+                        fillSolidRect(hdc, .{ .left = rect.left, .top = row.y, .right = rect.left + @max(1, @divTrunc(stripe_w, 2)), .bottom = row_bottom }, tick);
                     }
 
                     const half = @divTrunc(row.h, 2);
