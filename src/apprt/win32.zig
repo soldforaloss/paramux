@@ -7415,7 +7415,7 @@ pub const App = struct {
             defer alloc.free(path_value);
             if (@import("../os/windows_user_env.zig").pathContains(path_value, exe_dir)) break :install_hint;
             if (self.hosts.items.len > 0) {
-                self.hosts.items[0].setBanner(.info, "Tip: run `paramux install` (or install-paramux.cmd) to add this folder to PATH.") catch {};
+                self.hosts.items[0].setBanner(.info, win32_strings.strings.banner_install_tip) catch {};
             }
         }
 
@@ -8069,7 +8069,7 @@ pub const App = struct {
                     host.refocusHostWindow();
                     host.layout() catch {};
                     host.refreshChrome() catch {};
-                    host.setBanner(.info, "Tab closed. Use undo to restore it.") catch {};
+                    host.setBanner(.info, win32_strings.strings.banner_tab_closed_undo) catch {};
                 }
                 return true;
             },
@@ -12439,7 +12439,7 @@ const Host = struct {
 
     fn toggleProfileOverlay(self: *Host) bool {
         if (!(self.reloadProfiles() catch false)) {
-            self.setBanner(.err, "No supported Windows profiles detected.") catch {};
+            self.setBanner(.err, win32_strings.strings.banner_no_profiles) catch {};
             return false;
         }
         if (self.overlay_mode == .profile) {
@@ -12520,7 +12520,7 @@ const Host = struct {
 
     fn submitProfileOverlay(self: *Host, open_target: ProfileOpenTarget) !bool {
         if (!(try self.ensureProfiles())) {
-            try self.setBanner(.err, "No supported Windows profiles detected.");
+            try self.setBanner(.err, win32_strings.strings.banner_no_profiles);
             return false;
         }
         _ = self.overlay_edit_hwnd orelse return false;
@@ -12541,7 +12541,7 @@ const Host = struct {
                 return false;
             },
             .invalid => {
-                try self.setBanner(.err, "Unknown profile. Try a number or a profile name like pwsh, ubuntu, git, or cmd.");
+                try self.setBanner(.err, win32_strings.strings.banner_unknown_profile);
                 return false;
             },
         }
@@ -14323,18 +14323,18 @@ const Host = struct {
                 if (self.activeSurface()) |active| {
                     active.broadcast_opt_out = !active.broadcast_opt_out;
                     self.setBanner(.info, if (active.broadcast_opt_out)
-                        "Pane excluded from broadcast input."
+                        win32_strings.strings.banner_broadcast_pane_excluded
                     else
-                        "Pane included in broadcast input.") catch {};
+                        win32_strings.strings.banner_broadcast_pane_included) catch {};
                 }
             },
             CTX_BROADCAST => {
                 if (self.activeTab()) |t| {
                     t.broadcast = !t.broadcast;
                     self.setBanner(.info, if (t.broadcast)
-                        "Broadcast ON: typing reaches every pane in this workspace."
+                        win32_strings.strings.banner_broadcast_on
                     else
-                        "Broadcast off.") catch {};
+                        win32_strings.strings.banner_broadcast_off) catch {};
                     self.invalidateHintStrip();
                 }
             },
@@ -14391,7 +14391,7 @@ const Host = struct {
                         .{ .write_scrollback_file = .open },
                     ) catch |err| {
                         log.warn("win32 scrollback-in-editor failed err={}", .{err});
-                        self.setBanner(.err, "Could not export scrollback.") catch {};
+                        self.setBanner(.err, win32_strings.strings.banner_export_scrollback_failed) catch {};
                     };
                 }
             },
@@ -14595,7 +14595,7 @@ const Host = struct {
         if (slot >= layout_slot_count) return;
         const trimmed = std.mem.trim(u8, name, " ");
         if (trimmed.len == 0) {
-            self.setBanner(.info, "Slot name unchanged.") catch {};
+            self.setBanner(.info, win32_strings.strings.banner_slot_name_unchanged) catch {};
             return;
         }
         const alloc = self.app.core_app.alloc;
@@ -14618,7 +14618,7 @@ const Host = struct {
         std.json.Stringify.value(slots, .{}, &out.writer) catch return;
         if (std.fs.path.dirname(path)) |dir| std.fs.cwd().makePath(dir) catch {};
         const file = std.fs.cwd().createFile(path, .{}) catch {
-            self.setBanner(.err, "Could not write layouts.json.") catch {};
+            self.setBanner(.err, win32_strings.strings.banner_layouts_write_failed) catch {};
             return;
         };
         defer file.close();
@@ -14646,7 +14646,7 @@ const Host = struct {
         } else |_| {}
 
         slots.slots[slot] = App.buildSessionTab(a, tab, false) catch {
-            self.setBanner(.err, "Could not capture this workspace's layout.") catch {};
+            self.setBanner(.err, win32_strings.strings.banner_layout_capture_failed) catch {};
             return;
         };
         // Name the slot after the workspace so the menus can say what
@@ -14663,7 +14663,7 @@ const Host = struct {
         std.json.Stringify.value(slots, .{}, &out.writer) catch return;
         if (std.fs.path.dirname(path)) |dir| std.fs.cwd().makePath(dir) catch {};
         const file = std.fs.cwd().createFile(path, .{}) catch {
-            self.setBanner(.err, "Could not write layouts.json.") catch {};
+            self.setBanner(.err, win32_strings.strings.banner_layouts_write_failed) catch {};
             return;
         };
         defer file.close();
@@ -14684,21 +14684,21 @@ const Host = struct {
 
         const path = layoutSlotsPath(a) catch return;
         const raw = std.fs.cwd().readFileAlloc(a, path, 16 * 1024 * 1024) catch {
-            self.setBanner(.err, "No saved layouts yet. Save one first.") catch {};
+            self.setBanner(.err, win32_strings.strings.banner_no_saved_layouts) catch {};
             return;
         };
         const parsed = std.json.parseFromSlice(LayoutSlots, a, raw, .{ .ignore_unknown_fields = true }) catch {
-            self.setBanner(.err, "layouts.json is unreadable.") catch {};
+            self.setBanner(.err, win32_strings.strings.banner_layouts_unreadable) catch {};
             return;
         };
         const saved = parsed.value.slots[slot] orelse {
-            self.setBanner(.err, "That layout slot is empty. Save one first.") catch {};
+            self.setBanner(.err, win32_strings.strings.banner_slot_empty) catch {};
             return;
         };
 
         const selected = self.app.restoreSessionTab(saved, self, self.tabs.items.len) catch |err| {
             log.warn("apply layout slot={d} failed err={}", .{ slot, err });
-            self.setBanner(.err, "Could not apply that layout.") catch {};
+            self.setBanner(.err, win32_strings.strings.banner_layout_apply_failed) catch {};
             return;
         };
         self.app.activateSurface(selected);
@@ -14752,7 +14752,7 @@ const Host = struct {
             n += 1;
         }
         if (n == 0) {
-            self.setBanner(.err, "Branch name has no usable characters.") catch {};
+            self.setBanner(.err, win32_strings.strings.banner_branch_unusable) catch {};
             return;
         }
         const clean = clean_buf[0..n];
@@ -14777,7 +14777,7 @@ const Host = struct {
         var ev: input.KeyEvent = .{ .action = .press, .key = .unidentified, .mods = .{} };
         ev.utf8 = cmd;
         _ = active.core_surface.keyCallback(ev) catch {};
-        self.setBanner(.info, "Worktree command running. When it finishes: right-click > New Workspace Here from the new folder.") catch {};
+        self.setBanner(.info, win32_strings.strings.banner_worktree_running) catch {};
     }
 
     /// Copy a markdown snapshot of every workspace and pane (state,
@@ -14814,10 +14814,10 @@ const Host = struct {
         }
         const active = self.activeSurface() orelse return;
         active.writeClipboardText(text.items) catch {
-            self.setBanner(.err, "Could not write the clipboard.") catch {};
+            self.setBanner(.err, win32_strings.strings.banner_clipboard_failed) catch {};
             return;
         };
-        self.setBanner(.info, "Fleet status copied as markdown.") catch {};
+        self.setBanner(.info, win32_strings.strings.banner_fleet_copied) catch {};
     }
 
     /// Toggle WS_EX_TOPMOST on this window, with a banner naming the
@@ -14835,9 +14835,9 @@ const Host = struct {
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
         );
         self.setBanner(.info, if (self.is_topmost)
-            "Window pinned on top. Ctrl+Alt+T releases it."
+            win32_strings.strings.banner_topmost_on
         else
-            "Window no longer on top.") catch {};
+            win32_strings.strings.banner_topmost_off) catch {};
     }
 
     /// Set the focused pane's parent split to `ratio` (0..1 toward the
@@ -14858,7 +14858,7 @@ const Host = struct {
                 .leaf => {},
             }
         }
-        self.setBanner(.info, "Focused pane has no split to resize.") catch {};
+        self.setBanner(.info, win32_strings.strings.banner_no_split_resize) catch {};
     }
 
     /// Flag agents that report `working` but haven't changed state in
@@ -16119,7 +16119,7 @@ const Host = struct {
         if (dest_index >= self.tabs.items.len) return;
         const src_tab = self.activeTab() orelse return;
         if (src_tab.leafCount() <= 1) {
-            self.setBanner(.info, "A workspace keeps its last pane; move the workspace instead.") catch {};
+            self.setBanner(.info, win32_strings.strings.banner_last_pane_move) catch {};
             return;
         }
         const dest_tab = &self.tabs.items[dest_index];
@@ -16988,7 +16988,7 @@ const Host = struct {
                 }
                 const action = input.Binding.Action.parse(text) catch |err| {
                     log.warn("win32 command palette invalid action action={s} err={}", .{ text, err });
-                    try self.setBanner(.err, "Unknown Paramux action. Example: new_tab or toggle_fullscreen");
+                    try self.setBanner(.err, win32_strings.strings.banner_unknown_action);
                     return false;
                 };
                 self.app.pushPaletteMru(text) catch |err| {
@@ -17027,7 +17027,7 @@ const Host = struct {
             .tab_overview => {
                 const requested = std.fmt.parseUnsigned(usize, text, 10) catch |err| {
                     log.warn("win32 tab overview invalid selection value={s} err={}", .{ text, err });
-                    try self.setBanner(.err, "Enter a numeric tab index.");
+                    try self.setBanner(.err, win32_strings.strings.banner_numeric_tab);
                     return false;
                 };
                 if (requested == 0 or requested > self.tabs.items.len) {
@@ -24096,8 +24096,8 @@ fn buildProfileHintText(
     default_target: ProfileOpenTarget,
     pinned_slot_keys: [3]?[:0]const u8,
 ) ![]u8 {
-    const profiles = profiles_opt orelse return try alloc.dupe(u8, "No supported Windows profiles detected.");
-    if (profiles.len == 0) return try alloc.dupe(u8, "No supported Windows profiles detected.");
+    const profiles = profiles_opt orelse return try alloc.dupe(u8, win32_strings.strings.banner_no_profiles);
+    if (profiles.len == 0) return try alloc.dupe(u8, win32_strings.strings.banner_no_profiles);
     const quick_picks = try buildProfileQuickPickText(alloc, profiles, 4, 10);
     defer if (quick_picks) |value| alloc.free(value);
     const quick_suffix = if (quick_picks) |value|
