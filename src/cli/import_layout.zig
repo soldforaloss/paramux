@@ -5,6 +5,7 @@ const actionpkg = @import("action.zig");
 const args = @import("args.zig");
 const lib = @import("../lib/main.zig");
 const session = @import("../apprt/win32_session_state.zig");
+const gallery = @import("layout_gallery.zig");
 
 pub const Options = struct {
     pub fn deinit(self: Options) void {
@@ -83,8 +84,14 @@ pub fn run(alloc: Allocator) !u8 {
         return 1;
     }
 
-    const template = std.fs.cwd().readFileAlloc(a, file_path, 4 * 1024 * 1024) catch |err| {
+    // A bare name that isn't a readable file resolves against the
+    // bundled gallery, so installed users get the docs templates too.
+    const template = std.fs.cwd().readFileAlloc(a, file_path, 4 * 1024 * 1024) catch |err| blk: {
+        if (gallery.get(file_path)) |embedded| break :blk try a.dupe(u8, embedded);
         try stderr.print("could not read {s} (err={})\n", .{ file_path, err });
+        try stderr.print("bundled gallery names:", .{});
+        for (gallery.entries) |e| try stderr.print(" {s}", .{e.name});
+        try stderr.print("\n", .{});
         return 1;
     };
     const tab_parsed = std.json.parseFromSlice(session.Tab, a, stripBom(template), .{
