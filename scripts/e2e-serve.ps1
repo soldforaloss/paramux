@@ -45,6 +45,10 @@ try {
     } catch { $code304 = [int]$_.Exception.Response.StatusCode }
     Check "/attention 304 on matching ETag" ($code304 -eq 304)
 
+    # The CLI twin of /attention answers with the same shape.
+    $cli = & $Com attention 2>&1 | Out-String
+    Check "paramux attention prints panes" ($cli -match '"panes"')
+
     # Pane text route, both sides of the auth gate. The id comes from a
     # regex over the raw JSON: ConvertFrom-Json would round u64 ids
     # through a double and corrupt them.
@@ -64,4 +68,4 @@ try {
 }
 
 if ($fails.Count -gt 0) { Write-Error "serve E2E FAILED: $($fails -join ', ')" }
-Write-Host "serve E2E PASS (9 checks)"
+Write-Host "serve E2E PASS (10 checks)"
