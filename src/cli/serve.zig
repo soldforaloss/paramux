@@ -140,8 +140,36 @@ fn runArgs(
                     continue;
                 };
                 defer alloc.free(text);
+
+                // ETag = content hash: pollers send If-None-Match and
+                // get a 304 instead of the full scrollback each cycle.
+                var etag_buf: [20]u8 = undefined;
+                const etag = std.fmt.bufPrint(
+                    &etag_buf,
+                    "\"{x:0>16}\"",
+                    .{std.hash.Wyhash.hash(0, text)},
+                ) catch unreachable;
+                var inm_matches = false;
+                var etag_it = request.iterateHeaders();
+                while (etag_it.next()) |h| {
+                    if (std.ascii.eqlIgnoreCase(h.name, "if-none-match") and
+                        std.mem.eql(u8, std.mem.trim(u8, h.value, " "), etag))
+                    {
+                        inm_matches = true;
+                    }
+                }
+                if (inm_matches) {
+                    request.respond("", .{
+                        .status = .not_modified,
+                        .extra_headers = &.{.{ .name = "etag", .value = etag }},
+                    }) catch {};
+                    continue;
+                }
                 request.respond(text, .{
-                    .extra_headers = &.{.{ .name = "content-type", .value = "text/plain; charset=utf-8" }},
+                    .extra_headers = &.{
+                        .{ .name = "content-type", .value = "text/plain; charset=utf-8" },
+                        .{ .name = "etag", .value = etag },
+                    },
                 }) catch {};
                 continue;
             }
