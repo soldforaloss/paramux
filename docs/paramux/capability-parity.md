@@ -84,4 +84,6 @@ The repo and current runtime remain the source of truth for Paramux status.
 | --- | --- | --- | --- |
 | Screen-reader pane text | UIA TextPattern (document/line/word/page, live re-reads, true wide-glyph geometry) | depends on xterm.js DOM a11y mode | UIA TextPattern |
 | Fleet summary for readers | window HelpText carries live waiting/done counts | none | n/a (no fleet concept) |
+| Localized chrome | en + de-DE (`ui-language`); every static menu/dialog string table-driven, spoken control type localizes | varies | full Windows localization |
+| Sidebar rows as UIA elements | deferred by design — the attention inbox (Ctrl+Alt+I) and fleet summary carry the same information | n/a | n/a |
 
