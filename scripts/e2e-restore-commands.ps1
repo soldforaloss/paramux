@@ -20,9 +20,15 @@ param(
 $ErrorActionPreference = "Stop"
 if (-not (Test-Path $Binary)) { Write-Error "Build first: zig build -Demit-exe=true" }
 
+# Absolute paths: phase D changes directory, which would break the
+# default relative zig-out paths.
+$Binary = (Resolve-Path $Binary).Path
+if (-not (Test-Path $Com)) { Write-Error "console launcher missing: $Com" }
+$Com = (Resolve-Path $Com).Path
+
 # A running instance would intercept the phases via single-instance
 # forwarding and turn the results into noise - refuse up front.
-$binFull = (Resolve-Path $Binary).Path
+$binFull = $Binary
 $already = @(Get-Process -Name paramux -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $binFull })
 if ($already.Count -gt 0) {
     Write-Error "paramux is already running from $binFull - close it (or the soak) before the restore E2E"
@@ -105,6 +111,36 @@ if ($pingFound) {
 }
 Stop-Tree $p.Id
 Remove-Item $stateFile -Force -ErrorAction SilentlyContinue
+
+# Phase D: `paramux open` must preserve layout slot names on its
+# slot-5 rewrite (its private struct once dropped them).
+$layouts = Join-Path $env:LOCALAPPDATA "paramux\layouts.json"
+$layoutsBackup = if (Test-Path $layouts) { Get-Content $layouts -Raw } else { $null }
+try {
+    [System.IO.File]::WriteAllText($layouts,
+        '{"slots":[{"selected_leaf":0,"layout":{"root":0,"nodes":[{"pane":{}}]}},null,null,null,null],"names":["kept-name",null,null,null,null]}',
+        (New-Object System.Text.UTF8Encoding $false))
+    $proj = Join-Path $env:TEMP "e2e-open-proj"
+    New-Item -ItemType Directory -Force (Join-Path $proj ".paramux") | Out-Null
+    [System.IO.File]::WriteAllText((Join-Path $proj ".paramux\layout"),
+        '{"selected_leaf":0,"layout":{"root":0,"nodes":[{"pane":{}}]}}',
+        (New-Object System.Text.UTF8Encoding $false))
+    $p = Start-Process $Binary -ArgumentList "--session-name=$session", "--confirm-close-surface=false" -PassThru
+    Start-Sleep 5
+    Push-Location $proj
+    & $Com open . | Out-Null
+    Pop-Location
+    Start-Sleep 2
+    $after = Get-Content $layouts -Raw
+    Stop-Tree $p.Id
+    if ($after -match '"kept-name"' -and $after -match '"project"') {
+        Write-Host "D OK: open preserved slot names and labeled the project slot"
+    } else {
+        $failures += "D: slot names lost or project label missing: $after"
+    }
+} finally {
+    if ($layoutsBackup) { $layoutsBackup | Out-File $layouts -Encoding utf8 -NoNewline }
+}
 
 if ($failures.Count -gt 0) {
     $failures | ForEach-Object { Write-Host "FAIL $_" }
