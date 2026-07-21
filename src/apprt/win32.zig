@@ -13998,17 +13998,17 @@ const Host = struct {
             _ = AppendMenuW(ratio_menu, MF_STRING, CTX_RATIO_BASE + 0, std.unicode.utf8ToUtf16LeStringLiteral("50 / 50"));
             _ = AppendMenuW(ratio_menu, MF_STRING, CTX_RATIO_BASE + 1, std.unicode.utf8ToUtf16LeStringLiteral("70 / 30"));
             _ = AppendMenuW(ratio_menu, MF_STRING, CTX_RATIO_BASE + 2, std.unicode.utf8ToUtf16LeStringLiteral("30 / 70"));
-            _ = AppendMenuW(menu, MF_POPUP, @intFromPtr(ratio_menu), std.unicode.utf8ToUtf16LeStringLiteral("Split Ratio"));
+            _ = AppendMenuW(menu, MF_POPUP, @intFromPtr(ratio_menu), win32_strings.strings.menu_split_ratio);
         }
-        _ = AppendMenuW(menu, MF_STRING, CTX_PROMPT_PREV, std.unicode.utf8ToUtf16LeStringLiteral("Previous Command Output"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_PROMPT_NEXT, std.unicode.utf8ToUtf16LeStringLiteral("Next Command Output"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_SCROLL_TOP, std.unicode.utf8ToUtf16LeStringLiteral("Scroll to Top"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_SCROLL_BOTTOM, std.unicode.utf8ToUtf16LeStringLiteral("Scroll to Bottom"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_COPY_FLEET, std.unicode.utf8ToUtf16LeStringLiteral("Copy Fleet Status"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_PROMPT_PREV, win32_strings.strings.menu_prompt_prev);
+        _ = AppendMenuW(menu, MF_STRING, CTX_PROMPT_NEXT, win32_strings.strings.menu_prompt_next);
+        _ = AppendMenuW(menu, MF_STRING, CTX_SCROLL_TOP, win32_strings.strings.menu_scroll_top);
+        _ = AppendMenuW(menu, MF_STRING, CTX_SCROLL_BOTTOM, win32_strings.strings.menu_scroll_bottom);
+        _ = AppendMenuW(menu, MF_STRING, CTX_COPY_FLEET, win32_strings.strings.menu_copy_fleet);
         {
             const bcast_on = if (self.activeTab()) |t| t.broadcast else false;
             const bcast_flags: UINT = if (bcast_on) MF_STRING | MF_CHECKED else MF_STRING;
-            _ = AppendMenuW(menu, bcast_flags, CTX_BROADCAST, std.unicode.utf8ToUtf16LeStringLiteral("Broadcast Input to This Workspace"));
+            _ = AppendMenuW(menu, bcast_flags, CTX_BROADCAST, win32_strings.strings.menu_broadcast);
             if (self.activeSurface()) |bc_target| {
                 _ = AppendMenuW(menu, MF_STRING, CTX_BROADCAST_OPTOUT, if (bc_target.broadcast_opt_out)
                     std.unicode.utf8ToUtf16LeStringLiteral("Include This Pane in Broadcast")
@@ -14028,13 +14028,13 @@ const Host = struct {
             else
                 std.unicode.utf8ToUtf16LeStringLiteral("Mute Notifications 30 min"));
         }
-        _ = AppendMenuW(menu, MF_STRING, CTX_COMMAND_PALETTE, std.unicode.utf8ToUtf16LeStringLiteral("Command Palette\tCtrl+Shift+P"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_COMMAND_PALETTE, win32_strings.strings.menu_command_palette);
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
-        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New Workspace\tCtrl+Shift+T"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB_HERE, std.unicode.utf8ToUtf16LeStringLiteral("New Workspace Here (same folder)"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_MOVE_WS_LEFT, std.unicode.utf8ToUtf16LeStringLiteral("Move Workspace Up"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_MOVE_WS_RIGHT, std.unicode.utf8ToUtf16LeStringLiteral("Move Workspace Down"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_WS_NOTE, std.unicode.utf8ToUtf16LeStringLiteral("Workspace Note..."));
+        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, win32_strings.strings.menu_new_workspace);
+        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB_HERE, win32_strings.strings.menu_new_workspace_here);
+        _ = AppendMenuW(menu, MF_STRING, CTX_MOVE_WS_LEFT, win32_strings.strings.menu_move_ws_up);
+        _ = AppendMenuW(menu, MF_STRING, CTX_MOVE_WS_RIGHT, win32_strings.strings.menu_move_ws_down);
+        _ = AppendMenuW(menu, MF_STRING, CTX_WS_NOTE, win32_strings.strings.menu_ws_note);
         if (CreatePopupMenu()) |accent_menu| {
             for (workspace_accent_names, 0..) |name, ai| {
                 var label_buf: [32]u8 = undefined;
@@ -15177,7 +15177,7 @@ const Host = struct {
 
         // Utility items. Split lives here too (not just the right-click menu) so
         // the one obvious "more actions" control advertises how to split a pane.
-        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New Workspace\tCtrl+Shift+T"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, win32_strings.strings.menu_new_workspace);
         _ = AppendMenuW(menu, MF_STRING, CTX_TAB_OVERVIEW, win32_strings.strings.menu_workspaces);
         _ = AppendMenuW(menu, MF_STRING, CTX_QUICK_TERMINAL, std.unicode.utf8ToUtf16LeStringLiteral("Quick Terminal\tCtrl+Alt+Q"));
         _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_RIGHT, std.unicode.utf8ToUtf16LeStringLiteral("Split Right\tCtrl+Shift+O"));
@@ -15191,7 +15191,7 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_STRING, CTX_CLOSE_SURFACE, closeSurfaceMenuLabel(pane_count));
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_WINDOW, std.unicode.utf8ToUtf16LeStringLiteral("New Window\tCtrl+Shift+N"));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
-        _ = AppendMenuW(menu, MF_STRING, CTX_COMMAND_PALETTE, std.unicode.utf8ToUtf16LeStringLiteral("Command Palette\tCtrl+Shift+P"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_COMMAND_PALETTE, win32_strings.strings.menu_command_palette);
         _ = AppendMenuW(menu, MF_STRING, CTX_FIND, win32_strings.strings.menu_find);
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
         _ = AppendMenuW(menu, MF_STRING, CTX_SETTINGS, std.unicode.utf8ToUtf16LeStringLiteral("Settings...\tCtrl+,"));
@@ -15283,7 +15283,7 @@ const Host = struct {
         defer _ = DestroyMenu(menu);
 
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TERMINAL_AUTO, std.unicode.utf8ToUtf16LeStringLiteral("New Terminal in This Workspace\tCtrl+Shift+D"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New Workspace\tCtrl+Shift+T"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, win32_strings.strings.menu_new_workspace);
 
         // Agent presets: every configured profile is one click away —
         // "spawn a claude pane" should not need the profile overlay.
