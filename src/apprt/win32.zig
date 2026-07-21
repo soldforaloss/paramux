@@ -18855,6 +18855,15 @@ const Host = struct {
                             const dot_rect = RECT{ .left = cx - @divTrunc(d, 2), .top = cy - @divTrunc(d, 2), .right = cx + @divTrunc(d, 2), .bottom = cy + @divTrunc(d, 2) };
                             const attn = surface.attention_state.color();
                             drawRoundedRect(hdc, dot_rect, attn, attn, d);
+                        } else if (surface.inferred_state != .none) {
+                            // Hookless detection: HOLLOW dot (outline, no
+                            // fill, no pulse) so an inferred state never
+                            // looks like a hook-confirmed one.
+                            const d = self.scaled(9);
+                            const cx = rect.right - border - self.scaled(13);
+                            const cy = row.y + @divTrunc(row.h, 2);
+                            const dot_rect = RECT{ .left = cx - @divTrunc(d, 2), .top = cy - @divTrunc(d, 2), .right = cx + @divTrunc(d, 2), .bottom = cy + @divTrunc(d, 2) };
+                            drawRoundedRect(hdc, dot_rect, theme.chrome_bg, surface.inferred_state.color(), d);
                         }
                         // Drag-grip dots: rearranging is scoped to the
                         // active workspace's rows.
