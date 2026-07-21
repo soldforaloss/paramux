@@ -19,6 +19,7 @@
 //! NOT deinit an inherited `command` override.
 
 const std = @import("std");
+const win32_strings = @import("win32_strings.zig");
 const windows = std.os.windows;
 const Config = @import("../config/Config.zig");
 const cli_help = @import("../cli/help.zig");
@@ -203,28 +204,30 @@ pub const Section = enum(u32) {
     }
 
     fn label(self: Section) [*:0]const u16 {
+        const table = &win32_strings.strings;
         return switch (self) {
-            .appearance => std.unicode.utf8ToUtf16LeStringLiteral("Appearance"),
-            .theme => std.unicode.utf8ToUtf16LeStringLiteral("Theme"),
-            .terminal => std.unicode.utf8ToUtf16LeStringLiteral("Terminal"),
-            .shell => std.unicode.utf8ToUtf16LeStringLiteral("Shell"),
-            .keybindings => std.unicode.utf8ToUtf16LeStringLiteral("Keybindings"),
-            .windows => std.unicode.utf8ToUtf16LeStringLiteral("Windows"),
-            .agents => std.unicode.utf8ToUtf16LeStringLiteral("Agents"),
-            .advanced => std.unicode.utf8ToUtf16LeStringLiteral("Advanced"),
+            .appearance => table.section_appearance,
+            .theme => table.section_theme,
+            .terminal => table.section_terminal,
+            .shell => table.section_shell,
+            .keybindings => table.section_keybindings,
+            .windows => table.section_windows,
+            .agents => table.section_agents,
+            .advanced => table.section_advanced,
         };
     }
 
     fn headerText(self: Section) []const u8 {
+        const table = &win32_strings.strings;
         return switch (self) {
-            .appearance => "Appearance",
-            .theme => "Theme",
-            .terminal => "Terminal",
-            .shell => "Shell",
-            .keybindings => "Keybindings",
-            .windows => "Windows",
-            .agents => "Agents",
-            .advanced => "Advanced",
+            .appearance => table.section_appearance_utf8,
+            .theme => table.section_theme_utf8,
+            .terminal => table.section_terminal_utf8,
+            .shell => table.section_shell_utf8,
+            .keybindings => table.section_keybindings_utf8,
+            .windows => table.section_windows_utf8,
+            .agents => table.section_agents_utf8,
+            .advanced => table.section_advanced_utf8,
         };
     }
 
