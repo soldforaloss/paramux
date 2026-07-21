@@ -10,6 +10,11 @@ pub const Options = struct {
     _arena: ?ArenaAllocator = null,
     class: ?[:0]const u8 = null,
 
+    /// Re-print the timeline every `--interval` seconds (default 5),
+    /// set with `--watch`. Ctrl+C stops.
+    watch: bool = false,
+    interval: u32 = 5,
+
     pub fn deinit(self: *Options) void {
         if (self._arena) |arena| arena.deinit();
         self.* = undefined;
@@ -51,11 +56,38 @@ pub fn run(alloc: Allocator) !u8 {
             opts.class = try a.dupeZ(u8, class);
             continue;
         }
+        if (std.mem.eql(u8, arg, "--watch")) {
+            opts.watch = true;
+            continue;
+        }
+        if (lib.cutPrefix(u8, arg, "--interval=")) |rest| {
+            const n = std.fmt.parseInt(u32, rest, 10) catch 0;
+            opts.interval = std.math.clamp(n, 1, 60);
+            continue;
+        }
         try stderr.print("unknown option: {s}\n", .{arg});
         return 1;
     }
 
     const target: apprt.ipc.Target = if (opts.class) |class| .{ .class = class } else .detect;
+    if (opts.watch) {
+        while (true) {
+            try stdout.writeAll("\x1b[2J\x1b[H");
+            const code = try printOnce(alloc, target, stdout, stderr);
+            try stdout.flush();
+            if (code != 0) return code;
+            std.Thread.sleep(@as(u64, opts.interval) * std.time.ns_per_s);
+        }
+    }
+    return printOnce(alloc, target, stdout, stderr);
+}
+
+fn printOnce(
+    alloc: Allocator,
+    target: apprt.ipc.Target,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
     const json = (apprt.App.performReadAttention(alloc, target) catch |err| {
         try stderr.print("could not reach a running paramux instance (err={})\n", .{err});
         return 1;
