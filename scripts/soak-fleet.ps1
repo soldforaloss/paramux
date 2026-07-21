@@ -32,6 +32,7 @@ if (Test-Path $tokenPath) { $ipcToken = (Get-Content $tokenPath -Raw).Trim() }
 
 $states = @("working", "waiting", "done", "none")
 $cycles = 0
+$attFails = 0
 try {
     # Build the fleet: panes-1 extra terminals in the first workspace.
     for ($i = 1; $i -lt $Panes; $i++) {
@@ -75,12 +76,14 @@ try {
                     $attResp = Invoke-WebRequest -Uri "http://127.0.0.1:$servePort/attention" -Headers @{Authorization="Bearer $ipcToken"} -UseBasicParsing -TimeoutSec 5
                     $attCode = $attResp.StatusCode
                 } catch { $attCode = -1 }
+                if ($attCode -ne 200) { $attFails++ }
             }
             "$((Get-Date).ToString('s')),$minute,$alive,$wsCount,$paneCount,$mb,$($children.Count),$childMb,$cycles,$versionLine,$attCode" | Add-Content $OutCsv
             if (-not $alive) { throw "paramux exited during soak at minute $minute" }
         }
     }
-    Write-Host "SOAK PASS: $totalMinutes minute(s), $cycles notify cycles, paramux alive throughout. Results: $OutCsv"
+    if ($attFails -gt 0) { throw "soak: /attention probe failed on $attFails sample(s)" }
+    Write-Host "SOAK PASS: $totalMinutes minute(s), $cycles notify cycles, paramux alive throughout, /attention answered every sample. Results: $OutCsv"
 } finally {
     if ($serveProc -and -not $serveProc.HasExited) { Stop-Process -Id $serveProc.Id -Force -ErrorAction SilentlyContinue }
     if (-not $proc.HasExited) { $proc.CloseMainWindow() | Out-Null; Start-Sleep -Seconds 1 }
