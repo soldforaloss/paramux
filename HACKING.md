@@ -37,6 +37,7 @@ tests can't reach (each needs a built `zig-out` and a free instance):
 | `scripts/e2e-layout-roundtrip.ps1` | gallery -> slot -> file -> slot -> file byte-identical (`-Com` targets any binary) |
 | `scripts/start-soak.ps1 -Minutes 2` | the detached soak harness end to end (72h run = the 1.0 gate) |
 | `scripts/smoke-zip.ps1 -Version X` | a packaged release ZIP: hash, VERSIONINFO, version --json, capability probes (7 checks) |
+| `scripts/smoke-de.ps1` | the GUI boots and answers IPC under `ui-language = de` (XDG_CONFIG_HOME override, real config untouched) |
 | `docs/paramux/accessibility-testing.md` | Narrator checklist for `win32_uia/` changes (human + hardware) |
 
 When a PowerShell harness writes JSON that paramux will parse, write
