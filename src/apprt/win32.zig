@@ -6819,6 +6819,7 @@ pub const App = struct {
         return .{
             .tab_id = tab.id,
             .note = tab.note,
+            .accent = tab.accent_index,
             .active = active,
             .focused_surface_id = if (focused_surface) |surface| surface.core().id else null,
             .pane_count = @intCast(panes.items.len),
@@ -36054,7 +36055,7 @@ test "automation-window-list win32 json includes host tab and pane ids" {
     defer std.testing.allocator.free(json);
 
     try std.testing.expectEqualStrings(
-        "{\"schema\":\"paramux.windows.v2\",\"api_version\":2,\"windows\":[{\"window_id\":17,\"focused\":true,\"active_tab_id\":4,\"tab_count\":2,\"pane_count\":3,\"tabs\":[{\"tab_id\":3,\"note\":null,\"active\":false,\"focused_surface_id\":701,\"pane_count\":1,\"panes\":[{\"surface_id\":701,\"focused\":true,\"active\":false,\"attention\":\"none\",\"tokens\":0}]},{\"tab_id\":4,\"note\":null,\"active\":true,\"focused_surface_id\":702,\"pane_count\":2,\"panes\":[{\"surface_id\":703,\"focused\":false,\"active\":false,\"attention\":\"none\",\"tokens\":0},{\"surface_id\":702,\"focused\":true,\"active\":true,\"attention\":\"none\",\"tokens\":0}]}]}]}",
+        "{\"schema\":\"paramux.windows.v2\",\"api_version\":2,\"windows\":[{\"window_id\":17,\"focused\":true,\"active_tab_id\":4,\"tab_count\":2,\"pane_count\":3,\"tabs\":[{\"tab_id\":3,\"note\":null,\"accent\":null,\"active\":false,\"focused_surface_id\":701,\"pane_count\":1,\"panes\":[{\"surface_id\":701,\"focused\":true,\"active\":false,\"attention\":\"none\",\"tokens\":0}]},{\"tab_id\":4,\"note\":null,\"accent\":null,\"active\":true,\"focused_surface_id\":702,\"pane_count\":2,\"panes\":[{\"surface_id\":703,\"focused\":false,\"active\":false,\"attention\":\"none\",\"tokens\":0},{\"surface_id\":702,\"focused\":true,\"active\":true,\"attention\":\"none\",\"tokens\":0}]}]}]}",
         json,
     );
 }
@@ -36104,7 +36105,7 @@ test "automation-window-list win32 json skips empty hosts kept alive for undo hi
     defer std.testing.allocator.free(json);
 
     try std.testing.expectEqualStrings(
-        "{\"schema\":\"paramux.windows.v2\",\"api_version\":2,\"windows\":[{\"window_id\":17,\"focused\":true,\"active_tab_id\":5,\"tab_count\":1,\"pane_count\":1,\"tabs\":[{\"tab_id\":5,\"note\":null,\"active\":true,\"focused_surface_id\":801,\"pane_count\":1,\"panes\":[{\"surface_id\":801,\"focused\":true,\"active\":true,\"attention\":\"none\",\"tokens\":0}]}]}]}",
+        "{\"schema\":\"paramux.windows.v2\",\"api_version\":2,\"windows\":[{\"window_id\":17,\"focused\":true,\"active_tab_id\":5,\"tab_count\":1,\"pane_count\":1,\"tabs\":[{\"tab_id\":5,\"note\":null,\"accent\":null,\"active\":true,\"focused_surface_id\":801,\"pane_count\":1,\"panes\":[{\"surface_id\":801,\"focused\":true,\"active\":true,\"attention\":\"none\",\"tokens\":0}]}]}]}",
         json,
     );
 }

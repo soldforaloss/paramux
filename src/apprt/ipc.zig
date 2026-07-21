@@ -95,6 +95,9 @@ pub const AutomationTab = struct {
     /// Additive v2 field: the workspace scratch note (borrowed from
     /// the host; not owned by this struct).
     note: ?[]const u8 = null,
+    /// Additive v2 field: the workspace accent-color index (0-7), or
+    /// null when unset.
+    accent: ?u8 = null,
     active: bool,
     focused_surface_id: ?u64,
     pane_count: u64,
