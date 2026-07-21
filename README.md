@@ -90,27 +90,29 @@ path today.
 ## Try the current prerelease
 
 The current test build is
-[`v0.1.13`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.13),
+[`v0.1.14`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.14),
 published 2026-07-21 for Windows x64 and ARM64:
 
-- [`paramux-0.1.13-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.13/paramux-0.1.13-windows-x64-portable.zip)
-- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.13/SHA256SUMS-windows-x64.txt)
-- [`paramux-0.1.13-windows-arm64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.13/paramux-0.1.13-windows-arm64-portable.zip)
-- [`SHA256SUMS-windows-arm64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.13/SHA256SUMS-windows-arm64.txt)
+- [`paramux-0.1.14-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.14/paramux-0.1.14-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.14/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.14-windows-arm64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.14/paramux-0.1.14-windows-arm64-portable.zip)
+- [`SHA256SUMS-windows-arm64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.14/SHA256SUMS-windows-arm64.txt)
 
-This build is the precision release. Screen readers get
-**pixel-true wide-glyph geometry** — highlights and hit-testing use
-each character's real terminal columns from the pin map. Layouts
-**travel as files**: `export-layout` / `import-layout` round-trip
-slots as validated templates, and **Rename Slot** ships on a new
-reusable prompt overlay. One action — **Clear All Attention** —
-acknowledges the whole fleet (the hint strip teaches it when a wave
-hits), and **`GET /attention`** serves every pane's timeline over
-HTTP behind the bearer token via a dedicated IPC method. Plus:
-"recent" chips on the palette's MRU rows, workspace accents on the
-wire, `status --json`, settings Enter-flow, i18n slice 4, and fresh
-perf receipts (13.2 ms cold start vs Windows Terminal's 47.6 ms).
-It builds on `v0.1.12`'s polish. Releases from
+This build is the trustworthiness release. The soak harness's new
+**`/attention` HTTP probe caught a shipped crash** — `status`
+panicked (and `run` dropped panes) whenever a pane id landed above
+`i64`; every CLI JSON read now goes through a tolerant `u64` reader
+with regression tests. The **layout gallery ships in the binary**:
+`import-layout 2 grid-2x2` works from a bare install, and
+`--name=<slot name>` addresses slots across `open` /
+`export-layout` / `import-layout`. The serve contract got honest:
+a scripted six-check E2E proved the `/attention` ETag could never
+304 (it hashed a moving timestamp — fixed), and a second `serve`
+on a busy port now **fails fast** instead of silently stealing
+traffic on Windows. Plus: "recent" chips survive into ranked
+palette views, `status --notes` shows workspace accents, the hint
+strip speaks de-DE (i18n slice 6), and `doctor --fire` round-trips
+`read_attention`. It builds on `v0.1.13`'s precision. Releases from
 `v0.1.0-paramux.7` onward apply with `paramux update`
 (`v0.1.0-paramux.4` remains a legacy test artifact).
 
@@ -119,7 +121,7 @@ It builds on `v0.1.12`'s polish. Releases from
    release checksum:
 
 ```powershell
-Get-FileHash .\paramux-0.1.13-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\paramux-0.1.14-windows-x64-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 

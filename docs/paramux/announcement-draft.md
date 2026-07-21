@@ -2,7 +2,7 @@
 
 Draft copy for the first public announcement (blog post / HN / r/commandline),
 held here until the maintainer decides the launch moment. Facts below
-are verifiable against the repo at v0.1.13; update the version pins
+are verifiable against the repo at v0.1.14; update the version pins
 when publishing.
 
 ---

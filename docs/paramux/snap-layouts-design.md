@@ -13,7 +13,7 @@ Two distinct integrations get conflated; paramux wants both, in order:
    `.paramux/layout` already cover arrangement; the remaining idea is
    a hover flyout on the maximize/zoom area offering 2-col / 2x2 /
    main+side one-click applies (apply_layout under the hood). Small,
-   real, post-v0.1.13.
+   real, post-v0.1.14.
 
 No OS API exists for third-party zone providers (PowerToys FancyZones
 ships its own overlay for the same reason). Anything claiming

@@ -6,7 +6,7 @@ terminal core, config grammar, resource formats, and `libghostty-vt`; its native
 Windows host and agent workflow are Paramux-specific.
 
 Last reviewed: 2026-07-10, against the public x64 portable prerelease
-`v0.1.13`.
+`v0.1.14`.
 
 ## Status legend
 
@@ -52,7 +52,7 @@ Last reviewed: 2026-07-10, against the public x64 portable prerelease
 | Agent workspace | A per-pane sidebar shows available cwd/Git/port/notification metadata. `working`, `waiting`, `done`, and `error` states drive sidebar, pane, tab, toast, and taskbar attention. |
 | Local automation | `paramux list-windows` reports `paramux.windows.v2` structural JSON. `perform-action`, `notify`, `read-pane`, `send`, and `send-key` are token-gated; `PARAMUX_SURFACE_ID` targets panes and `PARAMUX_TOKEN` authenticates in-pane clients. The generic `perform-action` allowlist rejects terminal-input, arbitrary-file helper, and crash actions; the dedicated `send`/`send-key` methods are the bounded terminal-input path. |
 | Windows UX | DWM dark-title-bar integration, high-contrast palette switching, IME, file drag-and-drop, native context menus, profile selection, taskbar progress, and WinRT toast attempts are implemented in the Win32 host. |
-| Current distribution | The public `v0.1.13` release contains unsigned x64 and ARM64 portable ZIPs with per-arch `SHA256SUMS` files and the `install-paramux.cmd` PATH helper. Signed installer, WinGet, Scoop, and public stable channels are planned. |
+| Current distribution | The public `v0.1.14` release contains unsigned x64 and ARM64 portable ZIPs with per-arch `SHA256SUMS` files and the `install-paramux.cmd` PATH helper. Signed installer, WinGet, Scoop, and public stable channels are planned. |
 
 ## Maintenance anchors
 

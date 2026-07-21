@@ -38,7 +38,7 @@ which reader you used.
 
 ## Known approximations (do not file as bugs)
 
-- Wide glyphs (CJK/emoji) measure their true cells since v0.1.13;
+- Wide glyphs (CJK/emoji) measure their true cells since v0.1.14;
   line-end widths use a codepoint-range heuristic since v0.1.14, so
   only exotic width cases (ambiguous-width ranges) can be off.
 - Format/Paragraph units behave as Line.
