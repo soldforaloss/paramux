@@ -14162,9 +14162,9 @@ const Host = struct {
                         const rel = formatRelativeMs(&rel_buf, now_ms - event.wall_ms);
                         const msg = event.message orelse "";
                         const label_utf8 = (if (msg.len > 0)
-                            std.fmt.allocPrint(alloc, "{s} ago  {s} - {s}", .{ rel, attentionStateLabel(event.state), msg[0..@min(msg.len, 60)] })
+                            std.fmt.allocPrint(alloc, "{s}{s}{s}  {s} - {s}", .{ win32_strings.strings.ago_prefix, rel, win32_strings.strings.ago_suffix, attentionStateLabel(event.state), msg[0..@min(msg.len, 60)] })
                         else
-                            std.fmt.allocPrint(alloc, "{s} ago  {s}", .{ rel, attentionStateLabel(event.state) })) catch continue;
+                            std.fmt.allocPrint(alloc, "{s}{s}{s}  {s}", .{ win32_strings.strings.ago_prefix, rel, win32_strings.strings.ago_suffix, attentionStateLabel(event.state) })) catch continue;
                         defer alloc.free(label_utf8);
                         const label_w = std.unicode.utf8ToUtf16LeAllocZ(alloc, label_utf8) catch continue;
                         defer alloc.free(label_w);
@@ -27536,7 +27536,7 @@ test "parseFilePathClick strips line/column suffixes" {
 /// "now", "5m", "2h", "3d" - coarse relative age for inbox/timeline rows.
 fn formatRelativeMs(buf: []u8, age_ms: i64) []const u8 {
     const mins = @divTrunc(@max(0, age_ms), std.time.ms_per_min);
-    if (mins < 1) return "now";
+    if (mins < 1) return win32_strings.strings.now_word;
     if (mins < 60) return std.fmt.bufPrint(buf, "{d}m", .{mins}) catch "now";
     const hours = @divTrunc(mins, 60);
     if (hours < 24) return std.fmt.bufPrint(buf, "{d}h", .{hours}) catch "now";
@@ -27588,10 +27588,10 @@ fn buildAttentionInboxLabel(
 fn attentionStateLabel(state: AttentionState) []const u8 {
     return switch (state) {
         .none => "",
-        .working => "WORKING",
-        .waiting => "WAITING",
-        .done => "DONE",
-        .@"error" => "ERROR",
+        .working => win32_strings.strings.attn_working,
+        .waiting => win32_strings.strings.attn_waiting,
+        .done => win32_strings.strings.attn_done,
+        .@"error" => win32_strings.strings.attn_error,
     };
 }
 

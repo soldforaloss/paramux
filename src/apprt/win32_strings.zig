@@ -192,6 +192,17 @@ pub const Strings = struct {
     slot_rename_prefix: []const u8 = "Rename Slot",
     slot_renamed_msg: []const u8 = "renamed.",
 
+    // Relative-time and attention-state DISPLAY words (wire tags never
+    // localize). ago composes prefix+rel+suffix so German can lead
+    // with "vor".
+    ago_prefix: []const u8 = "",
+    ago_suffix: []const u8 = " ago",
+    now_word: []const u8 = "now",
+    attn_working: []const u8 = "WORKING",
+    attn_waiting: []const u8 = "WAITING",
+    attn_done: []const u8 = "DONE",
+    attn_error: []const u8 = "ERROR",
+
     // Hint-strip texts (UTF-16 via w) plus prefix/suffix pieces for
     // the two runtime-formatted hints (bufPrint formats are comptime,
     // so the dynamic parts compose around table strings instead).
@@ -385,6 +396,13 @@ pub const german: Strings = .{
     .slot_empty_suffix = " (leer)",
     .slot_rename_prefix = "Slot umbenennen:",
     .slot_renamed_msg = "umbenannt.",
+    .ago_prefix = "vor ",
+    .ago_suffix = "",
+    .now_word = "jetzt",
+    .attn_working = "ARBEITET",
+    .attn_waiting = "WARTET",
+    .attn_done = "FERTIG",
+    .attn_error = "FEHLER",
     .hint_confirm = w("Enter best\u{00E4}tigen \u{00B7} Esc abbrechen"),
     .hint_drop = w("Ablegen: Kanten docken an \u{00B7} Mitte tauscht"),
     .hint_resize = w("Ziehen zum Anpassen"),
@@ -445,10 +463,18 @@ pub fn setLocale(tag: []const u8) void {
     strings = if (std.mem.eql(u8, tag, "de")) german else english;
 }
 
+/// Composition pieces where one side is empty by design (English
+/// puts "ago" after the value, German "vor" before it).
+fn mayBeEmpty(comptime name: []const u8) bool {
+    return std.mem.eql(u8, name, "ago_prefix") or std.mem.eql(u8, name, "ago_suffix");
+}
+
 test "string table defaults are non-empty" {
     inline for (@typeInfo(Strings).@"struct".fields) |field| {
         const value = @field(strings, field.name);
-        try std.testing.expect(value.len > 0);
+        if (comptime !mayBeEmpty(field.name)) {
+            try std.testing.expect(value.len > 0);
+        }
         if (@TypeOf(value) == [:0]const u16) {
             try std.testing.expect(value[value.len] == 0);
         }
@@ -457,8 +483,15 @@ test "string table defaults are non-empty" {
 
 test "german table covers every field" {
     inline for (@typeInfo(Strings).@"struct".fields) |field| {
-        try std.testing.expect(@field(german, field.name).len > 0);
+        if (comptime !mayBeEmpty(field.name)) {
+            try std.testing.expect(@field(german, field.name).len > 0);
+        }
     }
+}
+
+test "win32 ago composition differs per locale but never both-empty" {
+    try std.testing.expect(english.ago_prefix.len + english.ago_suffix.len > 0);
+    try std.testing.expect(german.ago_prefix.len + german.ago_suffix.len > 0);
 }
 
 test "win32 setLocale swaps the active table and back" {
