@@ -185,8 +185,33 @@ fn runArgs(
                 continue;
             };
             defer alloc.free(payload);
+            var etag_buf: [20]u8 = undefined;
+            const etag = std.fmt.bufPrint(
+                &etag_buf,
+                "\"{x:0>16}\"",
+                .{std.hash.Wyhash.hash(0, payload)},
+            ) catch unreachable;
+            var inm_matches = false;
+            var etag_it = request.iterateHeaders();
+            while (etag_it.next()) |h| {
+                if (std.ascii.eqlIgnoreCase(h.name, "if-none-match") and
+                    std.mem.eql(u8, std.mem.trim(u8, h.value, " "), etag))
+                {
+                    inm_matches = true;
+                }
+            }
+            if (inm_matches) {
+                request.respond("", .{
+                    .status = .not_modified,
+                    .extra_headers = &.{.{ .name = "etag", .value = etag }},
+                }) catch {};
+                continue;
+            }
             request.respond(payload, .{
-                .extra_headers = &.{.{ .name = "content-type", .value = "application/json" }},
+                .extra_headers = &.{
+                    .{ .name = "content-type", .value = "application/json" },
+                    .{ .name = "etag", .value = etag },
+                },
             }) catch {};
         } else {
             request.respond("not found\n", .{ .status = .not_found }) catch {};

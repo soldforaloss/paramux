@@ -21,6 +21,9 @@ loopback-only. No pane text ever appears here.
 curl http://127.0.0.1:7877/status
 ```
 
+`/status` also carries a content-hash `ETag` and honors
+`If-None-Match` with `304`, same as the pane-text route.
+
 ### `GET /panes/<id>/text`
 
 The pane's full text (screen + scrollback) as `text/plain; charset=utf-8`.
