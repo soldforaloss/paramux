@@ -54,8 +54,12 @@ buttons, and the watch-window fallback title. **Every static menu
 and dialog string is table-driven** — a sweep grep must match ALL
 menu handles, not just `AppendMenuW(menu` (the toggle items hid
 behind other handles once). `setLocale` swap and unknown-tag
-fallback are test-locked. Still outside the table: runtime-composed
-labels (layout-slot rows from saved names, activity timeline rows,
-ratio numbers by design) and the settings window's option help text
+fallback are test-locked. Slice 12 moved all 26 remaining banners (plain + conditional
+setBanner sites); slice 13 the settings-window buttons, checkboxes,
+and search cues; and the composed "Workspace N" labels + the
+untitled-pane "shell" fallback now come from table pieces
+(`workspace_word`, `shell_fallback`). Still outside the table:
+layout-slot rows built from saved names, activity-timeline rows,
+ratio numbers (by design), and the settings option help text
 (generated from config docs — a docs-site problem per the notes
 above).
