@@ -43,6 +43,13 @@ which reader you used.
   only exotic width cases (ambiguous-width ranges) can be off.
 - Format/Paragraph units behave as Line.
 - Selection is reported unsupported; Narrator can read but not select.
+- The sidebar's workspace/pane rows are painted chrome, not UIA
+  elements — a screen reader tabs to the terminal content, not the
+  row list. Exposing rows as a UIA fragment tree (SelectionItem per
+  row, names from titles + attention state) is designed but
+  deliberately deferred: it is a full provider subtree, and the same
+  information is reachable today via `Ctrl+Alt+I` (attention inbox)
+  and the fleet-summary UIA property. File interest, not bugs.
 
 Record results in the release's vault note: reader used, pass/fail
 per box, and anything surprising verbatim.
