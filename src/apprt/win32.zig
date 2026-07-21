@@ -14442,25 +14442,25 @@ const Host = struct {
         if (!self.app.config.@"hint-strip")
             return std.unicode.utf8ToUtf16LeStringLiteral("");
         if (self.overlay_mode == .confirm)
-            return std.unicode.utf8ToUtf16LeStringLiteral("Enter accept \u{00B7} Esc cancel");
+            return win32_strings.strings.hint_confirm;
         if (self.pane_drag.dragging)
-            return std.unicode.utf8ToUtf16LeStringLiteral("Drop: edges dock \u{00B7} center swaps");
+            return win32_strings.strings.hint_drop;
         if (self.split_resize.active)
-            return std.unicode.utf8ToUtf16LeStringLiteral("Drag to resize");
+            return win32_strings.strings.hint_resize;
         // First-run tour: rotate three teaching hints until the
         // first-run marker is written (once per install).
         if (self.app.first_run_hint_active) {
             return switch ((GetTickCount64() / 20_000) % 3) {
-                0 => std.unicode.utf8ToUtf16LeStringLiteral("Tip 1/3: the (+) button asks - new workspace, or a pane in this one"),
-                1 => std.unicode.utf8ToUtf16LeStringLiteral("Tip 2/3: Ctrl+Alt+I lists every pane that needs you"),
-                else => std.unicode.utf8ToUtf16LeStringLiteral("Tip 3/3: right-click a pane for layouts, colors, and broadcast"),
+                0 => win32_strings.strings.hint_tip1,
+                1 => win32_strings.strings.hint_tip2,
+                else => win32_strings.strings.hint_tip3,
             };
         }
         if (self.activeTab()) |hint_tab| {
             if (hint_tab.broadcast)
-                return std.unicode.utf8ToUtf16LeStringLiteral("BROADCAST \u{00B7} typing goes to every pane in this workspace");
+                return win32_strings.strings.hint_broadcast;
             if (hint_tab.tree.zoomed != null)
-                return std.unicode.utf8ToUtf16LeStringLiteral("Zoomed \u{00B7} Ctrl+Shift+Enter restores all panes");
+                return win32_strings.strings.hint_zoomed;
         }
         // A wave of alerts earns the sweep hint: with 2+ panes
         // alerting, teach the one action that clears them all.
@@ -14471,8 +14471,8 @@ const Host = struct {
                 var wave_buf: [96]u8 = undefined;
                 const wave = std.fmt.bufPrint(
                     &wave_buf,
-                    "{d} panes need you  \u{00B7}  palette: Clear All Attention",
-                    .{alerting},
+                    "{d}{s}",
+                    .{ alerting, win32_strings.strings.hint_wave_suffix },
                 ) catch null;
                 if (wave) |text| {
                     const wlen = std.unicode.utf8ToUtf16Le(self.hint_dynamic_buf[0..199], text) catch 0;
@@ -14485,14 +14485,19 @@ const Host = struct {
         }
         // Default hint, prefixed with the focused pane's git branch
         // when one is known: the status bar doubles as a git segment.
-        const fallback = std.unicode.utf8ToUtf16LeStringLiteral("Ctrl+Alt+I inbox \u{00B7} Ctrl+Alt+U attention \u{00B7} Ctrl+Shift+P palette");
+        const fallback = win32_strings.strings.hint_default;
         const surface = self.activeSurface() orelse return fallback;
         const branch = surface.git_branch orelse return fallback;
         var utf8_buf: [160]u8 = undefined;
         const text = std.fmt.bufPrint(
             &utf8_buf,
-            "\u{2387} {s}{s}  \u{00B7}  Ctrl+Alt+I inbox \u{00B7} Ctrl+Alt+U attention",
-            .{ branch[0..@min(branch.len, 40)], if (surface.git_dirty) "*" else "" },
+            "{s}{s}{s}{s}",
+            .{
+                win32_strings.strings.hint_git_prefix,
+                branch[0..@min(branch.len, 40)],
+                if (surface.git_dirty) "*" else "",
+                win32_strings.strings.hint_git_suffix,
+            },
         ) catch return fallback;
         const wlen = std.unicode.utf8ToUtf16Le(self.hint_dynamic_buf[0..199], text) catch return fallback;
         self.hint_dynamic_buf[wlen] = 0;

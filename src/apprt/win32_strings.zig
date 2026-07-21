@@ -86,6 +86,23 @@ pub const Strings = struct {
     overlay_profile: []const u8 = "Profile",
     overlay_confirm: []const u8 = "Confirm",
 
+    // Hint-strip texts (UTF-16 via w) plus prefix/suffix pieces for
+    // the two runtime-formatted hints (bufPrint formats are comptime,
+    // so the dynamic parts compose around table strings instead).
+    // Chords stay untranslated.
+    hint_confirm: [:0]const u16 = w("Enter accept \u{00B7} Esc cancel"),
+    hint_drop: [:0]const u16 = w("Drop: edges dock \u{00B7} center swaps"),
+    hint_resize: [:0]const u16 = w("Drag to resize"),
+    hint_tip1: [:0]const u16 = w("Tip 1/3: the (+) button asks - new workspace, or a pane in this one"),
+    hint_tip2: [:0]const u16 = w("Tip 2/3: Ctrl+Alt+I lists every pane that needs you"),
+    hint_tip3: [:0]const u16 = w("Tip 3/3: right-click a pane for layouts, colors, and broadcast"),
+    hint_broadcast: [:0]const u16 = w("BROADCAST \u{00B7} typing goes to every pane in this workspace"),
+    hint_zoomed: [:0]const u16 = w("Zoomed \u{00B7} Ctrl+Shift+Enter restores all panes"),
+    hint_default: [:0]const u16 = w("Ctrl+Alt+I inbox \u{00B7} Ctrl+Alt+U attention \u{00B7} Ctrl+Shift+P palette"),
+    hint_wave_suffix: []const u8 = " panes need you  \u{00B7}  palette: Clear All Attention",
+    hint_git_prefix: []const u8 = "\u{2387} ",
+    hint_git_suffix: []const u8 = "  \u{00B7}  Ctrl+Alt+I inbox \u{00B7} Ctrl+Alt+U attention",
+
     // Banner texts (UTF-8 - setBanner takes []const u8). Chord names
     // inside the text stay untranslated, same rule as tooltips.
     banner_nothing_to_undo: []const u8 = "Nothing to undo.",
@@ -157,6 +174,18 @@ pub const german: Strings = .{
     .overlay_tab_title = "Arbeitsbereich-Titel",
     .overlay_profile = "Profil",
     .overlay_confirm = "Bestätigen",
+    .hint_confirm = w("Enter best\u{00E4}tigen \u{00B7} Esc abbrechen"),
+    .hint_drop = w("Ablegen: Kanten docken an \u{00B7} Mitte tauscht"),
+    .hint_resize = w("Ziehen zum Anpassen"),
+    .hint_tip1 = w("Tipp 1/3: Die (+) Schaltfl\u{00E4}che fragt - neuer Arbeitsbereich oder ein Pane hier"),
+    .hint_tip2 = w("Tipp 2/3: Ctrl+Alt+I listet jedes Pane, das dich braucht"),
+    .hint_tip3 = w("Tipp 3/3: Rechtsklick auf ein Pane f\u{00FC}r Layouts, Farben und Broadcast"),
+    .hint_broadcast = w("BROADCAST \u{00B7} Eingaben gehen an jedes Pane in diesem Arbeitsbereich"),
+    .hint_zoomed = w("Zoom \u{00B7} Ctrl+Shift+Enter stellt alle Panes wieder her"),
+    .hint_default = w("Ctrl+Alt+I Inbox \u{00B7} Ctrl+Alt+U Aufmerksamkeit \u{00B7} Ctrl+Shift+P Palette"),
+    .hint_wave_suffix = " Panes brauchen dich  \u{00B7}  Palette: Clear All Attention",
+    .hint_git_prefix = "\u{2387} ",
+    .hint_git_suffix = "  \u{00B7}  Ctrl+Alt+I Inbox \u{00B7} Ctrl+Alt+U Aufmerksamkeit",
     .banner_nothing_to_undo = "Nichts r\u{00FC}ckg\u{00E4}ngig zu machen.",
     .banner_nothing_to_redo = "Nichts wiederherzustellen.",
     .banner_session_saved = "Sitzung gespeichert.",
