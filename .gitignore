@@ -44,3 +44,6 @@ vgcore.*
 
 # paramux: packaging output (build artifacts, never commit)
 dist/artifacts/
+
+# Local soak-gate run output (start-soak.ps1)
+soak-runs/
