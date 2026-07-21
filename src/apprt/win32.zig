@@ -1104,6 +1104,8 @@ extern "user32" fn IsWindowVisible(hWnd: HWND) callconv(.winapi) BOOL;
 extern "user32" fn IsIconic(hWnd: HWND) callconv(.winapi) BOOL;
 extern "user32" fn IsZoomed(hWnd: HWND) callconv(.winapi) BOOL;
 extern "user32" fn MonitorFromWindow(hwnd: HWND, dwFlags: u32) callconv(.winapi) ?*anyopaque;
+extern "user32" fn MonitorFromRect(lprc: *const RECT, dwFlags: u32) callconv(.winapi) ?*anyopaque;
+const MONITOR_DEFAULTTONULL: u32 = 0;
 extern "user32" fn EnumDisplayMonitors(hdc: HDC, lprcClip: ?*const RECT, lpfnEnum: *const fn (?*anyopaque, HDC, *RECT, LPARAM) callconv(.winapi) BOOL, dwData: LPARAM) callconv(.winapi) BOOL;
 extern "user32" fn ReleaseCapture() callconv(.winapi) BOOL;
 extern "user32" fn ScreenToClient(hWnd: HWND, lpPoint: *POINT) callconv(.winapi) BOOL;
@@ -3855,6 +3857,10 @@ pub const App = struct {
     /// by `commandPaletteBannerText` when the query is empty so users
     /// see their own recent picks instead of the static onboarding hint.
     palette_mru: [5]?[:0]const u8 = .{null} ** 5,
+    /// Remembered quick-terminal frame (user moves/resizes survive
+    /// hide and restart); null until first hide or load.
+    quick_terminal_rect: ?RECT = null,
+    quick_terminal_rect_loaded: bool = false,
     /// Singleton settings window. Lazily created by the `open_config`
     /// action; `App.terminate` destroys the HWND if still alive.
     settings_window: win32_settings.SettingsWindow = undefined,
@@ -7932,11 +7938,85 @@ pub const App = struct {
     }
 
     fn hideQuickTerminalSurface(self: *App, surface: *Surface) void {
-        _ = self;
         const top_level = surface.windowHwnd() orelse return;
         if (surface.host) |host| host.cancelQuickTerminalAnimation();
+        // Remember the frame the user left it at, across hides and runs.
+        var rect: RECT = undefined;
+        if (GetWindowRect(top_level, &rect) != 0) {
+            self.quick_terminal_rect = rect;
+            self.saveQuickTerminalRect(rect);
+        }
         surface.setVisible(false);
         _ = ShowWindow(top_level, SW_HIDE);
+    }
+
+    /// Apply the remembered quick-terminal frame if there is one and it
+    /// still lands on a live monitor; fall back to the config-derived
+    /// geometry otherwise. Returns true when the remembered frame won.
+    fn applyRememberedQuickTerminalRect(self: *App, top_level: HWND) bool {
+        if (!self.quick_terminal_rect_loaded) {
+            self.quick_terminal_rect_loaded = true;
+            if (self.quick_terminal_rect == null)
+                self.quick_terminal_rect = self.loadQuickTerminalRect();
+        }
+        const rect = self.quick_terminal_rect orelse return false;
+        if (rect.right <= rect.left or rect.bottom <= rect.top) return false;
+        if (MonitorFromRect(&rect, MONITOR_DEFAULTTONULL) == null) return false;
+        _ = SetWindowPos(
+            top_level,
+            null,
+            rect.left,
+            rect.top,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+            SWP_NOZORDER | SWP_NOACTIVATE,
+        );
+        return true;
+    }
+
+    fn quickTerminalRectPath(alloc: Allocator) ![]u8 {
+        const local = std.process.getEnvVarOwned(alloc, "LOCALAPPDATA") catch
+            return error.NoLocalAppData;
+        defer alloc.free(local);
+        return try std.fs.path.join(alloc, &.{ local, "paramux", "quick-terminal.json" });
+    }
+
+    fn loadQuickTerminalRect(self: *App) ?RECT {
+        var arena = std.heap.ArenaAllocator.init(self.core_app.alloc);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const path = quickTerminalRectPath(a) catch return null;
+        const raw = std.fs.cwd().readFileAlloc(a, path, 4096) catch return null;
+        const Frame = struct { left: i32, top: i32, right: i32, bottom: i32 };
+        const parsed = std.json.parseFromSlice(Frame, a, raw, .{
+            .ignore_unknown_fields = true,
+        }) catch return null;
+        defer parsed.deinit();
+        return .{
+            .left = parsed.value.left,
+            .top = parsed.value.top,
+            .right = parsed.value.right,
+            .bottom = parsed.value.bottom,
+        };
+    }
+
+    /// Best-effort persist; the in-memory copy still works this run.
+    fn saveQuickTerminalRect(self: *App, rect: RECT) void {
+        var arena = std.heap.ArenaAllocator.init(self.core_app.alloc);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const path = quickTerminalRectPath(a) catch return;
+        var out: std.Io.Writer.Allocating = .init(a);
+        defer out.deinit();
+        std.json.Stringify.value(.{
+            .left = rect.left,
+            .top = rect.top,
+            .right = rect.right,
+            .bottom = rect.bottom,
+        }, .{}, &out.writer) catch return;
+        const file = std.fs.cwd().createFile(path, .{}) catch return;
+        defer file.close();
+        file.writeAll(out.written()) catch {};
     }
 
     fn quickTerminalFocusPolicy(self: *App) win32_quick_terminal.FocusPolicy {
@@ -7981,9 +8061,11 @@ pub const App = struct {
                 self.hideQuickTerminalSurface(surface);
             } else {
                 self.windows_hidden = false;
-                self.applyQuickTerminalGeometry(top_level, true) catch |err| {
-                    std.log.warn("QT geometry failed err={}", .{err});
-                };
+                if (!self.applyRememberedQuickTerminalRect(top_level)) {
+                    self.applyQuickTerminalGeometry(top_level, true) catch |err| {
+                        std.log.warn("QT geometry failed err={}", .{err});
+                    };
+                }
                 _ = ShowWindow(
                     top_level,
                     if (want_focus) SW_SHOW else SW_SHOWNOACTIVATE,
@@ -8015,9 +8097,11 @@ pub const App = struct {
         });
         try surface.setFloatWindow(.on);
         if (surface.windowHwnd()) |top_level| {
-            self.applyQuickTerminalGeometry(top_level, true) catch |err| {
-                std.log.warn("QT geometry failed err={}", .{err});
-            };
+            if (!self.applyRememberedQuickTerminalRect(top_level)) {
+                self.applyQuickTerminalGeometry(top_level, true) catch |err| {
+                    std.log.warn("QT geometry failed err={}", .{err});
+                };
+            }
         }
         if (want_focus) surface.present();
     }
