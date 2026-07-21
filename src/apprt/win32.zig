@@ -8317,6 +8317,47 @@ pub const App = struct {
         return try out.toOwnedSlice();
     }
 
+    /// Append one attention transition to the durable local history,
+    /// %LOCALAPPDATA%\paramux\attention-history.jsonl. Rotates to a
+    /// single .1 generation past ~1 MiB so the log stays bounded.
+    /// All failures are silent by design.
+    fn appendAttentionHistoryLine(
+        self: *App,
+        surface: *Surface,
+        state: AttentionState,
+        message: ?[]const u8,
+    ) void {
+        const alloc = self.core_app.alloc;
+        const path = self.localAppDataPath("attention-history.jsonl") orelse return;
+        defer alloc.free(path);
+
+        var out: std.Io.Writer.Allocating = .init(alloc);
+        defer out.deinit();
+        std.json.Stringify.value(.{
+            .wall_ms = std.time.milliTimestamp(),
+            .surface_id = surface.core().id,
+            .title = surface.title,
+            .state = @tagName(state),
+            .message = message,
+        }, .{ .emit_null_optional_fields = false }, &out.writer) catch return;
+        out.writer.writeByte('\n') catch return;
+
+        // Rotate before append when the current generation is full.
+        rotate: {
+            const stat = std.fs.cwd().statFile(path) catch break :rotate;
+            if (stat.size < 1024 * 1024) break :rotate;
+            const old_path = std.fmt.allocPrint(alloc, "{s}.1", .{path}) catch break :rotate;
+            defer alloc.free(old_path);
+            std.fs.cwd().deleteFile(old_path) catch {};
+            std.fs.cwd().rename(path, old_path) catch break :rotate;
+        }
+
+        const file = std.fs.cwd().createFile(path, .{ .truncate = false }) catch return;
+        defer file.close();
+        file.seekFromEnd(0) catch return;
+        file.writeAll(out.written()) catch {};
+    }
+
     fn exportAttentionLog(self: *App) bool {
         const path = self.localAppDataPath("attention-log.json") orelse return false;
         defer self.core_app.alloc.free(path);
@@ -31323,6 +31364,10 @@ pub const Surface = struct {
             var oldest = self.attention_history.orderedRemove(0);
             oldest.deinit(alloc);
         }
+        // Durable twin of the in-memory timeline: one JSONL line per
+        // transition, local only, bounded by rotation. Failure is
+        // silent — history is a convenience, never a blocker.
+        self.app.appendAttentionHistoryLine(self, state, message);
     }
 
     /// True while this pane's notifications are muted (dot still
