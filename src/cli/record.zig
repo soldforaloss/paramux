@@ -20,6 +20,11 @@ pub const Options = struct {
     /// Seconds to record (0 = until Ctrl+C, max 3600).
     seconds: u32 = 30,
 
+    /// Cap idle gaps in the cast at this many seconds (asciinema's
+    /// `idle_time_limit`; 0 = keep real gaps). Long quiet stretches
+    /// between agent bursts play back at this pace instead.
+    @"idle-limit": u32 = 0,
+
     pub fn deinit(self: *Options) void {
         if (self._arena) |arena| arena.deinit();
         self.* = undefined;
@@ -37,6 +42,7 @@ pub const Options = struct {
 ///
 ///   * `paramux record --surface-id=42 --out=run.cast --seconds=60`
 ///   * inside a pane: `paramux record --out=me.cast`
+///   * `--idle-limit=2` caps quiet stretches at 2s on playback
 ///
 /// Play with `asciinema play run.cast` or any web player.
 pub fn run(alloc: Allocator) !u8 {
@@ -89,6 +95,13 @@ fn runArgs(
             };
             continue;
         }
+        if (lib.cutPrefix(u8, arg, "--idle-limit=")) |rest| {
+            opts.@"idle-limit" = std.fmt.parseInt(u32, rest, 10) catch {
+                try stderr.print("bad --idle-limit value: {s}\n", .{rest});
+                return 1;
+            };
+            continue;
+        }
         try stderr.print("unknown option: {s}\n", .{arg});
         return 1;
     }
@@ -117,7 +130,14 @@ fn runArgs(
 
     // asciinema v2 header. 120x30 is a truthful-enough canvas for
     // paramux's read-pane text; players reflow.
-    try w.writeAll("{\"version\": 2, \"width\": 120, \"height\": 30, \"title\": \"paramux pane\"}\n");
+    if (opts.@"idle-limit" > 0) {
+        try w.print(
+            "{{\"version\": 2, \"width\": 120, \"height\": 30, \"idle_time_limit\": {d}, \"title\": \"paramux pane\"}}\n",
+            .{opts.@"idle-limit"},
+        );
+    } else {
+        try w.writeAll("{\"version\": 2, \"width\": 120, \"height\": 30, \"title\": \"paramux pane\"}\n");
+    }
 
     var timer = try std.time.Timer.start();
     var last: []u8 = try a.dupe(u8, "");
