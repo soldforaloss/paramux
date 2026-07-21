@@ -379,6 +379,35 @@ extern "user32" fn EnumChildWindows(
 extern "user32" fn GetClassNameW(hWnd: HWND, lpClassName: [*]u16, nMaxCount: i32) callconv(.winapi) i32;
 
 const WM_CTLCOLOREDIT: UINT = 0x0133;
+const WM_KEYDOWN_SETTINGS: UINT = 0x0100;
+const WM_CHAR_SETTINGS: UINT = 0x0102;
+const VK_RETURN: usize = 0x0D;
+const SUBCLASSPROC = *const fn (HWND, UINT, WPARAM, LPARAM, usize, usize) callconv(.winapi) LRESULT;
+extern "comctl32" fn SetWindowSubclass(hWnd: HWND, pfnSubclass: SUBCLASSPROC, uIdSubclass: usize, dwRefData: usize) callconv(.winapi) i32;
+extern "comctl32" fn DefSubclassProc(hWnd: HWND, uMsg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.winapi) LRESULT;
+extern "user32" fn GetNextDlgTabItem(hDlg: HWND, hCtl: ?HWND, bPrevious: i32) callconv(.winapi) ?HWND;
+extern "user32" fn SetFocus(hWnd: ?HWND) callconv(.winapi) ?HWND;
+
+/// Enter in the rail search hands keyboard focus onward (the next tab
+/// stop after the box) instead of beeping; the jump to the matched
+/// section already happened on EN_CHANGE.
+fn settingsSearchSubclassProc(
+    hwnd: HWND,
+    msg: UINT,
+    wParam: WPARAM,
+    lParam: LPARAM,
+    id: usize,
+    ref_data: usize,
+) callconv(.winapi) LRESULT {
+    _ = id;
+    if (msg == WM_KEYDOWN_SETTINGS and wParam == VK_RETURN) {
+        const parent: HWND = @ptrFromInt(ref_data);
+        if (GetNextDlgTabItem(parent, hwnd, 0)) |next| _ = SetFocus(next);
+        return 0;
+    }
+    if (msg == WM_CHAR_SETTINGS and wParam == VK_RETURN) return 0;
+    return DefSubclassProc(hwnd, msg, wParam, lParam);
+}
 const WM_CTLCOLORLISTBOX: UINT = 0x0134;
 const WM_CTLCOLORBTN: UINT = 0x0135;
 const WM_CTLCOLORSTATIC: UINT = 0x0138;
@@ -2191,6 +2220,7 @@ pub const SettingsWindow = struct {
         if (self.edit_settings_search) |search| {
             const cue = std.unicode.utf8ToUtf16LeStringLiteral("Search settings...");
             _ = SendMessageW(search, EM_SETCUEBANNER, 1, @bitCast(@intFromPtr(cue)));
+            _ = SetWindowSubclass(search, settingsSearchSubclassProc, 1, @intFromPtr(hwnd));
         }
         self.edit_digest_min = makeEdit(hwnd, self.handle.hinstance, EDIT_DIGEST_MIN, 120, ES_NUMBER);
         self.edit_alert_keywords = makeEdit(hwnd, self.handle.hinstance, EDIT_ALERT_KEYWORDS, 320, 0);
