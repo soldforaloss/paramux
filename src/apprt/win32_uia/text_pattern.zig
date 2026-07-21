@@ -10,8 +10,8 @@
 //! First-slice degradations, all within the UIA contract:
 //!   * Format / Paragraph units behave as Line (Word is real:
 //!     ink runs with trailing blanks).
-//!   * Bounding rects are line-granular with column ≈ UTF-16 unit
-//!     (wide glyphs approximate); `RangeFromPoint` stays degenerate.
+//!   * Bounding rects and point hit-testing are line/column-granular
+//!     with column ≈ UTF-16 unit (wide glyphs approximate).
 //!   * Selection is reported as unsupported (`SupportedTextSelection_None`).
 //!
 //! Threading: UIA invokes ServerSideProvider methods on RPC threads,
@@ -151,6 +151,36 @@ pub fn boundingLineRects(
         });
     }
     return try rects.toOwnedSlice(alloc);
+}
+
+/// Map a screen point to a document offset using the viewport
+/// geometry: row/column arithmetic against the cell grid, clamped to
+/// the visible range. Unknown geometry maps everything to offset 0.
+pub fn offsetForPoint(
+    doc: []const u16,
+    line_starts: []const usize,
+    visible_start: usize,
+    visible_end: usize,
+    geo: TextDoc,
+    x: f64,
+    y: f64,
+) usize {
+    if (geo.cell_w <= 0 or geo.cell_h <= 0) return 0;
+
+    const row_f = @floor((y - geo.origin_y) / geo.cell_h);
+    const col_f = @floor((x - geo.origin_x) / geo.cell_w);
+    const row: usize = if (row_f < 0) 0 else @intFromFloat(row_f);
+    const col: usize = if (col_f < 0) 0 else @intFromFloat(col_f);
+
+    const first_visible_line = lineIndexForOffset(line_starts, visible_start);
+    const line = @min(first_visible_line + row, line_starts.len - 1);
+    const line_start = line_starts[line];
+    const line_end = if (line + 1 < line_starts.len) line_starts[line + 1] else doc.len;
+    var content_end = line_end;
+    if (content_end > line_start and doc[content_end - 1] == '\n') content_end -= 1;
+
+    const offset = @min(line_start + @min(col, geo.viewport_cols), content_end);
+    return std.math.clamp(offset, visible_start, visible_end);
 }
 
 /// Word separators for TextUnit_Word: blanks and the line break. The
@@ -530,11 +560,21 @@ pub const TextPattern = struct {
 
     fn RangeFromPoint(
         self_base: *com.ITextProvider,
-        _: com.UiaPoint,
+        point: com.UiaPoint,
         out: *?*com.ITextRangeProvider,
     ) callconv(.winapi) com.HRESULT {
         const self = fromBase(self_base);
-        const range = self.newRange(0, 0) catch return com.E_OUTOFMEMORY;
+        const offset = offsetForPoint(
+            self.doc,
+            self.line_starts,
+            self.visible_start,
+            self.visible_end,
+            self.geo,
+            point.x,
+            point.y,
+        );
+        const range = self.newRange(offset, offset) catch
+            return com.E_OUTOFMEMORY;
         out.* = &range.base;
         return com.S_OK;
     }
@@ -1105,6 +1145,49 @@ test "win32 uia text pattern bounding rects" {
         defer std.testing.allocator.free(rects);
         try std.testing.expectEqual(@as(usize, 0), rects.len);
     }
+}
+
+test "win32 uia text pattern point hit-testing" {
+    const doc = std.unicode.utf8ToUtf16LeStringLiteral("one\ntwo\n\nfour");
+    const starts = [_]usize{ 0, 4, 8, 9 };
+    const geo: TextDoc = .{
+        .utf8 = &.{},
+        .visible_start = 0,
+        .visible_end = 0,
+        .cell_w = 8,
+        .cell_h = 16,
+        .origin_x = 100,
+        .origin_y = 200,
+        .viewport_cols = 80,
+    };
+
+    // Row 1 col 2 -> line "two", offset 4+2.
+    try std.testing.expectEqual(
+        @as(usize, 6),
+        offsetForPoint(doc, &starts, 0, doc.len, geo, 117, 217),
+    );
+    // Past the line's ink clamps to its content end (before the '\n').
+    try std.testing.expectEqual(
+        @as(usize, 7),
+        offsetForPoint(doc, &starts, 0, doc.len, geo, 900, 217),
+    );
+    // Above/left of the grid clamps to the first cell.
+    try std.testing.expectEqual(
+        @as(usize, 0),
+        offsetForPoint(doc, &starts, 0, doc.len, geo, 0, 0),
+    );
+    // Below the last line clamps into the last line.
+    try std.testing.expectEqual(
+        @as(usize, 10),
+        offsetForPoint(doc, &starts, 0, doc.len, geo, 108, 900),
+    );
+    // Unknown geometry -> offset 0.
+    var no_geo = geo;
+    no_geo.cell_w = 0;
+    try std.testing.expectEqual(
+        @as(usize, 0),
+        offsetForPoint(doc, &starts, 0, doc.len, no_geo, 117, 217),
+    );
 }
 
 test "win32 uia text pattern word boundaries" {
