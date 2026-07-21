@@ -46,6 +46,15 @@ jobs:
         shell: pwsh
         run: test/agent-hook-adapters.ps1
 
+      - name: Release-notes generator smoke
+        shell: pwsh
+        # Full history so `git describe` can find the last tag; the
+        # generator must group commits and exit 0.
+        run: |
+          git fetch --tags --unshallow 2>$null; if (-not $?) { git fetch --tags }
+          scripts/generate-release-notes.ps1 -Out "$env:RUNNER_TEMP/notes-smoke.md"
+          if (-not (Test-Path "$env:RUNNER_TEMP/notes-smoke.md")) { throw "no notes written" }
+
       - name: Setup Zig
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
