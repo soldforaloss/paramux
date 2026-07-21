@@ -41,6 +41,16 @@ constraints any approach must satisfy.
 
 Nothing here is scheduled; this is the map so step 1 is a mechanical PR.
 
+## Adding a locale (the decided shape)
+
+A locale is **one struct literal + one `setLocale` arm** — compiled
+in, like `german`. Parsed-file locales are deliberately rejected for
+now: every call site reads `strings.<field>` as a static with
+program lifetime (menus, banners, comptime-length UTF-16), and a
+file-loaded table would force allocation and lifetime management
+through all of them for no current user. Revisit only if a
+contributor brings a locale they cannot upstream as code.
+
 ## Progress (as of v0.1.18)
 
 Shipped slices, all behind `ui-language = de`: 1 chrome basics,
