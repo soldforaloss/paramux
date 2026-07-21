@@ -213,8 +213,33 @@ fn runArgs(
                 continue;
             };
             defer alloc.free(json);
+            var att_etag_buf: [20]u8 = undefined;
+            const att_etag = std.fmt.bufPrint(
+                &att_etag_buf,
+                "{c}{x:0>16}{c}",
+                .{ '"', std.hash.Wyhash.hash(0, json), '"' },
+            ) catch unreachable;
+            var att_inm = false;
+            var att_it = request.iterateHeaders();
+            while (att_it.next()) |h| {
+                if (std.ascii.eqlIgnoreCase(h.name, "if-none-match") and
+                    std.mem.eql(u8, std.mem.trim(u8, h.value, " "), att_etag))
+                {
+                    att_inm = true;
+                }
+            }
+            if (att_inm) {
+                request.respond("", .{
+                    .status = .not_modified,
+                    .extra_headers = &.{.{ .name = "etag", .value = att_etag }},
+                }) catch {};
+                continue;
+            }
             request.respond(json, .{
-                .extra_headers = &.{.{ .name = "content-type", .value = "application/json" }},
+                .extra_headers = &.{
+                    .{ .name = "content-type", .value = "application/json" },
+                    .{ .name = "etag", .value = att_etag },
+                },
             }) catch {};
             continue;
         }

@@ -39,8 +39,8 @@ which reader you used.
 ## Known approximations (do not file as bugs)
 
 - Wide glyphs (CJK/emoji) measure their true cells since v0.1.13;
-  the one remaining case is a wide glyph at line END highlighting one
-  cell short.
+  line-end widths use a codepoint-range heuristic since v0.1.14, so
+  only exotic width cases (ambiguous-width ranges) can be off.
 - Format/Paragraph units behave as Line.
 - Selection is reported unsupported; Narrator can read but not select.
 
