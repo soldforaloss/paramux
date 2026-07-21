@@ -8124,11 +8124,17 @@ pub const App = struct {
         const a = arena.allocator();
 
         const Event = struct { wall_ms: i64, state: []const u8, message: ?[]const u8 };
-        const PaneLog = struct { surface_id: u64, title: ?[]const u8, events: []Event };
+        const PaneLog = struct {
+            surface_id: u64,
+            window_id: u32,
+            workspace: usize,
+            title: ?[]const u8,
+            events: []Event,
+        };
         var panes: std.ArrayListUnmanaged(PaneLog) = .empty;
 
         for (self.hosts.items) |host| {
-            for (host.tabs.items) |*tab| {
+            for (host.tabs.items, 0..) |*tab, tab_index| {
                 var it = tab.tree.iterator();
                 while (it.next()) |leaf| {
                     const surface = leaf.view;
@@ -8143,6 +8149,8 @@ pub const App = struct {
                     };
                     panes.append(a, .{
                         .surface_id = surface.core().id,
+                        .window_id = host.id,
+                        .workspace = tab_index + 1,
                         .title = surface.title,
                         .events = events,
                     }) catch return false;
