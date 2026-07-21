@@ -66,6 +66,7 @@ try {
                 $statusRaw = (& $Com status --no-header)
             }
             $paneCount = @($statusRaw).Count
+            $wsCount = @(@($statusRaw) | ForEach-Object { ($_ -split '\s+')[0] } | Sort-Object -Unique).Count
             $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$($proc.Id)" -ErrorAction SilentlyContinue)
             $childMb = [math]::Round((($children | ForEach-Object { $_.WorkingSetSize } | Measure-Object -Sum).Sum / 1MB), 1)
             $attCode = 0
@@ -75,7 +76,7 @@ try {
                     $attCode = $attResp.StatusCode
                 } catch { $attCode = -1 }
             }
-            "$((Get-Date).ToString('s')),$minute,$alive,1,$paneCount,$mb,$($children.Count),$childMb,$cycles,$versionLine,$attCode" | Add-Content $OutCsv
+            "$((Get-Date).ToString('s')),$minute,$alive,$wsCount,$paneCount,$mb,$($children.Count),$childMb,$cycles,$versionLine,$attCode" | Add-Content $OutCsv
             if (-not $alive) { throw "paramux exited during soak at minute $minute" }
         }
     }
