@@ -547,6 +547,12 @@ fn actionCommands(action: Action.Key) []const Command {
             .description = "Write the session layout to disk without waiting for the autosave.",
         }},
 
+        .restart_pane => comptime &.{.{
+            .action = .restart_pane,
+            .title = "Restart Pane",
+            .description = "Fresh shell in this pane's directory; the old pane closes.",
+        }},
+
         .export_attention => comptime &.{.{
             .action = .export_attention,
             .title = "Export Attention Log",

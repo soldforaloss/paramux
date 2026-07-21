@@ -6120,6 +6120,22 @@ pub const App = struct {
                 return true;
             },
 
+            .restart_pane => {
+                // Same body as the context menu's Restart Pane: fresh
+                // auto-placed shell (inherits cwd), then close the old
+                // pane (dead panes skip the confirm). Goes through the
+                // void Host helper — calling performBindingAction here
+                // directly would make performAction's inferred error
+                // set circular.
+                if (self.findSurfaceForTarget(target)) |old_pane| {
+                    if (old_pane.host) |host| {
+                        host.restartPaneNow(old_pane);
+                        return true;
+                    }
+                }
+                return false;
+            },
+
             .clear_all_attention => {
                 var cleared: usize = 0;
                 for (self.hosts.items) |host| {
@@ -14349,14 +14365,8 @@ const Host = struct {
                 if (self.activeSurface()) |active| self.showPaneWatch(active);
             },
             CTX_RESTART_PANE => {
-                // Spawn a fresh auto-placed shell (inherits this pane's
-                // cwd), then close the old pane. Dead panes close
-                // without a confirm; live ones still ask.
                 if (self.activeSurface()) |old_pane| {
-                    self.addTerminalAutoPlaced();
-                    _ = old_pane.core_surface.performBindingAction(.{ .close_surface = {} }) catch |err| {
-                        log.warn("restart pane close failed err={}", .{err});
-                    };
+                    self.restartPaneNow(old_pane);
                 }
             },
             CTX_WORKTREE_SEED => {
@@ -15322,6 +15332,18 @@ const Host = struct {
     /// split the LARGEST pane along its LONGER side. One pane becomes
     /// two columns; a third stacks inside a column; a fourth completes
     /// the 2x2 grid — no thought required from the user.
+    /// Restart a pane: fresh auto-placed shell (inherits the pane's
+    /// cwd), then close the old pane — dead panes close without a
+    /// confirm, live ones still ask. Void on purpose: the action
+    /// dispatcher calls this, and a propagating performBindingAction
+    /// there would make performAction's inferred error set circular.
+    fn restartPaneNow(self: *Host, old_pane: *Surface) void {
+        self.addTerminalAutoPlaced();
+        _ = old_pane.core_surface.performBindingAction(.{ .close_surface = {} }) catch |err| {
+            log.warn("restart pane close failed err={}", .{err});
+        };
+    }
+
     fn addTerminalAutoPlaced(self: *Host) void {
         const tab = self.activeTab() orelse return;
         const content = self.paneLayoutRect() catch return;

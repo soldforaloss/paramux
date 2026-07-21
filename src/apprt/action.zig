@@ -154,6 +154,9 @@ pub const Action = union(Key) {
     /// Save the session layout to disk now.
     save_session,
 
+    /// Restart the focused pane (fresh shell, same directory).
+    restart_pane,
+
     /// Export all panes' attention timelines to the state directory.
     export_attention,
 
@@ -412,6 +415,7 @@ pub const Action = union(Key) {
         find_all_panes,
         show_digest,
         save_session,
+        restart_pane,
         export_attention,
         reset_quick_terminal_frame,
         clear_all_attention,

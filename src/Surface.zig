@@ -5816,6 +5816,12 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool 
             {},
         ),
 
+        .restart_pane => return try self.rt_app.performAction(
+            .{ .surface = self },
+            .restart_pane,
+            {},
+        ),
+
         .export_attention => return try self.rt_app.performAction(
             .{ .surface = self },
             .export_attention,

@@ -574,6 +574,11 @@ pub const Action = union(enum) {
     /// automation ahead of a controlled restart.
     save_session,
 
+    /// Restart the focused pane: spawn a fresh auto-placed shell
+    /// (inheriting the pane's directory), then close the old pane.
+    /// Dead panes close silently; live ones still confirm.
+    restart_pane,
+
     /// Write every pane's attention timeline (state transitions with
     /// timestamps and messages) to attention-log.json in the state
     /// directory — the paper trail after a long unattended run.
@@ -1453,6 +1458,7 @@ pub const Action = union(enum) {
             .show_digest,
             .health_hud,
             .save_session,
+            .restart_pane,
             .export_attention,
             .reset_quick_terminal_frame,
             .clear_all_attention,
