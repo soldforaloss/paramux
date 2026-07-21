@@ -8264,6 +8264,7 @@ pub const App = struct {
             surface_id: u64,
             window_id: u32,
             workspace: usize,
+            workspace_note: ?[]const u8,
             title: ?[]const u8,
             events: []Event,
         };
@@ -8283,6 +8284,7 @@ pub const App = struct {
                         .surface_id = surface.core().id,
                         .window_id = host.id,
                         .workspace = tab_index + 1,
+                        .workspace_note = tab.note,
                         .title = surface.title,
                         .events = events,
                     });
@@ -8311,6 +8313,7 @@ pub const App = struct {
             surface_id: u64,
             window_id: u32,
             workspace: usize,
+            workspace_note: ?[]const u8,
             title: ?[]const u8,
             events: []Event,
         };
@@ -8334,6 +8337,7 @@ pub const App = struct {
                         .surface_id = surface.core().id,
                         .window_id = host.id,
                         .workspace = tab_index + 1,
+                        .workspace_note = tab.note,
                         .title = surface.title,
                         .events = events,
                     }) catch return false;
@@ -8359,10 +8363,12 @@ pub const App = struct {
             var csv_out: std.Io.Writer.Allocating = .init(a);
             defer csv_out.deinit();
             const w = &csv_out.writer;
-            w.writeAll("surface_id,window_id,workspace,title,wall_ms,state,message\r\n") catch break :csv;
+            w.writeAll("surface_id,window_id,workspace,workspace_note,title,wall_ms,state,message\r\n") catch break :csv;
             for (panes.items) |pane| {
                 for (pane.events) |event| {
                     w.print("{d},{d},{d},", .{ pane.surface_id, pane.window_id, pane.workspace }) catch break :csv;
+                    writeCsvField(w, pane.workspace_note orelse "") catch break :csv;
+                    w.writeAll(",") catch break :csv;
                     writeCsvField(w, pane.title orelse "") catch break :csv;
                     w.print(",{d},{s},", .{ event.wall_ms, event.state }) catch break :csv;
                     writeCsvField(w, event.message orelse "") catch break :csv;
