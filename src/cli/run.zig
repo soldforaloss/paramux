@@ -205,10 +205,18 @@ pub fn collectSurfaceIds(alloc: Allocator, target: apprt.ipc.Target) ![]u64 {
 }
 
 /// Pane surface ids of the ACTIVE workspace in the focused window.
+/// Panes with the broadcast opt-out ("solo") flag are skipped — this
+/// collector exists for fan-out sends, and the CLI fan-out honors
+/// the same flag GUI broadcast typing does. Target an opted-out pane
+/// explicitly with --surface-id instead.
 pub fn collectActiveTabSurfaceIds(alloc: Allocator, target: apprt.ipc.Target) ![]u64 {
     const payload = (try apprt.App.queryAutomationWindowList(alloc, target)) orelse
         return error.NoInstance;
     defer alloc.free(payload);
+    return activeTabIdsFromJson(alloc, payload);
+}
+
+fn activeTabIdsFromJson(alloc: Allocator, payload: []const u8) ![]u64 {
     var parsed = try std.json.parseFromSlice(std.json.Value, alloc, payload, .{});
     defer parsed.deinit();
 
@@ -223,6 +231,9 @@ pub fn collectActiveTabSurfaceIds(alloc: Allocator, target: apprt.ipc.Target) ![
             if (!active) continue;
             const panes = tab.object.get("panes") orelse continue;
             for (panes.array.items) |pane| {
+                if (pane.object.get("opt_out")) |oo| {
+                    if (oo == .bool and oo.bool) continue;
+                }
                 if (pane.object.get("surface_id")) |sid| {
                     if (apprt.ipc.jsonU64(sid)) |v| try ids.append(alloc, v);
                 }
@@ -252,4 +263,16 @@ test "run rejects a bad workspace value" {
     var errw = std.Io.Writer.fixed(&err_buf);
     const code = try runArgs(t.allocator, &iter, &out, &errw);
     try t.expectEqual(@as(u8, 1), code);
+}
+
+test "win32 all-panes fan-out skips opted-out panes" {
+    const t = std.testing;
+    const payload =
+        "{\"windows\":[{\"focused\":true,\"tabs\":[{\"active\":true,\"panes\":[" ++
+        "{\"surface_id\":11,\"opt_out\":false}," ++
+        "{\"surface_id\":18446744073709551615,\"opt_out\":true}," ++
+        "{\"surface_id\":13}]}]}]}";
+    const ids = try activeTabIdsFromJson(t.allocator, payload);
+    defer t.allocator.free(ids);
+    try t.expectEqualSlices(u64, &.{ 11, 13 }, ids);
 }

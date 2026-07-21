@@ -117,6 +117,9 @@ pub const AutomationPane = struct {
     /// reported session token total (0 = unknown).
     attention: []const u8 = "none",
     tokens: u64 = 0,
+    /// Additive: the pane's broadcast opt-out ("solo") flag. Fan-out
+    /// senders (GUI broadcast, `send --all-panes`) skip these panes.
+    opt_out: bool = false,
 };
 
 pub const AutomationActionTarget = union(enum) {
