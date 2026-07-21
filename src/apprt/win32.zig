@@ -16684,6 +16684,21 @@ const Host = struct {
         _ = InvalidateRect(hwnd, &rect, 0);
     }
 
+    /// Raise TextChanged immediately (attention transitions): screen
+    /// readers re-read the pane the moment an agent finishes or starts
+    /// waiting instead of up to 3s later on the heartbeat. Transient
+    /// provider, same as the heartbeat; no client attached = one bool.
+    fn raiseUiaTextChangedNow(self: *Host) void {
+        if (!win32_uia.events.clientsAreListening()) return;
+        const hwnd = self.hwnd orelse return;
+        const provider = win32_uia.RootProvider.create(
+            self.app.core_app.alloc,
+            hwnd,
+        ) catch return;
+        defer _ = win32_uia.RootProvider.Release(&provider.base);
+        win32_uia.events.raiseTextChanged(&provider.base);
+    }
+
     /// UIA TextChanged heartbeat, on the ports tick (3s). When a UIA
     /// client is attached and the active pane's content signature moved
     /// since the last raise, fire UIA_Text_TextChangedEventId on the
@@ -30754,6 +30769,11 @@ pub const Surface = struct {
         self.attention_state = state;
         self.stuck_nudged = false;
         self.recordAttentionEvent(state, self.last_notification);
+        // The window's TextPattern serves the ACTIVE pane; an attention
+        // transition there usually means fresh output worth re-reading.
+        if (self.host) |host| {
+            if (host.activeSurface() == self) host.raiseUiaTextChangedNow();
+        }
         if (state.isAlerting()) {
             // Stamp recency so goto_attention can jump to the NEWEST
             // unhandled pane (the cmux "most recent unread" queue).
