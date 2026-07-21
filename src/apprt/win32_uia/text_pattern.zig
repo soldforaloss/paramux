@@ -232,15 +232,24 @@ pub fn lineIndexForOffset(line_starts: []const usize, offset: usize) usize {
     return lo;
 }
 
-/// Expand `[start, end)` to enclosing `unit` boundaries.
+/// Expand `[start, end)` to enclosing `unit` boundaries. Page means
+/// the viewport when its bounds are known (start < end), else the
+/// whole document.
 pub fn expandRange(
     doc: []const u16,
     line_starts: []const usize,
     start: usize,
     unit: i32,
+    visible_start: usize,
+    visible_end: usize,
 ) OffsetRange {
     const doc_len = doc.len;
     switch (unit) {
+        com.TextUnit_Page => {
+            if (visible_start < visible_end)
+                return .{ .start = visible_start, .end = visible_end };
+            return .{ .start = 0, .end = doc_len };
+        },
         com.TextUnit_Character => {
             const s = @min(start, doc_len);
             return .{ .start = s, .end = @min(s + 1, doc_len) };
@@ -752,6 +761,8 @@ pub const TextRange = struct {
             self.pattern.line_starts,
             self.start,
             unit,
+            self.pattern.visible_start,
+            self.pattern.visible_end,
         );
         self.start = expanded.start;
         self.end = expanded.end;
@@ -894,6 +905,8 @@ pub const TextRange = struct {
             self.pattern.line_starts,
             self.start,
             unit,
+            self.pattern.visible_start,
+            self.pattern.visible_end,
         );
         self.start = expanded.start;
         self.end = expanded.end;
@@ -1016,22 +1029,28 @@ test "win32 uia text pattern expand units" {
     const doc = std.unicode.utf8ToUtf16LeStringLiteral("one\ntwo\n\nfour");
     const starts = [_]usize{ 0, 4, 8, 9 };
 
-    const line = expandRange(doc, &starts, 5, com.TextUnit_Line);
+    const line = expandRange(doc, &starts, 5, com.TextUnit_Line, 0, 0);
     try std.testing.expectEqual(OffsetRange{ .start = 4, .end = 8 }, line);
 
     // "two" plus its whole trailing separator run — the newline AND the
     // blank line's newline — so word navigation skips empty lines.
-    const word = expandRange(doc, &starts, 5, com.TextUnit_Word);
+    const word = expandRange(doc, &starts, 5, com.TextUnit_Word, 0, 0);
     try std.testing.expectEqual(OffsetRange{ .start = 4, .end = 9 }, word);
 
-    const last = expandRange(doc, &starts, 10, com.TextUnit_Line);
+    const last = expandRange(doc, &starts, 10, com.TextUnit_Line, 0, 0);
     try std.testing.expectEqual(OffsetRange{ .start = 9, .end = 13 }, last);
 
-    const char = expandRange(doc, &starts, 12, com.TextUnit_Character);
+    const char = expandRange(doc, &starts, 12, com.TextUnit_Character, 0, 0);
     try std.testing.expectEqual(OffsetRange{ .start = 12, .end = 13 }, char);
 
-    const document = expandRange(doc, &starts, 5, com.TextUnit_Document);
+    const document = expandRange(doc, &starts, 5, com.TextUnit_Document, 0, 0);
     try std.testing.expectEqual(OffsetRange{ .start = 0, .end = 13 }, document);
+
+    // Page = the viewport when bounds are known, whole doc otherwise.
+    const page = expandRange(doc, &starts, 5, com.TextUnit_Page, 4, 9);
+    try std.testing.expectEqual(OffsetRange{ .start = 4, .end = 9 }, page);
+    const page_unknown = expandRange(doc, &starts, 5, com.TextUnit_Page, 0, 0);
+    try std.testing.expectEqual(OffsetRange{ .start = 0, .end = 13 }, page_unknown);
 }
 
 test "win32 uia text pattern endpoint moves clamp at edges" {
@@ -1199,19 +1218,19 @@ test "win32 uia text pattern word boundaries" {
     // still belongs to the word whose tail it is.
     try std.testing.expectEqual(
         OffsetRange{ .start = 0, .end = 7 },
-        expandRange(doc, &starts, 2, com.TextUnit_Word),
+        expandRange(doc, &starts, 2, com.TextUnit_Word, 0, 0),
     );
     try std.testing.expectEqual(
         OffsetRange{ .start = 0, .end = 7 },
-        expandRange(doc, &starts, 5, com.TextUnit_Word),
+        expandRange(doc, &starts, 5, com.TextUnit_Word, 0, 0),
     );
     try std.testing.expectEqual(
         OffsetRange{ .start = 7, .end = 12 },
-        expandRange(doc, &starts, 8, com.TextUnit_Word),
+        expandRange(doc, &starts, 8, com.TextUnit_Word, 0, 0),
     );
     try std.testing.expectEqual(
         OffsetRange{ .start = 12, .end = 17 },
-        expandRange(doc, &starts, 16, com.TextUnit_Word),
+        expandRange(doc, &starts, 16, com.TextUnit_Word, 0, 0),
     );
 
     // Forward moves land on successive word starts; clamp at the end.
