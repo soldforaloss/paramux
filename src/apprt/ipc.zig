@@ -92,6 +92,9 @@ pub const AutomationWindow = struct {
 
 pub const AutomationTab = struct {
     tab_id: u32,
+    /// Additive v2 field: the workspace scratch note (borrowed from
+    /// the host; not owned by this struct).
+    note: ?[]const u8 = null,
     active: bool,
     focused_surface_id: ?u64,
     pane_count: u64,

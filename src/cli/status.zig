@@ -16,6 +16,10 @@ pub const Options = struct {
     /// Seconds between --watch re-renders (1-60, default 2).
     interval: u32 = 2,
 
+    /// Also print each workspace's scratch note (its own line, so the
+    /// default table stays machine-countable).
+    notes: bool = false,
+
     /// Omit the column-header row (script-friendly output).
     @"no-header": bool = false,
 
@@ -70,6 +74,10 @@ fn runArgs(
             opts.interval = std.math.clamp(n, 1, 60);
             continue;
         }
+        if (std.mem.eql(u8, arg, "--notes")) {
+            opts.notes = true;
+            continue;
+        }
         if (std.mem.eql(u8, arg, "--watch")) {
             opts.watch = true;
             continue;
@@ -88,13 +96,13 @@ fn runArgs(
         while (true) {
             // ANSI clear + home keeps the table stable in place.
             try stdout.writeAll("\x1b[2J\x1b[H");
-            const code = try renderOnce(alloc, a, target, stdout, stderr, opts.@"no-header");
+            const code = try renderOnce(alloc, a, target, stdout, stderr, opts.@"no-header", opts.notes);
             try stdout.flush();
             if (code != 0) return code;
             std.Thread.sleep(@as(u64, opts.interval) * std.time.ns_per_s);
         }
     }
-    return renderOnce(alloc, a, target, stdout, stderr, opts.@"no-header");
+    return renderOnce(alloc, a, target, stdout, stderr, opts.@"no-header", opts.notes);
 }
 
 fn renderOnce(
@@ -104,6 +112,7 @@ fn renderOnce(
     stdout: *std.Io.Writer,
     stderr: *std.Io.Writer,
     no_header: bool,
+    show_notes: bool,
 ) !u8 {
     const payload = (apprt.App.queryAutomationWindowList(alloc, target) catch |err| {
         try stderr.print("could not reach a running paramux instance (err={})\n", .{err});
@@ -127,6 +136,13 @@ fn renderOnce(
     for (windows.array.items) |win| {
         const tabs = win.object.get("tabs") orelse continue;
         for (tabs.array.items, 0..) |tab, ti| {
+            if (show_notes) {
+                if (tab.object.get("note")) |note_val| {
+                    if (note_val == .string and note_val.string.len > 0) {
+                        try stdout.print("# workspace {d} note: {s}\n", .{ ti + 1, note_val.string });
+                    }
+                }
+            }
             const panes = tab.object.get("panes") orelse continue;
             for (panes.array.items) |pane| {
                 const obj = pane.object;
