@@ -545,6 +545,9 @@ pub const SettingsWindow = struct {
     btn_section_agents: ?HWND = null,
     edit_theme_search: ?HWND = null,
     edit_settings_search: ?HWND = null,
+    /// True while the rail search query matches no section; tints the
+    /// search box so the miss is visible without a banner.
+    settings_search_missed: bool = false,
     list_themes: ?HWND = null,
     chk_explorer_menu: ?HWND = null,
     /// Theme catalogue backing the picker. All entry strings live in
@@ -1598,13 +1601,28 @@ pub const SettingsWindow = struct {
     fn jumpToSearchedSection(self: *SettingsWindow) void {
         if (self.suppress_edit_events) return;
         const edit = self.edit_settings_search orelse return;
+        const was_missed = self.settings_search_missed;
+        defer if (self.settings_search_missed != was_missed) {
+            _ = InvalidateRect(edit, null, 1);
+        };
         var buf_w: [64]u16 = undefined;
         const n = GetWindowTextW(edit, &buf_w, @intCast(buf_w.len));
-        if (n <= 0) return;
+        if (n <= 0) {
+            self.settings_search_missed = false;
+            return;
+        }
         var utf8_buf: [128]u8 = undefined;
         const len = std.unicode.utf16LeToUtf8(&utf8_buf, buf_w[0..@intCast(n)]) catch return;
         const trimmed = std.mem.trim(u8, utf8_buf[0..len], " ");
-        const section = sectionMatchingQuery(trimmed) orelse return;
+        if (trimmed.len == 0) {
+            self.settings_search_missed = false;
+            return;
+        }
+        const section = sectionMatchingQuery(trimmed) orelse {
+            self.settings_search_missed = true;
+            return;
+        };
+        self.settings_search_missed = false;
         if (self.active_section != section) self.setActiveSection(section);
     }
 
@@ -2468,16 +2486,27 @@ const advanced_rows = [_]SectionRow{
 
 /// Keywords per section for the rail search box; first section whose
 /// name or keywords contain the query becomes active.
+/// Mix a COLORREF (0x00BBGGRR) toward an RGB target by `pct` percent.
+fn blendTowardRgb(base: u32, r: u32, g: u32, b: u32, pct: u32) u32 {
+    const base_r = base & 0xFF;
+    const base_g = (base >> 8) & 0xFF;
+    const base_b = (base >> 16) & 0xFF;
+    const out_r = (base_r * (100 - pct) + r * pct) / 100;
+    const out_g = (base_g * (100 - pct) + g * pct) / 100;
+    const out_b = (base_b * (100 - pct) + b * pct) / 100;
+    return out_r | (out_g << 8) | (out_b << 16);
+}
+
 fn sectionSearchBlob(section: Section) []const u8 {
     return switch (section) {
-        .appearance => "appearance font size theme opacity cursor padding blur",
-        .theme => "theme colors swatch dark light import",
-        .terminal => "terminal scrollback confirm close copy clipboard link notifications",
-        .shell => "shell command integration powershell wsl",
-        .keybindings => "keybindings shortcuts chords keys",
-        .windows => "windows explorer context menu integration",
-        .agents => "agents digest keywords token budget restart layout focus attention webhook",
-        .advanced => "advanced update channel editor config",
+        .appearance => "appearance font family size ligatures theme opacity cursor style padding blur background",
+        .theme => "theme colors swatch scheme dark light import url",
+        .terminal => "terminal scrollback bell confirm close copy on select clipboard paste link notifications mouse",
+        .shell => "shell command integration powershell cmd wsl elevated",
+        .keybindings => "keybindings shortcuts chords keys leader tmux prefix",
+        .windows => "windows explorer context menu integration jump list startup titlebar",
+        .agents => "agents digest keywords token budget restart layout focus attention webhook broadcast quick terminal restore commands language",
+        .advanced => "advanced update channel rollback editor diagnostics config file",
     };
 }
 
@@ -2735,9 +2764,19 @@ fn wndProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.wina
             if (owner) |o| {
                 const colors = o.handle.uiColors(o.handle.ctx);
                 const hdc: HDC = @ptrFromInt(wParam);
+                var field_bg = colors.field_bg;
+                // A missed rail search tints its box toward red so the
+                // "no such section" state is visible in place.
+                if (o.settings_search_missed and lParam != 0) {
+                    const ctl: HWND = @ptrFromInt(@as(usize, @bitCast(lParam)));
+                    if (o.edit_settings_search) |search_edit| {
+                        if (ctl == search_edit)
+                            field_bg = blendTowardRgb(colors.field_bg, 200, 60, 60, 35);
+                    }
+                }
                 _ = SetTextColor(hdc, colors.text);
-                _ = SetBkColor(hdc, colors.field_bg);
-                _ = SetDCBrushColor(hdc, colors.field_bg);
+                _ = SetBkColor(hdc, field_bg);
+                _ = SetDCBrushColor(hdc, field_bg);
                 return @bitCast(@intFromPtr(GetStockObject(DC_BRUSH)));
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
