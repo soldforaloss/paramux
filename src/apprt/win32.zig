@@ -3136,7 +3136,11 @@ fn writeAllHandle(pipe: windows.HANDLE, src: []const u8) !void {
 }
 
 fn connectToIpcPipe(pipe_name: [:0]const u16) !windows.HANDLE {
-    var retries: u8 = 0;
+    // Concurrent clients (serve + status + notify in a fleet script)
+    // can keep an instance's pipe momentarily busy back to back, so a
+    // single WaitNamedPipe round is not enough: retry under a total
+    // deadline instead.
+    const deadline_ms: u64 = GetTickCount64() + 3000;
     while (true) {
         const handle = windows.kernel32.CreateFileW(
             pipe_name.ptr,
@@ -3153,11 +3157,12 @@ fn connectToIpcPipe(pipe_name: [:0]const u16) !windows.HANDLE {
         switch (err) {
             .FILE_NOT_FOUND => return error.FileNotFound,
             .PIPE_BUSY => {
-                if (retries == 0 and WaitNamedPipeW(pipe_name.ptr, 1000) != 0) {
-                    retries += 1;
-                    continue;
-                }
-                return error.PipeBusy;
+                const now = GetTickCount64();
+                if (now >= deadline_ms) return error.PipeBusy;
+                // On WaitNamedPipe timeout the loop re-checks the
+                // deadline; an instance appearing/freeing retries.
+                _ = WaitNamedPipeW(pipe_name.ptr, @intCast(deadline_ms - now));
+                continue;
             },
             else => return windows.unexpectedError(err),
         }
