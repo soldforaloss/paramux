@@ -13,6 +13,9 @@ pub const Options = struct {
     /// Re-render the table every 2 seconds until interrupted.
     watch: bool = false,
 
+    /// Seconds between --watch re-renders (1-60, default 2).
+    interval: u32 = 2,
+
     /// Omit the column-header row (script-friendly output).
     @"no-header": bool = false,
 
@@ -62,6 +65,11 @@ fn runArgs(
             opts.class = try a.dupeZ(u8, class);
             continue;
         }
+        if (lib.cutPrefix(u8, arg, "--interval=")) |rest| {
+            const n = std.fmt.parseInt(u32, rest, 10) catch 0;
+            opts.interval = std.math.clamp(n, 1, 60);
+            continue;
+        }
         if (std.mem.eql(u8, arg, "--watch")) {
             opts.watch = true;
             continue;
@@ -83,7 +91,7 @@ fn runArgs(
             const code = try renderOnce(alloc, a, target, stdout, stderr, opts.@"no-header");
             try stdout.flush();
             if (code != 0) return code;
-            std.Thread.sleep(2 * std.time.ns_per_s);
+            std.Thread.sleep(@as(u64, opts.interval) * std.time.ns_per_s);
         }
     }
     return renderOnce(alloc, a, target, stdout, stderr, opts.@"no-header");
