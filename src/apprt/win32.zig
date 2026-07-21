@@ -4456,6 +4456,7 @@ pub const App = struct {
             };
             const surface = try self.restoreSessionPane(
                 pane,
+                saved_tab.env,
                 existing_host,
                 tab_surface,
                 tab_index,
@@ -4493,6 +4494,7 @@ pub const App = struct {
     fn restoreSessionPane(
         self: *App,
         pane: win32_session_state.Pane,
+        tab_env: ?[]const []const u8,
         existing_host: ?*Host,
         tab_surface: ?*Surface,
         tab_index: usize,
@@ -4519,6 +4521,16 @@ pub const App = struct {
             if (cmd_str.len > 0) {
                 const alloc = config._arena.?.allocator();
                 config.command = .{ .shell = try alloc.dupeZ(u8, cmd_str) };
+            }
+        }
+        // Workspace-wide env applies first so a pane's own entries win
+        // on conflict (later parseCLI entries override earlier ones).
+        if (tab_env) |env_entries| {
+            const alloc = config._arena.?.allocator();
+            for (env_entries) |entry| {
+                config.env.parseCLI(alloc, entry) catch |err| {
+                    log.warn("workspace env entry ignored ({s}): {}", .{ entry, err });
+                };
             }
         }
         // ...and extra environment ("KEY=value" entries), merged over

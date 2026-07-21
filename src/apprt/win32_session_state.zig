@@ -58,6 +58,10 @@ pub const WindowState = enum {
 pub const Tab = struct {
     /// Workspace scratch note (Ctrl+Alt+N); additive, defaults empty.
     note: ?[]const u8 = null,
+    /// Layout templates only: extra environment applied to EVERY pane
+    /// in the workspace ("KEY=value" strings); a pane's own `env`
+    /// entries win on conflict. Never emitted by session save.
+    env: ?[]const []const u8 = null,
     selected_leaf: usize,
     layout: LayoutTree,
 };
