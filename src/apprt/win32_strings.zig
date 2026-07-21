@@ -51,6 +51,12 @@ pub const Strings = struct {
     // Accessibility strings (spoken by screen readers).
     uia_localized_control_type: [:0]const u16 = w("terminal window"),
 
+    // Context-menu popup titles without accelerator chords.
+    menu_workspace_color: [:0]const u16 = w("Workspace Color"),
+    menu_save_layout_to: [:0]const u16 = w("Save Layout To"),
+    menu_apply_layout_from: [:0]const u16 = w("Apply Layout From"),
+    menu_workspaces: [:0]const u16 = w("Workspaces..."),
+
     // Banner texts (UTF-8 - setBanner takes []const u8). Chord names
     // inside the text stay untranslated, same rule as tooltips.
     banner_nothing_to_undo: []const u8 = "Nothing to undo.",
@@ -94,6 +100,10 @@ pub const german: Strings = .{
     .tooltip_help = w("Hilfe"),
     .tooltip_more_actions = w("Weitere Aktionen"),
     .uia_localized_control_type = w("Terminalfenster"),
+    .menu_workspace_color = w("Arbeitsbereich-Farbe"),
+    .menu_save_layout_to = w("Layout speichern in"),
+    .menu_apply_layout_from = w("Layout anwenden aus"),
+    .menu_workspaces = w("Arbeitsbereiche..."),
     .banner_nothing_to_undo = "Nichts r\u{00FC}ckg\u{00E4}ngig zu machen.",
     .banner_nothing_to_redo = "Nichts wiederherzustellen.",
     .banner_session_saved = "Sitzung gespeichert.",

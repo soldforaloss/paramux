@@ -13858,7 +13858,7 @@ const Host = struct {
                 _ = AppendMenuW(accent_menu, MF_STRING | checked, CTX_ACCENT_BASE + ai, @ptrCast(&label_w));
             }
             _ = AppendMenuW(accent_menu, MF_STRING, CTX_ACCENT_BASE + workspace_accents.len, std.unicode.utf8ToUtf16LeStringLiteral("Default"));
-            _ = AppendMenuW(menu, MF_POPUP, @intFromPtr(accent_menu), std.unicode.utf8ToUtf16LeStringLiteral("Workspace Color"));
+            _ = AppendMenuW(menu, MF_POPUP, @intFromPtr(accent_menu), win32_strings.strings.menu_workspace_color);
         }
         {
             const occupied = self.layoutSlotOccupancy();
@@ -13877,7 +13877,7 @@ const Host = struct {
                     lw[wn] = 0;
                     _ = AppendMenuW(save_menu, MF_STRING, CTX_LAYOUT_SAVE_BASE + slot, @ptrCast(&lw));
                 }
-                _ = AppendMenuW(menu, MF_POPUP, @intFromPtr(save_menu), std.unicode.utf8ToUtf16LeStringLiteral("Save Layout To"));
+                _ = AppendMenuW(menu, MF_POPUP, @intFromPtr(save_menu), win32_strings.strings.menu_save_layout_to);
             }
             if (CreatePopupMenu()) |apply_menu| {
                 for (0..layout_slot_count) |slot| {
@@ -13892,10 +13892,10 @@ const Host = struct {
                     const flags: UINT = if (occupied[slot]) MF_STRING else MF_GRAYED;
                     _ = AppendMenuW(apply_menu, flags, CTX_LAYOUT_APPLY_BASE + slot, @ptrCast(&lw));
                 }
-                _ = AppendMenuW(menu, MF_POPUP, @intFromPtr(apply_menu), std.unicode.utf8ToUtf16LeStringLiteral("Apply Layout From"));
+                _ = AppendMenuW(menu, MF_POPUP, @intFromPtr(apply_menu), win32_strings.strings.menu_apply_layout_from);
             }
         }
-        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_OVERVIEW, std.unicode.utf8ToUtf16LeStringLiteral("Workspaces..."));
+        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_OVERVIEW, win32_strings.strings.menu_workspaces);
 
         // Split directions as direct, top-level items (not a buried submenu) so
         // creating a split is discoverable, with the keyboard shortcut shown so
@@ -14891,7 +14891,7 @@ const Host = struct {
         // Utility items. Split lives here too (not just the right-click menu) so
         // the one obvious "more actions" control advertises how to split a pane.
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, std.unicode.utf8ToUtf16LeStringLiteral("New Workspace\tCtrl+Shift+T"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_OVERVIEW, std.unicode.utf8ToUtf16LeStringLiteral("Workspaces..."));
+        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_OVERVIEW, win32_strings.strings.menu_workspaces);
         _ = AppendMenuW(menu, MF_STRING, CTX_QUICK_TERMINAL, std.unicode.utf8ToUtf16LeStringLiteral("Quick Terminal\tCtrl+Alt+Q"));
         _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_RIGHT, std.unicode.utf8ToUtf16LeStringLiteral("Split Right\tCtrl+Shift+O"));
         _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_DOWN, std.unicode.utf8ToUtf16LeStringLiteral("Split Down\tCtrl+Shift+E"));
