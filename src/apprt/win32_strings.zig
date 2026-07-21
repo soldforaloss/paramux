@@ -47,6 +47,19 @@ pub const Strings = struct {
     tooltip_settings: [:0]const u16 = w("Settings (Ctrl+,)"),
     tooltip_help: [:0]const u16 = w("Help"),
     tooltip_more_actions: [:0]const u16 = w("More actions"),
+
+    // Banner texts (UTF-8 - setBanner takes []const u8). Chord names
+    // inside the text stay untranslated, same rule as tooltips.
+    banner_nothing_to_undo: []const u8 = "Nothing to undo.",
+    banner_nothing_to_redo: []const u8 = "Nothing to redo.",
+    banner_session_saved: []const u8 = "Session saved.",
+    banner_all_quiet: []const u8 = "All quiet: no panes need attention.",
+    banner_pane_muted: []const u8 = "Pane notifications muted for 30 minutes.",
+    banner_pane_unmuted: []const u8 = "Notifications unmuted for this pane.",
+    banner_workspace_closed: []const u8 = "Workspace closed. Ctrl+Shift+Z undoes.",
+    banner_pane_moved: []const u8 = "Pane moved to this workspace.",
+    banner_quick_pins_cleared: []const u8 = "Cleared quick slot pins.",
+    banner_qt_frame_reset: []const u8 = "Quick terminal frame reset.",
 };
 
 /// The English table (the field defaults).
@@ -77,6 +90,16 @@ pub const german: Strings = .{
     .tooltip_settings = w("Einstellungen (Ctrl+,)"),
     .tooltip_help = w("Hilfe"),
     .tooltip_more_actions = w("Weitere Aktionen"),
+    .banner_nothing_to_undo = "Nichts r\u{00FC}ckg\u{00E4}ngig zu machen.",
+    .banner_nothing_to_redo = "Nichts wiederherzustellen.",
+    .banner_session_saved = "Sitzung gespeichert.",
+    .banner_all_quiet = "Alles ruhig: kein Pane braucht Aufmerksamkeit.",
+    .banner_pane_muted = "Pane-Benachrichtigungen f\u{00FC}r 30 Minuten stumm.",
+    .banner_pane_unmuted = "Benachrichtigungen f\u{00FC}r dieses Pane wieder an.",
+    .banner_workspace_closed = "Arbeitsbereich geschlossen. Ctrl+Shift+Z macht es r\u{00FC}ckg\u{00E4}ngig.",
+    .banner_pane_moved = "Pane in diesen Arbeitsbereich verschoben.",
+    .banner_quick_pins_cleared = "Schnellzugriffs-Pins geleert.",
+    .banner_qt_frame_reset = "Quick-Terminal-Position zur\u{00FC}ckgesetzt.",
 };
 
 /// The active string table. Selected ONCE at startup, before any
@@ -89,10 +112,18 @@ pub fn setLocale(tag: []const u8) void {
     strings = if (std.mem.eql(u8, tag, "de")) german else english;
 }
 
-test "string table defaults are non-empty UTF-16" {
+test "string table defaults are non-empty" {
     inline for (@typeInfo(Strings).@"struct".fields) |field| {
         const value = @field(strings, field.name);
         try std.testing.expect(value.len > 0);
-        try std.testing.expect(value[value.len] == 0);
+        if (@TypeOf(value) == [:0]const u16) {
+            try std.testing.expect(value[value.len] == 0);
+        }
+    }
+}
+
+test "german table covers every field" {
+    inline for (@typeInfo(Strings).@"struct".fields) |field| {
+        try std.testing.expect(@field(german, field.name).len > 0);
     }
 }

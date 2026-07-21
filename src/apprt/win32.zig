@@ -6058,7 +6058,7 @@ pub const App = struct {
                 self.saveSessionState();
                 if (self.findSurfaceForTarget(target)) |surface| {
                     if (surface.host) |host| {
-                        host.setBanner(.info, "Session saved.") catch {};
+                        host.setBanner(.info, win32_strings.strings.banner_session_saved) catch {};
                     }
                 }
                 return true;
@@ -6075,7 +6075,7 @@ pub const App = struct {
                 }
                 if (self.findSurfaceForTarget(target)) |surface| {
                     if (surface.host) |host| {
-                        host.setBanner(.info, "Quick terminal frame reset.") catch {};
+                        host.setBanner(.info, win32_strings.strings.banner_qt_frame_reset) catch {};
                     }
                 }
                 return true;
@@ -6437,7 +6437,7 @@ pub const App = struct {
                         try host.setBanner(.info, message);
                         return true;
                     }
-                    try host.setBanner(.info, "Nothing to undo.");
+                    try host.setBanner(.info, win32_strings.strings.banner_nothing_to_undo);
                     return true;
                 };
 
@@ -6466,7 +6466,7 @@ pub const App = struct {
                     return true;
                 }
 
-                _ = try self.showHostBanner(.{ .surface = surface.core() }, .info, "Nothing to undo.");
+                _ = try self.showHostBanner(.{ .surface = surface.core() }, .info, win32_strings.strings.banner_nothing_to_undo);
                 return true;
             },
 
@@ -6479,7 +6479,7 @@ pub const App = struct {
                         try host.setBanner(.info, message);
                         return true;
                     }
-                    try host.setBanner(.info, "Nothing to redo.");
+                    try host.setBanner(.info, win32_strings.strings.banner_nothing_to_redo);
                     return true;
                 };
 
@@ -6508,7 +6508,7 @@ pub const App = struct {
                     return true;
                 }
 
-                _ = try self.showHostBanner(.{ .surface = surface.core() }, .info, "Nothing to redo.");
+                _ = try self.showHostBanner(.{ .surface = surface.core() }, .info, win32_strings.strings.banner_nothing_to_redo);
                 return true;
             },
 
@@ -12502,7 +12502,7 @@ const Host = struct {
     fn clearQuickSlotPins(self: *Host) bool {
         self.app.clearLauncherQuickSlotPreferences();
         self.setFocusedQuickSlot(null);
-        self.setBanner(.info, "Cleared quick slot pins.") catch {};
+        self.setBanner(.info, win32_strings.strings.banner_quick_pins_cleared) catch {};
         return true;
     }
 
@@ -14050,10 +14050,10 @@ const Host = struct {
                 if (self.activeSurface()) |active| {
                     if (active.attentionMuted()) {
                         active.attention_mute_until_ms = 0;
-                        self.setBanner(.info, "Notifications unmuted for this pane.") catch {};
+                        self.setBanner(.info, win32_strings.strings.banner_pane_unmuted) catch {};
                     } else {
                         active.attention_mute_until_ms = std.time.milliTimestamp() + 30 * std.time.ms_per_min;
-                        self.setBanner(.info, "Pane notifications muted for 30 minutes.") catch {};
+                        self.setBanner(.info, win32_strings.strings.banner_pane_muted) catch {};
                     }
                 }
             },
@@ -14525,7 +14525,7 @@ const Host = struct {
             errs += c.err;
         }
         if (waiting + done + errs == 0) {
-            self.setBanner(.info, "All quiet: no panes need attention.") catch {};
+            self.setBanner(.info, win32_strings.strings.banner_all_quiet) catch {};
             return;
         }
         const many_windows = self.app.hosts.items.len > 1;
@@ -15287,7 +15287,7 @@ const Host = struct {
                     log.warn("sidebar close workspace failed err={}", .{err});
                     return true;
                 };
-                self.setBanner(.info, "Workspace closed. Ctrl+Shift+Z undoes.") catch {};
+                self.setBanner(.info, win32_strings.strings.banner_workspace_closed) catch {};
                 return true;
             },
             .new_workspace => return false,
@@ -15752,7 +15752,7 @@ const Host = struct {
         self.layout() catch {};
         self.invalidateSidebar();
         self.app.activateSurface(source);
-        self.setBanner(.info, "Pane moved to this workspace.") catch {};
+        self.setBanner(.info, win32_strings.strings.banner_pane_moved) catch {};
     }
 
     fn isOverlayButton(self: *const Host, child: HWND) bool {
@@ -31533,7 +31533,7 @@ test "win32 undo redo actions prune expired empty-host structural history before
 
     try std.testing.expect(try app.performAction(.app, .undo, {}));
     try std.testing.expectEqual(@as(usize, 0), host.structural_undo_entries.items.len);
-    try std.testing.expectEqualStrings("Nothing to undo.", host.banner_text.?);
+    try std.testing.expectEqualStrings(win32_strings.strings.banner_nothing_to_undo, host.banner_text.?);
 
     try host.structural_redo_entries.append(std.testing.allocator, .{
         .kind = .close_tab,
@@ -31547,7 +31547,7 @@ test "win32 undo redo actions prune expired empty-host structural history before
 
     try std.testing.expect(try app.performAction(.app, .redo, {}));
     try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
-    try std.testing.expectEqualStrings("Nothing to redo.", host.banner_text.?);
+    try std.testing.expectEqualStrings(win32_strings.strings.banner_nothing_to_redo, host.banner_text.?);
 }
 
 test "win32 local undo capture invalidates host structural redo only" {
