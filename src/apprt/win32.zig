@@ -763,6 +763,7 @@ const CTX_WORKTREE_SEED: usize = 4038;
 const CTX_RATIO_BASE: usize = 4720; // split ratio presets: base + index
 const CTX_LAYOUT_SAVE_BASE: usize = 4700; // save layout slots: base + slot
 const CTX_LAYOUT_APPLY_BASE: usize = 4710; // apply layout slots: base + slot
+const CTX_LAYOUT_RENAME_BASE: usize = 4730; // rename layout slots: base + slot
 const layout_slot_count: usize = 5;
 const CTX_CHOOSER_PROFILE_BASE: usize = 4600; // (+) chooser agent presets: base + index
 const CTX_ACCENT_BASE: usize = 4500; // workspace colors: base + index; base+8 = default
@@ -10478,6 +10479,8 @@ const Host = struct {
     palette_dyn_commands: []const command_pkg.Command = &.{},
     /// How many MRU-boosted entries lead the dynamic snapshot.
     palette_mru_front: usize = 0,
+    /// Pending purpose for the generic prompt overlay (.prompt mode).
+    prompt_purpose: ?PromptPurpose = null,
     palette_dyn_cvals: []const command_pkg.Command.C = &.{},
     /// Where the hint strip was painted last frame (client coords);
     /// clicking it runs the hint's action.
@@ -13344,6 +13347,18 @@ const Host = struct {
                 (if (note_tab.note) |n| self.app.core_app.alloc.dupe(u8, n) catch null else null)
             else
                 null,
+            .prompt => blk: {
+                const purpose = self.prompt_purpose orelse break :blk null;
+                switch (purpose) {
+                    .rename_slot => |slot| {
+                        var names_arena = std.heap.ArenaAllocator.init(self.app.core_app.alloc);
+                        defer names_arena.deinit();
+                        const names = self.layoutSlotNames(names_arena.allocator());
+                        const name = names[slot] orelse break :blk null;
+                        break :blk self.app.core_app.alloc.dupe(u8, name) catch null;
+                    },
+                }
+            },
             .profile => if (self.selectedProfile()) |profile|
                 self.app.core_app.alloc.dupe(u8, profile.key) catch null
             else
@@ -13440,6 +13455,12 @@ const Host = struct {
                 label_hwnd,
                 &self.cached_overlay_label,
                 "Workspace note",
+            ),
+            .prompt => return try syncWindowTextUtf8Cached(
+                alloc,
+                label_hwnd,
+                &self.cached_overlay_label,
+                "Rename layout slot",
             ),
             .command_palette => {
                 const text = std.mem.trim(u8, try overlayEditText(self), " \t\r\n");
@@ -13924,6 +13945,19 @@ const Host = struct {
                     lw[wn] = 0;
                     _ = AppendMenuW(save_menu, MF_STRING, CTX_LAYOUT_SAVE_BASE + slot, @ptrCast(&lw));
                 }
+                _ = AppendMenuW(save_menu, MF_SEPARATOR, 0, null);
+                for (0..layout_slot_count) |slot| {
+                    if (!occupied[slot]) continue;
+                    var rbuf: [72]u8 = undefined;
+                    const rl = if (slot_names[slot]) |name|
+                        std.fmt.bufPrint(&rbuf, "Rename Slot {d} - {s}...", .{ slot + 1, name }) catch continue
+                    else
+                        std.fmt.bufPrint(&rbuf, "Rename Slot {d}...", .{slot + 1}) catch continue;
+                    var rw: [72:0]u16 = undefined;
+                    const rn = std.unicode.utf8ToUtf16Le(&rw, rl) catch continue;
+                    rw[rn] = 0;
+                    _ = AppendMenuW(save_menu, MF_STRING, CTX_LAYOUT_RENAME_BASE + slot, @ptrCast(&rw));
+                }
                 _ = AppendMenuW(menu, MF_POPUP, @intFromPtr(save_menu), win32_strings.strings.menu_save_layout_to);
             }
             if (CreatePopupMenu()) |apply_menu| {
@@ -14119,6 +14153,13 @@ const Host = struct {
             },
             CTX_LAYOUT_APPLY_BASE...CTX_LAYOUT_APPLY_BASE + layout_slot_count - 1 => |picked_apply| {
                 self.applyLayoutSlot(picked_apply - CTX_LAYOUT_APPLY_BASE);
+            },
+            CTX_LAYOUT_RENAME_BASE...CTX_LAYOUT_RENAME_BASE + layout_slot_count - 1 => |picked_rename| {
+                self.prompt_purpose = .{ .rename_slot = picked_rename - CTX_LAYOUT_RENAME_BASE };
+                self.showOverlay(.prompt, null) catch |err| {
+                    log.warn("rename prompt failed err={}", .{err});
+                    self.prompt_purpose = null;
+                };
             },
             CTX_RATIO_BASE...CTX_RATIO_BASE + 2 => |picked_ratio| {
                 const ratios = [_]f32{ 0.5, 0.7, 0.3 };
@@ -14400,6 +14441,46 @@ const Host = struct {
 
     /// Save the active workspace's split layout (topology + cwds) into
     /// slot `slot` of layouts.json.
+    /// Rename a layout slot's display name in layouts.json (empty
+    /// text keeps the current name).
+    fn renameLayoutSlot(self: *Host, slot: usize, name: []const u8) void {
+        if (slot >= layout_slot_count) return;
+        const trimmed = std.mem.trim(u8, name, " ");
+        if (trimmed.len == 0) {
+            self.setBanner(.info, "Slot name unchanged.") catch {};
+            return;
+        }
+        const alloc = self.app.core_app.alloc;
+        var arena = std.heap.ArenaAllocator.init(alloc);
+        defer arena.deinit();
+        const a = arena.allocator();
+
+        var slots: LayoutSlots = .{};
+        const path = layoutSlotsPath(a) catch return;
+        if (std.fs.cwd().readFileAlloc(a, path, 16 * 1024 * 1024)) |raw| {
+            const body = if (std.mem.startsWith(u8, raw, "\xEF\xBB\xBF")) raw[3..] else raw;
+            if (std.json.parseFromSlice(LayoutSlots, a, body, .{ .ignore_unknown_fields = true })) |parsed| {
+                slots = parsed.value;
+            } else |_| {}
+        } else |_| {}
+
+        slots.names[slot] = a.dupe(u8, trimmed[0..@min(trimmed.len, 32)]) catch return;
+
+        var out: std.Io.Writer.Allocating = .init(a);
+        std.json.Stringify.value(slots, .{}, &out.writer) catch return;
+        if (std.fs.path.dirname(path)) |dir| std.fs.cwd().makePath(dir) catch {};
+        const file = std.fs.cwd().createFile(path, .{}) catch {
+            self.setBanner(.err, "Could not write layouts.json.") catch {};
+            return;
+        };
+        defer file.close();
+        file.writeAll(out.written()) catch return;
+
+        var msg_buf: [64]u8 = undefined;
+        const msg = std.fmt.bufPrint(&msg_buf, "Slot {d} renamed.", .{slot + 1}) catch "Slot renamed.";
+        self.setBanner(.info, msg) catch {};
+    }
+
     fn saveLayoutSlot(self: *Host, slot: usize) void {
         if (slot >= layout_slot_count) return;
         const tab = self.activeTab() orelse return;
@@ -16810,6 +16891,13 @@ const Host = struct {
                     if (note_tab.note) |old_note| alloc2.free(old_note);
                     note_tab.note = if (text.len == 0) null else alloc2.dupe(u8, text) catch null;
                     self.invalidateSidebar();
+                }
+            },
+            .prompt => {
+                const purpose = self.prompt_purpose orelse return true;
+                self.prompt_purpose = null;
+                switch (purpose) {
+                    .rename_slot => |slot| self.renameLayoutSlot(slot, text),
                 }
             },
             .confirm => {
@@ -23008,6 +23096,7 @@ fn buildOverlayPaintLabelText(
         .find_panes => try alloc.dupe(u8, "Find in all panes"),
         .worktree_branch => try alloc.dupe(u8, "New workspace from branch"),
         .workspace_note => try alloc.dupe(u8, "Workspace note"),
+        .prompt => try alloc.dupe(u8, "Rename layout slot"),
         .tab_title => try alloc.dupe(u8, "Tab title"),
         .command_palette => try buildCommandPaletteOverlayLabel(alloc, palette, input_text),
         .profile => try alloc.dupe(u8, "Profile"),
@@ -23088,6 +23177,7 @@ fn buildOverlayAcceptLabel(
         .find_panes => try alloc.dupe(u8, "Search"),
         .worktree_branch => try alloc.dupe(u8, "Create"),
         .workspace_note => try alloc.dupe(u8, "Save"),
+        .prompt => try alloc.dupe(u8, "Save"),
         .surface_title, .tab_title => if (input_text.len == 0)
             try alloc.dupe(u8, "Close")
         else
@@ -23157,6 +23247,7 @@ fn buildOverlayHintText(
         .find_panes => try alloc.dupe(u8, "Search the visible text of every pane in every workspace."),
         .worktree_branch => try alloc.dupe(u8, "Runs git worktree add for this branch in the current pane; then use New Workspace Here from the new folder."),
         .workspace_note => try alloc.dupe(u8, "One scratch line for this workspace, saved with the session. Submit empty text to clear it."),
+        .prompt => try alloc.dupe(u8, "Type the new value; empty keeps the current one."),
         .tab_title => blk: {
             if (pane_count > 1) {
                 break :blk try std.fmt.allocPrint(
@@ -23217,6 +23308,7 @@ fn overlayCancelLabel(mode: HostOverlayMode) []const u8 {
         .find_panes => "Cancel",
         .worktree_branch => "Cancel",
         .workspace_note => "Cancel",
+        .prompt => "Cancel",
         // Confirm overlays override this via the payload.
         .confirm => "Cancel",
     };
@@ -27102,6 +27194,11 @@ const AttentionEvent = struct {
 };
 
 const attention_history_max: usize = 8;
+
+/// What a generic `.prompt` overlay commit should do with the text.
+const PromptPurpose = union(enum) {
+    rename_slot: usize,
+};
 
 const attention_state_marker = "paramux.state:";
 
