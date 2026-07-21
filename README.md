@@ -75,7 +75,8 @@ lineage and compatibility names; **Paramux is the product and executable.**
   agent attention changes, and wide-glyph-accurate highlights.
 - Hooks and fallbacks for Claude Code, Codex CLI, Gemini CLI, and OpenCode.
 - Local control surface for listing windows, splitting panes, reading pane
-  output, and setting notifications. Sensitive calls use a per-instance token.
+  output, and setting notifications. Sensitive calls use a per-instance token;
+  [docs/paramux/fleet-cli.md](docs/paramux/fleet-cli.md) maps every verb.
 - Rebindable Ghostty-style configuration plus Ghostty and Windows Terminal theme
   import.
 - Portable packaging with `paramux.exe`, the console-friendly `paramux.com`

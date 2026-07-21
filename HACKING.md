@@ -27,12 +27,14 @@ Use the standard Zig workflow from the repository root:
 For normal development, run the narrowest verification that covers the change,
 then run `zig build` before finishing.
 
-Beyond the unit suites, three scripted verifications cover behavior
+Beyond the unit suites, these scripted verifications cover behavior
 tests can't reach (each needs a built `zig-out` and a free instance):
 
 | Script | Proves |
 | --- | --- |
-| `scripts/e2e-restore-commands.ps1` | `restore-commands` opt-in gate, capture, and relaunch (3 phases) |
+| `scripts/e2e-restore-commands.ps1` | `restore-commands` opt-in gate, capture, and relaunch (4 phases) |
+| `scripts/e2e-serve.ps1` | the HTTP contract: auth both ways, ETag/304, pane text, the attention CLI twin (10 checks) |
+| `scripts/e2e-layout-roundtrip.ps1` | gallery -> slot -> file -> slot -> file byte-identical (`-Com` targets any binary) |
 | `scripts/start-soak.ps1 -Minutes 2` | the detached soak harness end to end (72h run = the 1.0 gate) |
 | `docs/paramux/accessibility-testing.md` | Narrator checklist for `win32_uia/` changes (human + hardware) |
 

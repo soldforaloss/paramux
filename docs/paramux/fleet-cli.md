@@ -25,6 +25,7 @@ paramux send --surface-id=<id> "y`n"        # exact input to one pane
 paramux send --all-panes "git pull`n"       # active workspace; skips solo (opt-out) panes
 paramux read-pane --surface-id=<id>         # pane text back out
 paramux perform-action new_split:auto       # any allowlisted keybind action
+paramux perform-action restart_pane         # fresh shell in the focused pane's cwd
 ```
 
 ## Signal
