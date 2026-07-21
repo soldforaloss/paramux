@@ -398,6 +398,9 @@ fn drainMailbox(self: *App, rt_app: *apprt.App) !void {
             .ports_result => |result| {
                 rt_app.applyPorts(result.surface_id, result.ports);
             },
+            .agent_detect_result => |result| {
+                rt_app.applyAgentDetect(result.surface_id, result.agent_present);
+            },
             .close => |surface| self.closeSurface(surface),
             .surface_message => |msg| try self.surfaceMessage(msg.surface, msg.message),
             .redraw_surface => |surface| try self.redrawSurface(rt_app, surface),
@@ -907,6 +910,10 @@ pub const Message = union(enum) {
     /// (paramux FR-3 sidebar). The `ports` slice ownership transfers to the arm.
     ports_result: PortsResult,
 
+    /// Apply a hookless agent-detection identity result on the app
+    /// thread (docs/paramux/hookless-detection.md). Fire-and-forget.
+    agent_detect_result: AgentDetectResult,
+
     /// Close a surface. This notifies the runtime that a surface
     /// should close.
     close: *Surface,
@@ -980,6 +987,11 @@ pub const Message = union(enum) {
     pub const PortsResult = struct {
         surface_id: u64,
         ports: []const u16,
+    };
+
+    pub const AgentDetectResult = struct {
+        surface_id: u64,
+        agent_present: bool,
     };
 
     const NewWindow = struct {

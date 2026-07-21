@@ -1552,6 +1552,48 @@ fn firstChildPid(parent_pid: u32) u32 {
     }
 }
 
+/// True when any descendant of `root_pid` is a known agent CLI by
+/// image name (claude/codex/gemini/opencode). One snapshot, BFS over
+/// parent links; identity only, never command lines or content.
+fn hasAgentDescendant(alloc: Allocator, root_pid: u32) bool {
+    const snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) orelse return false;
+    defer _ = windows.CloseHandle(@ptrCast(snapshot));
+
+    const Proc = struct { pid: u32, ppid: u32, agent: bool };
+    var procs: std.ArrayListUnmanaged(Proc) = .empty;
+    defer procs.deinit(alloc);
+
+    var entry: PROCESSENTRY32W = undefined;
+    entry.dwSize = @sizeOf(PROCESSENTRY32W);
+    if (Process32FirstW(snapshot, &entry) == 0) return false;
+    while (true) {
+        const name_w = std.mem.sliceTo(&entry.szExeFile, 0);
+        var name_buf: [64]u8 = undefined;
+        const n = std.unicode.utf16LeToUtf8(&name_buf, name_w) catch 0;
+        const name = name_buf[0..n];
+        const agent = std.ascii.startsWithIgnoreCase(name, "claude") or
+            std.ascii.startsWithIgnoreCase(name, "codex") or
+            std.ascii.startsWithIgnoreCase(name, "gemini") or
+            std.ascii.startsWithIgnoreCase(name, "opencode");
+        procs.append(alloc, .{ .pid = entry.th32ProcessID, .ppid = entry.th32ParentProcessID, .agent = agent }) catch return false;
+        if (Process32NextW(snapshot, &entry) == 0) break;
+    }
+
+    var frontier: std.ArrayListUnmanaged(u32) = .empty;
+    defer frontier.deinit(alloc);
+    frontier.append(alloc, root_pid) catch return false;
+    var rounds: usize = 0;
+    while (frontier.items.len > 0 and rounds < 32) : (rounds += 1) {
+        const parent = frontier.pop() orelse break;
+        for (procs.items) |proc| {
+            if (proc.ppid != parent) continue;
+            if (proc.agent) return true;
+            frontier.append(alloc, proc.pid) catch return false;
+        }
+    }
+    return false;
+}
+
 const ChildFootprint = struct { count: usize, mb: u64 };
 fn childProcessFootprint() ChildFootprint {
     var result: ChildFootprint = .{ .count = 0, .mb = 0 };
@@ -9616,6 +9658,40 @@ pub const App = struct {
         surface.invalidateStatusBarState();
     }
 
+    /// Hookless detection (identity result -> inferred state). The
+    /// output-activity proxy is the surface's render generation: if it
+    /// moved since the last tick the agent is producing output
+    /// (working); an agent alive but quiet for 10s+ is probably
+    /// blocked on input (waiting). Hooks always win: a pane that ever
+    /// received an explicit signal stays hook-managed.
+    pub fn applyAgentDetect(self: *App, surface_id: u64, agent_present: bool) void {
+        const surface = self.findSurfaceById(surface_id) orelse return;
+        if (surface.hook_managed) {
+            if (surface.inferred_state != .none) {
+                surface.inferred_state = .none;
+                surface.invalidateStatusBarState();
+            }
+            return;
+        }
+        const now_ms = std.time.milliTimestamp();
+        const gen = surface.output_gen.load(.monotonic);
+        if (gen != surface.detect_last_gen) {
+            surface.detect_last_gen = gen;
+            surface.detect_last_change_ms = now_ms;
+        }
+        const quiet_ms = now_ms - surface.detect_last_change_ms;
+        const next: AttentionState = if (!agent_present)
+            .none
+        else if (quiet_ms >= 10_000)
+            .waiting
+        else
+            .working;
+        if (surface.inferred_state != next) {
+            surface.inferred_state = next;
+            surface.invalidateStatusBarState();
+        }
+    }
+
     fn showChildExited(
         self: *App,
         target: apprt.Target,
@@ -17321,6 +17397,16 @@ const Host = struct {
             }
         }
         if (items.items.len == 0) return;
+        // Hookless detection rides the same 3s cadence and snapshot;
+        // its worker gets its own copy of the items.
+        if (self.app.config.@"agent-detect" == .auto) detect: {
+            const copy = alloc.dupe(PortsCheckItem, items.items) catch break :detect;
+            const dthread = std.Thread.spawn(.{}, agentDetectWorker, .{ self.app, copy }) catch {
+                alloc.free(copy);
+                break :detect;
+            };
+            dthread.detach();
+        }
         const owned = items.toOwnedSlice(alloc) catch return;
         const thread = std.Thread.spawn(.{}, portsWorker, .{ self.app, owned }) catch {
             alloc.free(owned);
@@ -21066,6 +21152,21 @@ fn portsWorker(app: *App, items: []PortsCheckItem) void {
         _ = mailbox.push(.{ .ports_result = .{
             .surface_id = item.surface_id,
             .ports = ports,
+        } }, .{ .forever = {} });
+    }
+}
+
+/// Background worker for hookless detection: identity walk per pane,
+/// results marshaled to the UI thread.
+fn agentDetectWorker(app: *App, items: []PortsCheckItem) void {
+    const alloc = app.core_app.alloc;
+    defer alloc.free(items);
+    const mailbox: CoreApp.Mailbox = .{ .rt_app = app, .mailbox = &app.core_app.mailbox };
+    for (items) |item| {
+        const present = hasAgentDescendant(alloc, item.pid);
+        _ = mailbox.push(.{ .agent_detect_result = .{
+            .surface_id = item.surface_id,
+            .agent_present = present,
         } }, .{ .forever = {} });
     }
 }
@@ -27854,6 +27955,15 @@ pub const Surface = struct {
     /// `attention_history_max` - the pane's activity timeline shown in
     /// the Activity submenu and the attention inbox.
     attention_history: std.ArrayListUnmanaged(AttentionEvent) = .empty,
+    /// Hookless detection (agent-detect = auto): a display-only state
+    /// inferred from bounded signals; never feeds the attention
+    /// machinery (no toasts, no goto_attention). Hollow dot in the
+    /// sidebar. hook_managed latches on the first explicit signal.
+    inferred_state: AttentionState = .none,
+    hook_managed: bool = false,
+    output_gen: std.atomic.Value(u64) = .init(0),
+    detect_last_gen: u64 = 0,
+    detect_last_change_ms: i64 = 0,
     taskbar_progress: ?win32_taskbar_progress.ProgressReport = null,
     inspector_visible: bool = false,
     paint_pending: bool = false,
@@ -28683,6 +28793,10 @@ pub const Surface = struct {
     }
 
     pub fn beginRendererRepaintRequest(self: *Surface) bool {
+        // Output-activity proxy for hookless detection: every
+        // renderer-driven repaint request bumps the generation the
+        // 3s detect tick compares. Renderer thread; atomic.
+        _ = self.output_gen.fetchAdd(1, .monotonic);
         if (!self.renderer_repaint_requested.swap(true, .acq_rel)) {
             self.render_trace.noteRendererRepaintAccepted();
             return true;
@@ -31381,6 +31495,12 @@ pub const Surface = struct {
 
     fn setAttentionState(self: *Surface, state: AttentionState) void {
         if (self.attention_state == state) return;
+        // A real state CHANGE (hook OSC, IPC notify) marks the pane
+        // hook-managed: inference stays out for the pane's lifetime
+        // and any inferred display clears. Same-state repeats above
+        // never latch, so init-time .none calls stay neutral.
+        self.hook_managed = true;
+        if (self.inferred_state != .none) self.inferred_state = .none;
         self.attention_state = state;
         self.stuck_nudged = false;
         self.recordAttentionEvent(state, self.last_notification);
