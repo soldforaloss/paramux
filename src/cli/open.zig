@@ -25,8 +25,12 @@ pub const Options = struct {
 /// `paramux open .` from a project folder creates a workspace whose
 /// shell starts there. Prints the new pane's surface id.
 ///
-/// (A `.paramux/layout` project file is planned to seed the workspace's
-/// split layout; today the workspace opens with the standard defaults.)
+/// A `.paramux/layout` file in the directory (layouts.json slot format)
+/// is installed into slot 5 and applied instead of a plain workspace,
+/// so `paramux open .` can start a whole agent formation.
+///
+/// `--list` prints the five layout slots (pane counts and commands)
+/// plus whether the current directory carries a project layout.
 pub fn run(alloc: Allocator) !u8 {
     var iter = try args.argsIterator(alloc);
     defer iter.deinit();
@@ -59,6 +63,9 @@ fn runArgs(
         if (lib.cutPrefix(u8, arg, "--class=")) |class| {
             opts.class = try a.dupeZ(u8, class);
             continue;
+        }
+        if (std.mem.eql(u8, arg, "--list")) {
+            return try listLayoutSlots(a, stdout);
         }
         if (std.mem.startsWith(u8, arg, "--")) {
             try stderr.print("unknown option: {s}\n", .{arg});
@@ -177,4 +184,58 @@ fn writeSlots(alloc: Allocator, path: []const u8, slots: anytype) !void {
     const file = try std.fs.cwd().createFile(path, .{});
     defer file.close();
     try file.writeAll(out.written());
+}
+
+/// `open --list`: print the five layout slots (pane and command
+/// counts) and whether the current directory carries a
+/// `.paramux/layout` project file. Reads layouts.json directly — no
+/// running instance required.
+fn listLayoutSlots(alloc: Allocator, stdout: *std.Io.Writer) !u8 {
+    const session = @import("../apprt/win32_session_state.zig");
+    const Slots = struct { slots: [5]?session.Tab = .{ null, null, null, null, null } };
+
+    var slots: Slots = .{};
+    var parsed_opt: ?std.json.Parsed(Slots) = null;
+    defer if (parsed_opt) |*parsed| parsed.deinit();
+
+    read: {
+        const local = std.process.getEnvVarOwned(alloc, "LOCALAPPDATA") catch break :read;
+        defer alloc.free(local);
+        const path = std.fs.path.join(alloc, &.{ local, "paramux", "layouts.json" }) catch break :read;
+        defer alloc.free(path);
+        const raw = std.fs.cwd().readFileAlloc(alloc, path, 16 * 1024 * 1024) catch break :read;
+        defer alloc.free(raw);
+        parsed_opt = std.json.parseFromSlice(Slots, alloc, raw, .{
+            .ignore_unknown_fields = true,
+            .allocate = .alloc_always,
+        }) catch break :read;
+        slots = parsed_opt.?.value;
+    }
+
+    for (slots.slots, 1..) |slot_opt, n| {
+        if (slot_opt) |tab| {
+            var panes: usize = 0;
+            var commands: usize = 0;
+            for (tab.layout.nodes) |node| switch (node) {
+                .pane => |pane| {
+                    panes += 1;
+                    if (pane.command != null) commands += 1;
+                },
+                .split => {},
+            };
+            try stdout.print("slot {d}: {d} pane(s)", .{ n, panes });
+            if (commands > 0) try stdout.print(", {d} with commands", .{commands});
+            try stdout.print("\n", .{});
+        } else {
+            try stdout.print("slot {d}: <empty>\n", .{n});
+        }
+    }
+
+    const has_project = if (std.fs.cwd().access(".paramux/layout", .{})) true else |_| false;
+    if (has_project) {
+        try stdout.print("project layout (.paramux/layout): present — `paramux open .` installs it to slot 5\n", .{});
+    } else {
+        try stdout.print("project layout (.paramux/layout): none\n", .{});
+    }
+    return 0;
 }
