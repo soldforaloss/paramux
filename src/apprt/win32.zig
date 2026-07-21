@@ -14080,9 +14080,9 @@ const Host = struct {
                 for (0..layout_slot_count) |slot| {
                     var lbuf: [72]u8 = undefined;
                     const lu = if (slot_names[slot]) |name|
-                        std.fmt.bufPrint(&lbuf, "Slot {d} - {s}", .{ slot + 1, name }) catch continue
+                        std.fmt.bufPrint(&lbuf, "{s} {d} - {s}", .{ win32_strings.strings.slot_word, slot + 1, name }) catch continue
                     else
-                        std.fmt.bufPrint(&lbuf, "Slot {d}{s}", .{ slot + 1, if (occupied[slot]) " (saved)" else "" }) catch continue;
+                        std.fmt.bufPrint(&lbuf, "{s} {d}{s}", .{ win32_strings.strings.slot_word, slot + 1, if (occupied[slot]) win32_strings.strings.slot_saved_suffix else "" }) catch continue;
                     var lw: [72:0]u16 = undefined;
                     const wn = std.unicode.utf8ToUtf16Le(&lw, lu) catch continue;
                     lw[wn] = 0;
@@ -14093,9 +14093,9 @@ const Host = struct {
                     if (!occupied[slot]) continue;
                     var rbuf: [72]u8 = undefined;
                     const rl = if (slot_names[slot]) |name|
-                        std.fmt.bufPrint(&rbuf, "Rename Slot {d} - {s}...", .{ slot + 1, name }) catch continue
+                        std.fmt.bufPrint(&rbuf, "{s} {d} - {s}...", .{ win32_strings.strings.slot_rename_prefix, slot + 1, name }) catch continue
                     else
-                        std.fmt.bufPrint(&rbuf, "Rename Slot {d}...", .{slot + 1}) catch continue;
+                        std.fmt.bufPrint(&rbuf, "{s} {d}...", .{ win32_strings.strings.slot_rename_prefix, slot + 1 }) catch continue;
                     var rw: [72:0]u16 = undefined;
                     const rn = std.unicode.utf8ToUtf16Le(&rw, rl) catch continue;
                     rw[rn] = 0;
@@ -14107,9 +14107,9 @@ const Host = struct {
                 for (0..layout_slot_count) |slot| {
                     var lbuf: [72]u8 = undefined;
                     const lu = if (slot_names[slot]) |name|
-                        std.fmt.bufPrint(&lbuf, "Slot {d} - {s}", .{ slot + 1, name }) catch continue
+                        std.fmt.bufPrint(&lbuf, "{s} {d} - {s}", .{ win32_strings.strings.slot_word, slot + 1, name }) catch continue
                     else
-                        std.fmt.bufPrint(&lbuf, "Slot {d}{s}", .{ slot + 1, if (occupied[slot]) "" else " (empty)" }) catch continue;
+                        std.fmt.bufPrint(&lbuf, "{s} {d}{s}", .{ win32_strings.strings.slot_word, slot + 1, if (occupied[slot]) "" else win32_strings.strings.slot_empty_suffix }) catch continue;
                     var lw: [72:0]u16 = undefined;
                     const wn = std.unicode.utf8ToUtf16Le(&lw, lu) catch continue;
                     lw[wn] = 0;
@@ -14625,7 +14625,7 @@ const Host = struct {
         file.writeAll(out.written()) catch return;
 
         var msg_buf: [64]u8 = undefined;
-        const msg = std.fmt.bufPrint(&msg_buf, "Slot {d} renamed.", .{slot + 1}) catch "Slot renamed.";
+        const msg = std.fmt.bufPrint(&msg_buf, "{s} {d} {s}", .{ win32_strings.strings.slot_word, slot + 1, win32_strings.strings.slot_renamed_msg }) catch win32_strings.strings.slot_renamed_msg;
         self.setBanner(.info, msg) catch {};
     }
 

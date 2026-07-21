@@ -185,6 +185,13 @@ pub const Strings = struct {
     workspace_word: []const u8 = "Workspace",
     shell_fallback: []const u8 = "shell",
 
+    // Layout-slot submenu composition pieces (UTF-8, bufPrint).
+    slot_word: []const u8 = "Slot",
+    slot_saved_suffix: []const u8 = " (saved)",
+    slot_empty_suffix: []const u8 = " (empty)",
+    slot_rename_prefix: []const u8 = "Rename Slot",
+    slot_renamed_msg: []const u8 = "renamed.",
+
     // Hint-strip texts (UTF-16 via w) plus prefix/suffix pieces for
     // the two runtime-formatted hints (bufPrint formats are comptime,
     // so the dynamic parts compose around table strings instead).
@@ -373,6 +380,11 @@ pub const german: Strings = .{
     .settings_background_blur = w("Hintergrund-Unsch\u{00E4}rfe aktivieren"),
     .workspace_word = "Arbeitsbereich",
     .shell_fallback = "Shell",
+    .slot_word = "Slot",
+    .slot_saved_suffix = " (gespeichert)",
+    .slot_empty_suffix = " (leer)",
+    .slot_rename_prefix = "Slot umbenennen:",
+    .slot_renamed_msg = "umbenannt.",
     .hint_confirm = w("Enter best\u{00E4}tigen \u{00B7} Esc abbrechen"),
     .hint_drop = w("Ablegen: Kanten docken an \u{00B7} Mitte tauscht"),
     .hint_resize = w("Ziehen zum Anpassen"),
