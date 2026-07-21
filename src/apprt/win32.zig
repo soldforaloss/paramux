@@ -14967,7 +14967,7 @@ const Host = struct {
         _ = MessageBoxW(
             hwnd,
             text_w.ptr,
-            std.unicode.utf8ToUtf16LeStringLiteral("Paramux Health"),
+            win32_strings.strings.title_health,
             MB_OK | MB_ICONINFORMATION,
         );
     }
@@ -15405,7 +15405,7 @@ const Host = struct {
                 _ = MessageBoxW(
                     self.hwnd,
                     help_getting_started_text,
-                    std.unicode.utf8ToUtf16LeStringLiteral("Getting Started"),
+                    win32_strings.strings.menu_help_getting_started,
                     MB_OK | MB_ICONINFORMATION,
                 );
             },
@@ -15413,7 +15413,7 @@ const Host = struct {
                 _ = MessageBoxW(
                     self.hwnd,
                     help_shortcuts_text,
-                    std.unicode.utf8ToUtf16LeStringLiteral("Keyboard Shortcuts"),
+                    win32_strings.strings.menu_help_shortcuts,
                     MB_OK | MB_ICONINFORMATION,
                 );
             },
@@ -15460,7 +15460,7 @@ const Host = struct {
                 _ = MessageBoxW(
                     self.hwnd,
                     @ptrCast(&text_w),
-                    std.unicode.utf8ToUtf16LeStringLiteral("About Paramux"),
+                    win32_strings.strings.menu_help_about,
                     MB_OK | MB_ICONINFORMATION,
                 );
             },
@@ -15820,7 +15820,7 @@ const Host = struct {
             self.watch_hwnd = CreateWindowExW(
                 WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
                 pane_watch_class_name,
-                std.unicode.utf8ToUtf16LeStringLiteral("Paramux Watch"),
+                win32_strings.strings.title_watch,
                 WS_POPUP,
                 self.scaled(80),
                 self.scaled(80),
@@ -19454,9 +19454,9 @@ const Host = struct {
         if (paint_top and self.overlay_mode == .none and !inspector_panel_visible and self.banner_text == null) {
             if (self.app.update_notice) |notice| {
                 const open_label = if (notice.staged)
-                    std.unicode.utf8ToUtf16LeStringLiteral("Install")
+                    win32_strings.strings.button_install
                 else
-                    std.unicode.utf8ToUtf16LeStringLiteral("Open Release");
+                    win32_strings.strings.button_open_release;
                 const dismiss_label = std.unicode.utf8ToUtf16LeStringLiteral("Dismiss");
                 const button_height = self.scaled(22);
                 const dismiss_width = self.scaled(72);

@@ -160,6 +160,12 @@ pub const Strings = struct {
     menu_accent_default: [:0]const u16 = w("Default"),
     menu_no_recent_activity: [:0]const u16 = w("(no recent activity)"),
 
+    // Dialog/window titles and the update-banner buttons.
+    title_health: [:0]const u16 = w("Paramux Health"),
+    title_watch: [:0]const u16 = w("Paramux Watch"),
+    button_install: [:0]const u16 = w("Install"),
+    button_open_release: [:0]const u16 = w("Open Release"),
+
     // Hint-strip texts (UTF-16 via w) plus prefix/suffix pieces for
     // the two runtime-formatted hints (bufPrint formats are comptime,
     // so the dynamic parts compose around table strings instead).
@@ -304,6 +310,10 @@ pub const german: Strings = .{
     .menu_unmute_pane = w("Stummschaltung aufheben"),
     .menu_accent_default = w("Standard"),
     .menu_no_recent_activity = w("(keine letzte Aktivit\u{00E4}t)"),
+    .title_health = w("Paramux-Zustand"),
+    .title_watch = w("Paramux-Beobachtung"),
+    .button_install = w("Installieren"),
+    .button_open_release = w("Release \u{00F6}ffnen"),
     .hint_confirm = w("Enter best\u{00E4}tigen \u{00B7} Esc abbrechen"),
     .hint_drop = w("Ablegen: Kanten docken an \u{00B7} Mitte tauscht"),
     .hint_resize = w("Ziehen zum Anpassen"),
