@@ -1870,6 +1870,17 @@ class: ?[:0]const u8 = null,
 /// Valid values: `en` (default), `de`.
 @"ui-language": UiLanguage = .en,
 
+/// Infer agent attention states for panes whose CLI has no hook
+/// configured, from bounded signals only: a known agent child
+/// process (claude/codex/gemini/opencode) plus output *timing* —
+/// pane content is never parsed. Explicit hook signals always win;
+/// a pane that has ever received one stays hook-managed. Inferred
+/// states render with a hollow sidebar dot. See
+/// docs/paramux/hookless-detection.md.
+///
+/// Valid values: `off` (default), `auto`.
+@"agent-detect": AgentDetect = .off,
+
 /// Automatically restart a pane whose process exits with a non-zero
 /// code, up to this many times over the pane's lifetime (a fresh
 /// auto-placed shell opens in the same folder; the dead pane closes).
@@ -9822,6 +9833,12 @@ pub const Scrollbar = enum {
 pub const UiLanguage = enum {
     en,
     de,
+};
+
+/// See agent-detect
+pub const AgentDetect = enum {
+    off,
+    auto,
 };
 
 /// See scroll-to-bottom
