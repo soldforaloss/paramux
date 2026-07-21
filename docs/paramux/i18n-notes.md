@@ -46,9 +46,10 @@ Nothing here is scheduled; this is the map so step 1 is a mechanical PR.
 Shipped slices, all behind `ui-language = de`: 1 chrome basics,
 2 banners, 3 UIA localized type, 4 settings sections, 5 overlay
 labels, 6 hint strip, 7 pane-menu block one, 8 navigation/workspace
-menu block, plus the watch-window fallback title. `setLocale` swap
-and unknown-tag fallback are test-locked. Roughly 31 inline menu
-literals remain (zoom/close block, profile chooser, layout-slot
-submenus with runtime slot numbers, overflow menu) — future slices;
-runtime-numbered items need the prefix/suffix composition pattern
-the hint strip uses.
+menu block, 9 splits + window/workspace ops, plus the watch-window
+fallback title. `setLocale` swap and unknown-tag fallback are
+test-locked. Eleven inline menu literals remain (profile chooser,
+zoom/close leftovers, overflow specials, layout-slot submenus whose
+labels carry runtime slot numbers) — future slices; runtime-numbered
+items need the prefix/suffix composition pattern the hint strip
+uses.
