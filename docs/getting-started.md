@@ -304,6 +304,8 @@ session state, and crash data.
 
 ## Next steps
 
+- [Fleet CLI reference](paramux/fleet-cli.md) - every automation verb on one
+  page (status, run, send, notify, layouts, doctor, serve)
 - [Status](status.md) - supported behavior, current distribution status, and
   known caveats
 - [Windows notes](windows.md) - paths, app identity, notifications, shells,
