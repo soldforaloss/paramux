@@ -1,0 +1,13 @@
+{
+  "note": "workspace env applies to every pane; a pane's own env wins",
+  "env": ["FLEET_NAME=demo", "NO_COLOR=1"],
+  "selected_leaf": 0,
+  "layout": {
+    "root": 2,
+    "nodes": [
+      { "pane": { "command": "claude", "env": ["AGENT_ROLE=implementer"] } },
+      { "pane": { "command": "claude", "env": ["AGENT_ROLE=reviewer"] } },
+      { "split": { "axis": "vertical", "ratio": 0.5, "first": 0, "second": 1 } }
+    ]
+  }
+}

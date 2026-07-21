@@ -21,7 +21,9 @@ if ($totalMinutes -le 0) { $totalMinutes = 3 }
 
 $proc = Start-Process -FilePath $Binary -PassThru
 Start-Sleep -Seconds 4
-"timestamp,minute,alive,workspaces,panes,paramux_mb,children,child_mb,notify_cycles" | Out-File $OutCsv -Encoding utf8
+$versionLine = (& $Com version 2>$null | Select-Object -First 1)
+if (-not $versionLine) { $versionLine = "unknown" }
+"timestamp,minute,alive,workspaces,panes,paramux_mb,children,child_mb,notify_cycles,version" | Out-File $OutCsv -Encoding utf8
 
 $states = @("working", "waiting", "done", "none")
 $cycles = 0
@@ -56,7 +58,7 @@ try {
             $paneCount = @($statusRaw).Count
             $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$($proc.Id)" -ErrorAction SilentlyContinue)
             $childMb = [math]::Round((($children | ForEach-Object { $_.WorkingSetSize } | Measure-Object -Sum).Sum / 1MB), 1)
-            "$((Get-Date).ToString('s')),$minute,$alive,1,$paneCount,$mb,$($children.Count),$childMb,$cycles" | Add-Content $OutCsv
+            "$((Get-Date).ToString('s')),$minute,$alive,1,$paneCount,$mb,$($children.Count),$childMb,$cycles,$versionLine" | Add-Content $OutCsv
             if (-not $alive) { throw "paramux exited during soak at minute $minute" }
         }
     }

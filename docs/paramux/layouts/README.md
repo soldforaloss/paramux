@@ -26,3 +26,7 @@ You can also author by arranging a workspace live and using
 right-click → **Save Layout To** — slot 5 of
 `%LOCALAPPDATA%\paramux\layouts.json` is what `paramux open` installs,
 so a saved slot is a valid template body.
+
+Templates may also carry a startup `command` and `env` entries per
+pane, plus a workspace-level `env` applied to every pane (pane
+entries win on conflict) — see `agents-with-env.layout.json`.
