@@ -2001,7 +2001,7 @@ pub const SettingsWindow = struct {
         // who prefer text-editing the config file directly. Lives
         // in the Advanced section; hidden when another section is
         // active.
-        const btn_label = std.unicode.utf8ToUtf16LeStringLiteral("Open in default editor");
+        const btn_label = win32_strings.strings.settings_open_editor;
         self.btn_open_editor = CreateWindowExW(
             0,
             btn_class,
@@ -2019,7 +2019,7 @@ pub const SettingsWindow = struct {
         // "Save" button — always visible; writes `pending` to disk
         // and fires a hard reload. Save errors are logged and the draft
         // remains in memory for retry.
-        const btn_save_label = std.unicode.utf8ToUtf16LeStringLiteral("Save");
+        const btn_save_label = win32_strings.strings.settings_save;
         self.btn_save = CreateWindowExW(
             0,
             btn_class,
@@ -2035,7 +2035,7 @@ pub const SettingsWindow = struct {
             null,
         );
 
-        const btn_keybind_label = std.unicode.utf8ToUtf16LeStringLiteral("Open config for keybinds");
+        const btn_keybind_label = win32_strings.strings.settings_open_keybinds;
         self.btn_keybindings_editor = CreateWindowExW(
             0,
             btn_class,
@@ -2070,8 +2070,8 @@ pub const SettingsWindow = struct {
         // per-theme color swatches.
         self.edit_theme_search = makeEdit(hwnd, self.handle.hinstance, EDIT_THEME_SEARCH, 420, 0);
         if (self.edit_theme_search) |search| {
-            const cue = std.unicode.utf8ToUtf16LeStringLiteral("Search themes...");
-            _ = SendMessageW(search, EM_SETCUEBANNER, 1, @bitCast(@intFromPtr(cue)));
+            const cue = win32_strings.strings.settings_search_themes_cue;
+            _ = SendMessageW(search, EM_SETCUEBANNER, 1, @bitCast(@intFromPtr(cue.ptr)));
         }
         const listbox_class = std.unicode.utf8ToUtf16LeStringLiteral("LISTBOX");
         self.list_themes = CreateWindowExW(
@@ -2097,7 +2097,7 @@ pub const SettingsWindow = struct {
             hwnd,
             self.handle.hinstance,
             CHK_EXPLORER_MENU,
-            std.unicode.utf8ToUtf16LeStringLiteral("Add \"Open in Paramux\" to the Explorer right-click menu"),
+            win32_strings.strings.settings_explorer_checkbox,
             420,
         );
 
@@ -2115,7 +2115,7 @@ pub const SettingsWindow = struct {
             hwnd,
             self.handle.hinstance,
             CHK_TRIM_TRAIL,
-            std.unicode.utf8ToUtf16LeStringLiteral("Trim trailing spaces on copy"),
+            win32_strings.strings.settings_trim_copy,
             260,
         );
 
@@ -2123,7 +2123,7 @@ pub const SettingsWindow = struct {
             hwnd,
             self.handle.hinstance,
             CHK_DESKTOP_NOTIFICATIONS,
-            std.unicode.utf8ToUtf16LeStringLiteral("Allow terminal desktop notifications"),
+            win32_strings.strings.settings_allow_notifications,
             320,
         );
 
@@ -2131,7 +2131,7 @@ pub const SettingsWindow = struct {
             hwnd,
             self.handle.hinstance,
             CHK_APP_NOTIFY_CLIPBOARD,
-            std.unicode.utf8ToUtf16LeStringLiteral("Notify when clipboard copy completes"),
+            win32_strings.strings.settings_notify_clipboard,
             320,
         );
 
@@ -2139,7 +2139,7 @@ pub const SettingsWindow = struct {
             hwnd,
             self.handle.hinstance,
             CHK_APP_NOTIFY_CONFIG,
-            std.unicode.utf8ToUtf16LeStringLiteral("Notify after config reload"),
+            win32_strings.strings.settings_notify_reload,
             320,
         );
 
@@ -2218,8 +2218,8 @@ pub const SettingsWindow = struct {
 
         self.edit_settings_search = makeEdit(hwnd, self.handle.hinstance, EDIT_SETTINGS_SEARCH, 160, 0);
         if (self.edit_settings_search) |search| {
-            const cue = std.unicode.utf8ToUtf16LeStringLiteral("Search settings...");
-            _ = SendMessageW(search, EM_SETCUEBANNER, 1, @bitCast(@intFromPtr(cue)));
+            const cue = win32_strings.strings.settings_search_cue;
+            _ = SendMessageW(search, EM_SETCUEBANNER, 1, @bitCast(@intFromPtr(cue.ptr)));
             _ = SetWindowSubclass(search, settingsSearchSubclassProc, 1, @intFromPtr(hwnd));
         }
         self.edit_digest_min = makeEdit(hwnd, self.handle.hinstance, EDIT_DIGEST_MIN, 120, ES_NUMBER);
@@ -2231,14 +2231,14 @@ pub const SettingsWindow = struct {
             hwnd,
             self.handle.hinstance,
             CHK_FOCUS_FOLLOWS,
-            std.unicode.utf8ToUtf16LeStringLiteral("Focus follows attention (only when idle 10s+)"),
+            win32_strings.strings.settings_focus_follows,
             320,
         );
         self.chk_bg_blur = makeCheckbox(
             hwnd,
             self.handle.hinstance,
             CHK_BG_BLUR,
-            std.unicode.utf8ToUtf16LeStringLiteral("Enable background blur"),
+            win32_strings.strings.settings_background_blur,
             260,
         );
 
