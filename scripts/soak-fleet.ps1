@@ -25,7 +25,7 @@ $versionLine = (& $Com version 2>$null | Select-Object -First 1)
 if (-not $versionLine) { $versionLine = "unknown" }
 "timestamp,minute,alive,workspaces,panes,paramux_mb,children,child_mb,notify_cycles,version,att_http" | Out-File $OutCsv -Encoding utf8
 $servePort = 7891
-$serveProc = Start-Process $Com -ArgumentList "serve", "--port=$servePort" -PassThru -WindowStyle Hidden
+$serveProc = Start-Process $Com -ArgumentList "serve", "--port=$servePort", "--quiet" -PassThru -WindowStyle Hidden
 $ipcToken = ""
 $tokenPath = Join-Path $env:LOCALAPPDATA "paramux\paramux-ipc-token"
 if (Test-Path $tokenPath) { $ipcToken = (Get-Content $tokenPath -Raw).Trim() }
