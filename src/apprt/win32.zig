@@ -8185,7 +8185,45 @@ pub const App = struct {
         const file = std.fs.cwd().createFile(path, .{}) catch return false;
         defer file.close();
         file.writeAll(out.written()) catch return false;
+
+        // Sibling CSV for spreadsheet people: one row per event.
+        csv: {
+            const csv_path = self.localAppDataPath("attention-log.csv") orelse break :csv;
+            defer self.core_app.alloc.free(csv_path);
+            var csv_out: std.Io.Writer.Allocating = .init(a);
+            defer csv_out.deinit();
+            const w = &csv_out.writer;
+            w.writeAll("surface_id,window_id,workspace,title,wall_ms,state,message\r\n") catch break :csv;
+            for (panes.items) |pane| {
+                for (pane.events) |event| {
+                    w.print("{d},{d},{d},", .{ pane.surface_id, pane.window_id, pane.workspace }) catch break :csv;
+                    writeCsvField(w, pane.title orelse "") catch break :csv;
+                    w.print(",{d},{s},", .{ event.wall_ms, event.state }) catch break :csv;
+                    writeCsvField(w, event.message orelse "") catch break :csv;
+                    w.writeAll("\r\n") catch break :csv;
+                }
+            }
+            const csv_file = std.fs.cwd().createFile(csv_path, .{}) catch break :csv;
+            defer csv_file.close();
+            csv_file.writeAll(csv_out.written()) catch {};
+        }
         return true;
+    }
+
+    /// Quote a CSV field: wrap in quotes, double interior quotes, and
+    /// strip CR/LF so one event stays one row.
+    fn writeCsvField(w: *std.Io.Writer, value: []const u8) !void {
+        try w.writeByte('"');
+        for (value) |c| {
+            if (c == '"') {
+                try w.writeAll(&.{ '"', '"' });
+            } else if (c == '\r' or c == '\n') {
+                try w.writeByte(' ');
+            } else {
+                try w.writeByte(c);
+            }
+        }
+        try w.writeByte('"');
     }
 
     /// Opt-in local crash capture: prepare the crash directory once
@@ -39769,6 +39807,16 @@ test "win32 command palette action parser accepts simple actions" {
 
     const action = try input.Binding.Action.parse("toggle_fullscreen");
     try std.testing.expect(action == .toggle_fullscreen);
+}
+
+test "win32 csv field escaping doubles quotes and flattens breaks" {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+    try App.writeCsvField(&out.writer, "a\"b\nc");
+    try std.testing.expectEqualStrings(
+        "\"a\"\"b c\"",
+        out.written(),
+    );
 }
 
 test "win32 tab overview parser accepts one-based tab numbers" {
