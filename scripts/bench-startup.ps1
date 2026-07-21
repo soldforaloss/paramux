@@ -96,7 +96,7 @@ if (-not $CliOnly) { Write-Host "Wrote $OutFile (CLI best $cliMin ms, avg $cliAv
 
 if ($MaxCliMs -gt 0) {
     if ($cliAvg -gt $MaxCliMs) {
-        Write-Error "CLI cold-start average ${cliAvg}ms exceeds the ${MaxCliMs}ms budget."
+        Write-Error "CLI cold-start average ${cliAvg}ms exceeds the ${MaxCliMs}ms budget ($ver)."
     }
-    Write-Host "Perf budget OK: average ${cliAvg}ms <= ${MaxCliMs}ms."
+    Write-Host "Perf budget OK: average ${cliAvg}ms <= ${MaxCliMs}ms ($ver)."
 }
