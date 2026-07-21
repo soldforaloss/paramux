@@ -17,7 +17,7 @@ const PRODUCT_FACTS = [
   },
   {
     q: 'What can I download today?',
-    a: 'A public, unsigned Windows x64 portable prerelease: v0.1.10. It ships the agent-hook adapters, the +send/+send-key automation verbs, and the fully Paramux-branded package.',
+    a: 'A public, unsigned Windows x64 portable prerelease: v0.1.11. It ships the agent-hook adapters, the +send/+send-key automation verbs, and the fully Paramux-branded package.',
   },
   {
     q: 'What is not published yet?',

@@ -87,30 +87,29 @@ path today.
 ## Try the current prerelease
 
 The current test build is
-[`v0.1.10`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.10),
+[`v0.1.11`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.11),
 published 2026-07-21 for Windows x64 and ARM64:
 
-- [`paramux-0.1.10-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.10/paramux-0.1.10-windows-x64-portable.zip)
-- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.10/SHA256SUMS-windows-x64.txt)
-- [`paramux-0.1.10-windows-arm64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.10/paramux-0.1.10-windows-arm64-portable.zip)
-- [`SHA256SUMS-windows-arm64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.10/SHA256SUMS-windows-arm64.txt)
+- [`paramux-0.1.11-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.11/paramux-0.1.11-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.11/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.11-windows-arm64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.11/paramux-0.1.11-windows-arm64-portable.zip)
+- [`SHA256SUMS-windows-arm64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.11/SHA256SUMS-windows-arm64.txt)
 
-This build is the follow-through release. The screen-reader story
-gets **real navigation**: a true Word unit, viewport-accurate
-visible ranges, line-granular **bounding rectangles**, grid
-hit-testing for **RangeFromPoint**, and a **TextChanged heartbeat**
-so live-follow re-reads as agents print. Restore earned receipts:
-a new three-phase E2E caught (and this build fixes) **two latent
-restore bugs** that ReleaseFast had masked — restored fleets now
-verifiably relaunch their commands — and **Save Session Now**
-writes the session on demand. Conductors get a **quick terminal
-that remembers its frame**, **drop previews on cross-workspace
-drags**, an **Export Attention Log** action, `record --idle-limit`,
-`open --list`, workspace-level layout `env`, a smarter settings
-search that flags misses, a **de-DE proof locale** (`ui-language`),
-**opt-in local crash minidumps**, and a detached **72-hour
-soak-gate launcher**. It builds on
-`v0.1.9`'s conductor foundation. Releases from
+This build is the responsiveness release. Screen readers now
+**re-read the moment an agent finishes or starts waiting**
+(TextChanged on attention transitions), "read current page" covers
+the **viewport instead of all scrollback**, and the repo carries a
+**Narrator hardware checklist**. **Layout slots have names** — menus
+read "Slot 2 — api server", `open --list` shows them, and
+**`open --slot=N`** applies any saved slot. A dozen CLI sharp edges
+came off: **`notify --focused`** (plus an honest hint when notify
+can't reach a pane), timestamped `record` defaults,
+`status --interval`, **`version --json`**, **ETag/304 on the serve
+pane-text route**, a doctor line and launch banner for **leftover
+crash dumps**, and a **Reset Quick Terminal Frame** action for
+stranded windows. i18n slice 2 moves the **banner texts** into the
+string table with full de-DE coverage. It builds on
+`v0.1.10`'s follow-through. Releases from
 `v0.1.0-paramux.7` onward apply with `paramux update`
 (`v0.1.0-paramux.4` remains a legacy test artifact).
 
@@ -119,7 +118,7 @@ soak-gate launcher**. It builds on
    release checksum:
 
 ```powershell
-Get-FileHash .\paramux-0.1.10-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\paramux-0.1.11-windows-x64-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 

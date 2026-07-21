@@ -1,4 +1,4 @@
-const RELEASE_TAG = 'v0.1.10';
+const RELEASE_TAG = 'v0.1.11';
 
 export function ReleaseBlock() {
   return (
