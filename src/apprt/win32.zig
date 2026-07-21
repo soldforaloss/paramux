@@ -8327,6 +8327,9 @@ pub const App = struct {
         state: AttentionState,
         message: ?[]const u8,
     ) void {
+        // Tests exercise recordAttentionEvent with fixture surfaces;
+        // they must never touch the user's real history file.
+        if (builtin.is_test) return;
         const alloc = self.core_app.alloc;
         const path = self.localAppDataPath("attention-history.jsonl") orelse return;
         defer alloc.free(path);
