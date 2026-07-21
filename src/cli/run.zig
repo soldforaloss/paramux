@@ -191,10 +191,7 @@ pub fn collectSurfaceIds(alloc: Allocator, target: apprt.ipc.Target) ![]u64 {
                                 .object => |pobj| pobj.get("surface_id") orelse continue,
                                 else => continue,
                             };
-                            switch (sid) {
-                                .integer => |v| try ids.append(alloc, @intCast(v)),
-                                else => {},
-                            }
+                            if (apprt.ipc.jsonU64(sid)) |v| try ids.append(alloc, v);
                         },
                         else => {},
                     }
@@ -227,10 +224,7 @@ pub fn collectActiveTabSurfaceIds(alloc: Allocator, target: apprt.ipc.Target) ![
             const panes = tab.object.get("panes") orelse continue;
             for (panes.array.items) |pane| {
                 if (pane.object.get("surface_id")) |sid| {
-                    switch (sid) {
-                        .integer => |v| try ids.append(alloc, @intCast(v)),
-                        else => {},
-                    }
+                    if (apprt.ipc.jsonU64(sid)) |v| try ids.append(alloc, v);
                 }
             }
         }

@@ -124,6 +124,28 @@ pub const AutomationActionTarget = union(enum) {
     surface_id: u64,
 };
 
+/// Tolerant u64 read from a dynamic std.json.Value. Wire ids are u64;
+/// values above maxInt(i64) parse as .number_string, not .integer, so
+/// every client-side reader must go through this instead of `v.integer`.
+pub fn jsonU64(v: std.json.Value) ?u64 {
+    return switch (v) {
+        .integer => |i| std.math.cast(u64, i),
+        .number_string, .string => |s| std.fmt.parseInt(u64, s, 10) catch null,
+        else => null,
+    };
+}
+
+test "win32 ipc jsonU64 tolerates ids beyond i64" {
+    const big = "{\"surface_id\":18446744073709551615,\"small\":42,\"neg\":-1}";
+    var parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, big, .{});
+    defer parsed.deinit();
+    const obj = parsed.value.object;
+    try std.testing.expectEqual(@as(?u64, std.math.maxInt(u64)), jsonU64(obj.get("surface_id").?));
+    try std.testing.expectEqual(@as(?u64, 42), jsonU64(obj.get("small").?));
+    try std.testing.expectEqual(@as(?u64, null), jsonU64(obj.get("neg").?));
+    try std.testing.expectEqual(@as(?u64, null), jsonU64(.null));
+}
+
 /// Maximum exact-text payload accepted by the dedicated terminal-input IPC
 /// contract. The client and server both enforce this bound.
 pub const automation_input_max_len: usize = 16 * 1024;

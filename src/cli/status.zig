@@ -160,9 +160,9 @@ fn renderOnce(
             const panes = tab.object.get("panes") orelse continue;
             for (panes.array.items) |pane| {
                 const obj = pane.object;
-                const sid: i64 = if (obj.get("surface_id")) |v| v.integer else 0;
+                const sid: u64 = if (obj.get("surface_id")) |v| apprt.ipc.jsonU64(v) orelse 0 else 0;
                 const state: []const u8 = if (obj.get("attention")) |v| v.string else "none";
-                const tokens: i64 = if (obj.get("tokens")) |v| v.integer else 0;
+                const tokens: u64 = if (obj.get("tokens")) |v| apprt.ipc.jsonU64(v) orelse 0 else 0;
                 const focused = if (obj.get("focused")) |v| v.bool else false;
                 const active = if (obj.get("active")) |v| v.bool else false;
                 const flags: []const u8 = if (active) "active" else if (focused) "focused" else "";
