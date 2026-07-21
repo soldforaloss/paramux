@@ -11859,9 +11859,11 @@ const Host = struct {
                 },
                 secondary_color,
             );
-            // MRU rows in the unfiltered view carry a quiet "recent"
-            // chip (identity order means no query reshuffled them).
-            if (i == cmd_index and cmd_index < self.palette_mru_front) {
+            // The right-edge slot shows the keybind hint when one
+            // exists, else a quiet "recent" chip for MRU commands —
+            // in ranked views too, so reshuffled rows keep the marker.
+            const trigger_opt = self.app.config.keybind.set.reverse.get(cmd.action);
+            if (trigger_opt == null and cmd_index < self.palette_mru_front) {
                 drawPaletteRowText(
                     hdc,
                     "recent",
@@ -11875,11 +11877,11 @@ const Host = struct {
                 );
             }
 
-            // Keybind hint: look up the primary trigger for this action
-            // in the reverse index that `Binding.Set` already maintains.
-            // Format into a stack buffer — the per-frame allocation
-            // would otherwise stack up at every keystroke's WM_PAINT.
-            if (self.app.config.keybind.set.reverse.get(cmd.action)) |trigger| {
+            // Keybind hint: the primary trigger from the reverse index
+            // that `Binding.Set` already maintains. Format into a stack
+            // buffer — the per-frame allocation would otherwise stack
+            // up at every keystroke's WM_PAINT.
+            if (trigger_opt) |trigger| {
                 var hint_buf: [96]u8 = undefined;
                 const hint = std.fmt.bufPrint(&hint_buf, "{f}", .{trigger}) catch null;
                 if (hint) |text| {
