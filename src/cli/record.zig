@@ -14,8 +14,10 @@ pub const Options = struct {
     /// inside a pane.
     @"surface-id": ?u64 = null,
 
-    /// Output .cast path (asciinema v2). Defaults to `paramux.cast`.
-    out: [:0]const u8 = "paramux.cast",
+    /// Output .cast path (asciinema v2). Defaults to a timestamped
+    /// `paramux-<unix>.cast` so back-to-back recordings never clobber
+    /// each other silently.
+    out: ?[:0]const u8 = null,
 
     /// Seconds to record (0 = until Ctrl+C, max 3600).
     seconds: u32 = 30,
@@ -117,10 +119,12 @@ fn runArgs(
         };
     };
     const seconds = @min(if (opts.seconds == 0) 3600 else opts.seconds, 3600);
+    const out_path: [:0]const u8 = opts.out orelse
+        try std.fmt.allocPrintSentinel(a, "paramux-{d}.cast", .{std.time.timestamp()}, 0);
     const target: apprt.ipc.Target = if (opts.class) |class| .{ .class = class } else .detect;
 
-    const file = std.fs.cwd().createFile(opts.out, .{}) catch |err| {
-        try stderr.print("could not create {s} (err={})\n", .{ opts.out, err });
+    const file = std.fs.cwd().createFile(out_path, .{}) catch |err| {
+        try stderr.print("could not create {s} (err={})\n", .{ out_path, err });
         return 1;
     };
     defer file.close();
@@ -164,6 +168,6 @@ fn runArgs(
         std.Thread.sleep(interval_ns);
     }
     try w.flush();
-    try stdout.print("Wrote {s} ({d} frames, {d}s).\n", .{ opts.out, frames, seconds });
+    try stdout.print("Wrote {s} ({d} frames, {d}s).\n", .{ out_path, frames, seconds });
     return 0;
 }
