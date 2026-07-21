@@ -90,30 +90,28 @@ path today.
 ## Try the current prerelease
 
 The current test build is
-[`v0.1.14`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.14),
+[`v0.1.15`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.15),
 published 2026-07-21 for Windows x64 and ARM64:
 
-- [`paramux-0.1.14-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.14/paramux-0.1.14-windows-x64-portable.zip)
-- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.14/SHA256SUMS-windows-x64.txt)
-- [`paramux-0.1.14-windows-arm64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.14/paramux-0.1.14-windows-arm64-portable.zip)
-- [`SHA256SUMS-windows-arm64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.14/SHA256SUMS-windows-arm64.txt)
+- [`paramux-0.1.15-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.15/paramux-0.1.15-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.15/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.15-windows-arm64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.15/paramux-0.1.15-windows-arm64-portable.zip)
+- [`SHA256SUMS-windows-arm64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.15/SHA256SUMS-windows-arm64.txt)
 
-This build is the trustworthiness release. The soak harness's new
-**`/attention` HTTP probe caught a shipped crash** — `status`
-panicked (and `run` dropped panes) whenever a pane id landed above
-`i64`; every CLI JSON read now goes through a tolerant `u64` reader
-with regression tests. The **layout gallery ships in the binary**:
-`import-layout 2 grid-2x2` works from a bare install, and
-`--name=<slot name>` addresses slots across `open` /
-`export-layout` / `import-layout`. The serve contract got honest:
-a scripted six-check E2E proved the `/attention` ETag could never
-304 (it hashed a moving timestamp — fixed), and a second `serve`
-on a busy port now **fails fast** instead of silently stealing
-traffic on Windows. Plus: "recent" chips survive into ranked
-palette views, `status --notes` shows workspace accents, the hint
-strip speaks de-DE (i18n slice 6), and `doctor --fire` round-trips
-`read_attention`. It builds on `v0.1.13`'s precision. Releases from
-`v0.1.0-paramux.7` onward apply with `paramux update`
+This build is the courtesy release: the fleet CLI grows softer
+edges. **`import-layout` with no slot number lands in the first
+empty slot**, **`send --all-panes` respects solo (opt-out) panes**
+the way GUI broadcast typing always has (the flag now rides the v2
+wire), and every automation verb is on one page in
+[docs/paramux/fleet-cli.md](docs/paramux/fleet-cli.md). Hardening
+continued: IPC clients retry a busy pipe under a 3-second deadline,
+`serve` logs one line per request, the soak gate fails if the
+`/attention` probe misses a single sample, `doctor` validates the
+embedded layout gallery, and the serve E2E grew to nine checks.
+The attention timeline (IPC, HTTP, and JSON/CSV exports) carries
+each pane's **workspace note**, and the pane context menu speaks
+de-DE (i18n slice 7). It builds on `v0.1.14`'s trustworthiness.
+Releases from `v0.1.0-paramux.7` onward apply with `paramux update`
 (`v0.1.0-paramux.4` remains a legacy test artifact).
 
 1. Download both the portable ZIP and `SHA256SUMS-windows-x64.txt`.
@@ -121,7 +119,7 @@ strip speaks de-DE (i18n slice 6), and `doctor --fire` round-trips
    release checksum:
 
 ```powershell
-Get-FileHash .\paramux-0.1.14-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\paramux-0.1.15-windows-x64-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 
