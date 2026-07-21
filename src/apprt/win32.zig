@@ -7250,7 +7250,7 @@ pub const App = struct {
             "{d} crash dump(s) from earlier runs in %LOCALAPPDATA%\\paramux\\crash - attach to a GitHub issue or delete.",
             .{count},
         ) catch return;
-        host.setBanner(.warn, text) catch {};
+        host.setBanner(.info, text) catch {};
     }
 
     fn maybeShowFirstRunHint(self: *App, host: *Host) void {
