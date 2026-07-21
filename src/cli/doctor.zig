@@ -253,6 +253,34 @@ pub fn run(alloc: Allocator) !u8 {
         try report.line(.ok, "session-state.json last written {d} minute(s) ago", .{age_min});
     }
 
+    // 9b. Embedded layout gallery integrity: every bundled template
+    // must still parse and validate in THIS binary.
+    {
+        const gallery = @import("layout_gallery.zig");
+        const session = @import("../apprt/win32_session_state.zig");
+        var bad: usize = 0;
+        for (gallery.entries) |entry| {
+            const parsed = std.json.parseFromSlice(session.Tab, a, entry.json, .{
+                .ignore_unknown_fields = true,
+                .allocate = .alloc_always,
+            }) catch {
+                bad += 1;
+                continue;
+            };
+            defer parsed.deinit();
+            session.validateAlloc(a, .{
+                .windows = &.{.{ .selected_tab = 0, .tabs = &.{parsed.value} }},
+            }) catch {
+                bad += 1;
+            };
+        }
+        if (bad == 0) {
+            try report.line(.ok, "layout gallery: {d} bundled templates parse and validate", .{gallery.entries.len});
+        } else {
+            try report.line(.fail, "layout gallery: {d} of {d} bundled templates are invalid", .{ bad, gallery.entries.len });
+        }
+    }
+
     // 10. Live pipeline test.
     if (opts.fire) {
         if (surface_id) |id| {
