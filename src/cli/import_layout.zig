@@ -31,8 +31,10 @@ fn layoutsPath(alloc: Allocator) ![]u8 {
 
 /// Install a `.layout.json` template into a slot:
 /// `paramux import-layout 2 team.layout.json [--name=api-fleet]`.
-/// Validates the template (same rules as session restore) before
-/// touching layouts.json; other slots and their names are preserved.
+/// With no slot number the first empty slot is used (error when all
+/// five are occupied). Validates the template (same rules as session
+/// restore) before touching layouts.json; other slots and their
+/// names are preserved.
 pub fn run(alloc: Allocator) !u8 {
     var arena = ArenaAllocator.init(alloc);
     defer arena.deinit();
@@ -71,17 +73,15 @@ pub fn run(alloc: Allocator) !u8 {
         try stderr.print("unexpected argument: {s}\n", .{arg});
         return 1;
     }
-    const slot = slot_arg orelse {
-        try stderr.print("usage: paramux import-layout <slot 1-5> <file> [--name=...]\n", .{});
-        return 1;
-    };
     const file_path = in_arg orelse {
-        try stderr.print("usage: paramux import-layout <slot 1-5> <file> [--name=...]\n", .{});
+        try stderr.print("usage: paramux import-layout [slot 1-5] <file> [--name=...]\n", .{});
         return 1;
     };
-    if (slot < 1 or slot > 5) {
-        try stderr.print("slot must be 1-5\n", .{});
-        return 1;
+    if (slot_arg) |slot| {
+        if (slot < 1 or slot > 5) {
+            try stderr.print("slot must be 1-5\n", .{});
+            return 1;
+        }
     }
 
     // A bare name that isn't a readable file resolves against the
@@ -127,6 +127,15 @@ pub fn run(alloc: Allocator) !u8 {
         }) catch null;
         if (existing_parsed) |parsed| slots = parsed.value;
     } else |_| {}
+
+    // No slot given: take the first empty one instead of clobbering.
+    const slot = slot_arg orelse blk: {
+        for (slots.slots, 1..) |slot_opt, n| {
+            if (slot_opt == null) break :blk n;
+        }
+        try stderr.print("all five slots are occupied; pass a slot number to overwrite one (see paramux open --list)\n", .{});
+        return 1;
+    };
 
     slots.slots[slot - 1] = tab_parsed.value;
     if (name_arg) |name| {
