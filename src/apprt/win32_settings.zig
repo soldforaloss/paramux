@@ -2185,6 +2185,10 @@ pub const SettingsWindow = struct {
         );
 
         self.edit_settings_search = makeEdit(hwnd, self.handle.hinstance, EDIT_SETTINGS_SEARCH, 160, 0);
+        if (self.edit_settings_search) |search| {
+            const cue = std.unicode.utf8ToUtf16LeStringLiteral("Search settings...");
+            _ = SendMessageW(search, EM_SETCUEBANNER, 1, @bitCast(@intFromPtr(cue)));
+        }
         self.edit_digest_min = makeEdit(hwnd, self.handle.hinstance, EDIT_DIGEST_MIN, 120, ES_NUMBER);
         self.edit_alert_keywords = makeEdit(hwnd, self.handle.hinstance, EDIT_ALERT_KEYWORDS, 320, 0);
         self.edit_token_budget = makeEdit(hwnd, self.handle.hinstance, EDIT_TOKEN_BUDGET, 140, ES_NUMBER);
