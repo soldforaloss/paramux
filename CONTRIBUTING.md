@@ -92,3 +92,10 @@ lands in the file as a raw byte (build errors like "string literal
 contains invalid byte"). Write patch scripts to a file first, or
 build the strings with explicit chr()-style constructions.
 
+Related Windows PowerShell 5.1 hazard: an argument containing a
+literal double quote (for example a `git commit -m` message quoting
+code) gets re-tokenized on the way into a native executable and the
+message splinters into pathspecs. Keep double quotes out of args
+passed to native tools; for commit messages, rephrase or use
+`git commit -F <file>`.
+

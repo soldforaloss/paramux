@@ -40,4 +40,11 @@ says.
 Slots round-trip as files: `paramux export-layout <slot> [file]`
 (or `--all=<dir>` for every occupied slot) writes this format, and
 `paramux import-layout <slot> <file> [--name=...]` validates and
-installs a template.
+installs a template. Both take `--name=<slot name>` to address a
+slot by its saved name, as does `paramux open --name=...` to apply
+one directly.
+
+These four templates are also embedded in the binary as the bundled
+gallery: `paramux import-layout 2 grid-2x2` works from an installed
+package with no checkout around — a bare name that isn't a readable
+file resolves against the gallery, and a miss lists the names.
