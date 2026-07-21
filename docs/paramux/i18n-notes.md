@@ -41,7 +41,7 @@ constraints any approach must satisfy.
 
 Nothing here is scheduled; this is the map so step 1 is a mechanical PR.
 
-## Progress (as of v0.1.17)
+## Progress (as of v0.1.18)
 
 Shipped slices, all behind `ui-language = de`: 1 chrome basics,
 2 banners, 3 UIA localized type, 4 settings sections, 5 overlay

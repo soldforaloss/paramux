@@ -38,8 +38,8 @@ which reader you used.
 
 ## Known approximations (do not file as bugs)
 
-- Wide glyphs (CJK/emoji) measure their true cells since v0.1.17;
-  line-end widths use a codepoint-range heuristic since v0.1.17, so
+- Wide glyphs (CJK/emoji) measure their true cells since v0.1.18;
+  line-end widths use a codepoint-range heuristic since v0.1.18, so
   only exotic width cases (ambiguous-width ranges) can be off.
 - Format/Paragraph units behave as Line.
 - Selection is reported unsupported; Narrator can read but not select.
