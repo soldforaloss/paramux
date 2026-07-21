@@ -14417,7 +14417,7 @@ const Host = struct {
         // Only allow closing if there's more than one tab
         const close_flag: UINT = if (self.tabs.items.len > 1) MF_STRING else MF_GRAYED;
         _ = AppendMenuW(menu, close_flag, CTX_TAB_CLOSE, win32_strings.strings.menu_close_workspace);
-        _ = AppendMenuW(menu, if (self.tabs.items.len > 1) MF_STRING else MF_GRAYED, CTX_TAB_CLOSE_OTHERS, std.unicode.utf8ToUtf16LeStringLiteral("Close Other Workspaces"));
+        _ = AppendMenuW(menu, if (self.tabs.items.len > 1) MF_STRING else MF_GRAYED, CTX_TAB_CLOSE_OTHERS, win32_strings.strings.menu_close_other_ws);
 
         // Position below the tab button
         var rect: RECT = undefined;
@@ -15026,7 +15026,7 @@ const Host = struct {
         const menu = CreatePopupMenu() orelse return;
         defer _ = DestroyMenu(menu);
         if (n == 0) {
-            _ = AppendMenuW(menu, MF_GRAYED, 0, std.unicode.utf8ToUtf16LeStringLiteral("No matches in any pane"));
+            _ = AppendMenuW(menu, MF_GRAYED, 0, win32_strings.strings.menu_no_matches);
         } else {
             for (matches[0..n], 0..) |*m, idx| {
                 const title: []const u8 = if (m.surface.effectiveTitle()) |t| t else "shell";
@@ -15102,7 +15102,7 @@ const Host = struct {
         defer _ = DestroyMenu(menu);
 
         if (n == 0) {
-            _ = AppendMenuW(menu, MF_GRAYED, 0, std.unicode.utf8ToUtf16LeStringLiteral("No agents need attention"));
+            _ = AppendMenuW(menu, MF_GRAYED, 0, win32_strings.strings.menu_no_attention);
         } else {
             const now_ms = std.time.milliTimestamp();
             for (entries[0..n], 0..) |entry, idx| {
@@ -15189,7 +15189,7 @@ const Host = struct {
         // the one obvious "more actions" control advertises how to split a pane.
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, win32_strings.strings.menu_new_workspace);
         _ = AppendMenuW(menu, MF_STRING, CTX_TAB_OVERVIEW, win32_strings.strings.menu_workspaces);
-        _ = AppendMenuW(menu, MF_STRING, CTX_QUICK_TERMINAL, std.unicode.utf8ToUtf16LeStringLiteral("Quick Terminal\tCtrl+Alt+Q"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_QUICK_TERMINAL, win32_strings.strings.menu_quick_terminal);
         _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_RIGHT, win32_strings.strings.menu_split_right);
         _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_DOWN, win32_strings.strings.menu_split_down);
         const pane_count = if (self.activeTab()) |tab| tab.leafCount() else 1;
@@ -15205,7 +15205,7 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_STRING, CTX_FIND, win32_strings.strings.menu_find);
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
         _ = AppendMenuW(menu, MF_STRING, CTX_SETTINGS, win32_strings.strings.menu_settings);
-        _ = AppendMenuW(menu, MF_STRING, CTX_INSPECTOR, std.unicode.utf8ToUtf16LeStringLiteral("Toggle Inspector"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_INSPECTOR, win32_strings.strings.menu_toggle_inspector);
 
         _ = SetForegroundWindow(hwnd);
         const cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTALIGN | TPM_TOPALIGN, rect.left, rect.bottom, 0, hwnd, null);
@@ -15292,7 +15292,7 @@ const Host = struct {
         const menu = CreatePopupMenu() orelse return;
         defer _ = DestroyMenu(menu);
 
-        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TERMINAL_AUTO, std.unicode.utf8ToUtf16LeStringLiteral("New Terminal in This Workspace\tCtrl+Shift+D"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TERMINAL_AUTO, win32_strings.strings.menu_new_terminal_auto);
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, win32_strings.strings.menu_new_workspace);
 
         // Agent presets: every configured profile is one click away —
@@ -15386,12 +15386,12 @@ const Host = struct {
         const menu = CreatePopupMenu() orelse return;
         defer _ = DestroyMenu(menu);
 
-        _ = AppendMenuW(menu, MF_STRING, CTX_HELP_GETTING_STARTED, std.unicode.utf8ToUtf16LeStringLiteral("Getting Started"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_HELP_SHORTCUTS, std.unicode.utf8ToUtf16LeStringLiteral("Keyboard Shortcuts"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_HELP_GETTING_STARTED, win32_strings.strings.menu_help_getting_started);
+        _ = AppendMenuW(menu, MF_STRING, CTX_HELP_SHORTCUTS, win32_strings.strings.menu_help_shortcuts);
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
-        _ = AppendMenuW(menu, MF_STRING, CTX_HELP_DOCS, std.unicode.utf8ToUtf16LeStringLiteral("Documentation (GitHub)"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_OPEN_DATA_DIR, std.unicode.utf8ToUtf16LeStringLiteral("Open Data Folder (config, logs, crashes)"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_HELP_ABOUT, std.unicode.utf8ToUtf16LeStringLiteral("About Paramux"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_HELP_DOCS, win32_strings.strings.menu_help_docs);
+        _ = AppendMenuW(menu, MF_STRING, CTX_OPEN_DATA_DIR, win32_strings.strings.menu_open_data_dir);
+        _ = AppendMenuW(menu, MF_STRING, CTX_HELP_ABOUT, win32_strings.strings.menu_help_about);
 
         _ = SetForegroundWindow(hwnd);
         const cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTALIGN | TPM_TOPALIGN, rect.left, rect.bottom, 0, hwnd, null);

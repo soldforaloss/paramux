@@ -134,6 +134,20 @@ pub const Strings = struct {
     menu_move_ws_right: [:0]const u16 = w("Move Workspace Right"),
     menu_close_workspace: [:0]const u16 = w("Close Workspace"),
 
+    // Pane context menu, final block: workspace close, empty-state
+    // rows, quick terminal, inspector, and the help menu.
+    menu_close_other_ws: [:0]const u16 = w("Close Other Workspaces"),
+    menu_no_matches: [:0]const u16 = w("No matches in any pane"),
+    menu_no_attention: [:0]const u16 = w("No agents need attention"),
+    menu_quick_terminal: [:0]const u16 = w("Quick Terminal\tCtrl+Alt+Q"),
+    menu_toggle_inspector: [:0]const u16 = w("Toggle Inspector"),
+    menu_new_terminal_auto: [:0]const u16 = w("New Terminal in This Workspace\tCtrl+Shift+D"),
+    menu_help_getting_started: [:0]const u16 = w("Getting Started"),
+    menu_help_shortcuts: [:0]const u16 = w("Keyboard Shortcuts"),
+    menu_help_docs: [:0]const u16 = w("Documentation (GitHub)"),
+    menu_open_data_dir: [:0]const u16 = w("Open Data Folder (config, logs, crashes)"),
+    menu_help_about: [:0]const u16 = w("About Paramux"),
+
     // Hint-strip texts (UTF-16 via w) plus prefix/suffix pieces for
     // the two runtime-formatted hints (bufPrint formats are comptime,
     // so the dynamic parts compose around table strings instead).
@@ -259,6 +273,17 @@ pub const german: Strings = .{
     .menu_move_ws_left = w("Arbeitsbereich nach links"),
     .menu_move_ws_right = w("Arbeitsbereich nach rechts"),
     .menu_close_workspace = w("Arbeitsbereich schlie\u{00DF}en"),
+    .menu_close_other_ws = w("Andere Arbeitsbereiche schlie\u{00DF}en"),
+    .menu_no_matches = w("Keine Treffer in irgendeinem Pane"),
+    .menu_no_attention = w("Keine Agenten brauchen Aufmerksamkeit"),
+    .menu_quick_terminal = w("Quick Terminal\tCtrl+Alt+Q"),
+    .menu_toggle_inspector = w("Inspector umschalten"),
+    .menu_new_terminal_auto = w("Neues Terminal in diesem Arbeitsbereich\tCtrl+Shift+D"),
+    .menu_help_getting_started = w("Erste Schritte"),
+    .menu_help_shortcuts = w("Tastenk\u{00FC}rzel"),
+    .menu_help_docs = w("Dokumentation (GitHub)"),
+    .menu_open_data_dir = w("Datenordner \u{00F6}ffnen (Konfiguration, Logs, Abst\u{00FC}rze)"),
+    .menu_help_about = w("\u{00DC}ber Paramux"),
     .hint_confirm = w("Enter best\u{00E4}tigen \u{00B7} Esc abbrechen"),
     .hint_drop = w("Ablegen: Kanten docken an \u{00B7} Mitte tauscht"),
     .hint_resize = w("Ziehen zum Anpassen"),
