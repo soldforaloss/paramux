@@ -385,6 +385,13 @@ fn drainMailbox(self: *App, rt_app: *apprt.App) !void {
                     break :blk null;
                 };
             },
+            .read_attention => |request| {
+                defer request.done.set();
+                request.result = rt_app.readAttentionJson(request.alloc) catch |err| blk: {
+                    request.err = err;
+                    break :blk null;
+                };
+            },
             .git_dirty_result => |result| {
                 rt_app.applyGitDirty(result.surface_id, result.gen, result.dirty);
             },
@@ -887,6 +894,10 @@ pub const Message = union(enum) {
     /// Read a surface's viewport text on the app thread (paramux `read-pane`).
     read_pane: *ReadPaneRequest,
 
+    /// Snapshot every pane's attention timeline as JSON (IPC serves
+    /// it token-gated; same shape as the local export).
+    read_attention: *ReadAttentionRequest,
+
     /// Apply an async git-dirty result to a surface on the app thread (paramux
     /// FR-3 sidebar). Fire-and-forget (a value, not a blocking request).
     git_dirty_result: GitDirtyResult,
@@ -946,6 +957,13 @@ pub const Message = union(enum) {
 
     pub const ReadPaneRequest = struct {
         target: apprt.ipc.AutomationActionTarget,
+        alloc: Allocator,
+        done: std.Thread.ResetEvent = .{},
+        result: ?[]const u8 = null,
+        err: ?anyerror = null,
+    };
+
+    pub const ReadAttentionRequest = struct {
         alloc: Allocator,
         done: std.Thread.ResetEvent = .{},
         result: ?[]const u8 = null,

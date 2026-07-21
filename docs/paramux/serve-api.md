@@ -46,18 +46,20 @@ curl -H "Authorization: Bearer $token" http://127.0.0.1:7877/panes/42/text
 
 Unknown pane ids return `404`.
 
+### `GET /attention`
+
+Every pane's attention timeline (states, timestamps, notify
+messages) as JSON — the same shape `Export Attention Log` writes.
+Timeline messages are content, so this route requires the same
+`Authorization: Bearer <token>` header as pane text; it is served
+through a dedicated token-gated IPC method (`read_attention`).
+
 Responses carry a content-hash `ETag`; send `If-None-Match` to get
 `304 Not Modified` with no body when the pane hasn't changed —
 recommended for pollers.
 
 ## Non-goals
 
-- **No `/attention` endpoint (for now).** Attention timelines carry
-  notify message text; exposing them over HTTP would put content
-  behind the same bearer token as pane text but with a much longer
-  retention story. The local `Export Attention Log` action
-  (attention-log.json/.csv in the state dir) is the supported path;
-  an HTTP variant needs its own IPC method and a deliberate decision.
 
 
 - **No remote access.** Binding is hardcoded to loopback; put a

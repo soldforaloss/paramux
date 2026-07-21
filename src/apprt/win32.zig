@@ -920,12 +920,13 @@ const IpcRequestKind = enum(u8) {
     read_pane = 5,
     send = 6,
     send_key = 7,
+    read_attention = 8,
 };
 
 fn ipcRequestRequiresToken(kind: IpcRequestKind) bool {
     return switch (kind) {
         .new_window, .list_windows => false,
-        .perform_action, .set_notification, .read_pane, .send, .send_key => true,
+        .perform_action, .set_notification, .read_pane, .send, .send_key, .read_attention => true,
     };
 }
 
@@ -3244,6 +3245,25 @@ fn sendSetNotificationIpc(
     return try readIpcAck(pipe);
 }
 
+fn sendReadAttentionIpc(
+    alloc: Allocator,
+    pipe_name: [:0]const u16,
+    token: []const u8,
+) !?[]u8 {
+    const pipe = connectToIpcPipe(pipe_name) catch |err| switch (err) {
+        error.FileNotFound => return null,
+        error.PipeBusy => return error.IPCFailed,
+        else => return err,
+    };
+    defer _ = windows.CloseHandle(pipe);
+
+    var encoded: std.ArrayListUnmanaged(u8) = .empty;
+    defer encoded.deinit(alloc);
+    try appendIpcRequestPrefix(&encoded, alloc, .read_attention, token);
+    try writeAllHandle(pipe, encoded.items);
+    return try readIpcDataResponse(alloc, pipe);
+}
+
 fn sendReadPaneIpc(
     alloc: Allocator,
     pipe_name: [:0]const u16,
@@ -3513,6 +3533,12 @@ fn handleIpcClient(app: *App, pipe: windows.HANDLE) !void {
                 try writeIpcDataResponse(pipe, false, "");
             };
         },
+        .read_attention => {
+            handleReadAttentionIpcClient(app, pipe) catch |err| {
+                log.warn("failed to process win32 read-attention IPC request err={}", .{err});
+                try writeIpcDataResponse(pipe, false, "");
+            };
+        },
         .send => handleSendIpcClient(app, pipe) catch |err| {
             log.warn("failed to process win32 send IPC request err={}", .{err});
             try writeIpcAck(pipe, false);
@@ -3605,6 +3631,29 @@ fn handleSetNotificationIpcClient(app: *App, pipe: windows.HANDLE) !void {
         return;
     };
     try writeIpcAck(pipe, true);
+}
+
+fn handleReadAttentionIpcClient(app: *App, pipe: windows.HANDLE) !void {
+    const json = requestReadAttention(app, app.core_app.alloc) catch {
+        try writeIpcDataResponse(pipe, false, "");
+        return;
+    };
+    defer app.core_app.alloc.free(json);
+    try writeIpcDataResponse(pipe, true, json);
+}
+
+fn requestReadAttention(app: *App, alloc: Allocator) ![]const u8 {
+    var request: CoreApp.Message.ReadAttentionRequest = .{ .alloc = alloc };
+    const mailbox: CoreApp.Mailbox = .{
+        .rt_app = app,
+        .mailbox = &app.core_app.mailbox,
+    };
+    if (mailbox.push(.{ .read_attention = &request }, .{ .forever = {} }) == 0) {
+        return error.IPCFailed;
+    }
+    try waitForIpcRequestDone(app, &request.done);
+    if (request.err) |err| return err;
+    return request.result orelse error.IPCFailed;
 }
 
 fn handleReadPaneIpcClient(app: *App, pipe: windows.HANDLE) !void {
@@ -6674,6 +6723,23 @@ pub const App = struct {
         };
     }
 
+    /// Fetch the fleet's attention timelines as JSON over IPC
+    /// (token-gated; retries once with the file token on stale env).
+    pub fn performReadAttention(
+        alloc: Allocator,
+        target: apprt.ipc.Target,
+    ) !?[]u8 {
+        const pipe_name = try resolveIpcPipeNameForTarget(alloc, target);
+        defer alloc.free(pipe_name);
+        const token = readClientIpcToken(alloc) orelse "";
+        defer if (token.len > 0) alloc.free(token);
+        return sendReadAttentionIpc(alloc, pipe_name, token) catch |err| {
+            const retry = retryTokenAfterUnauthorized(alloc, err, token) orelse return err;
+            defer alloc.free(retry);
+            return try sendReadAttentionIpc(alloc, pipe_name, retry);
+        };
+    }
+
     pub fn performReadPane(
         alloc: Allocator,
         target: apprt.ipc.Target,
@@ -8180,6 +8246,52 @@ pub const App = struct {
     /// the state dir. States, timestamps, and notify messages only —
     /// never pane text. Returns false on any failure; the action's
     /// banner reports it.
+    /// UI-thread JSON snapshot of every pane's attention timeline —
+    /// the same shape the local export writes. Caller frees.
+    pub fn readAttentionJson(self: *App, alloc: Allocator) ![]const u8 {
+        var arena = std.heap.ArenaAllocator.init(self.core_app.alloc);
+        defer arena.deinit();
+        const a = arena.allocator();
+
+        const Event = struct { wall_ms: i64, state: []const u8, message: ?[]const u8 };
+        const PaneLog = struct {
+            surface_id: u64,
+            window_id: u32,
+            workspace: usize,
+            title: ?[]const u8,
+            events: []Event,
+        };
+        var panes: std.ArrayListUnmanaged(PaneLog) = .empty;
+        for (self.hosts.items) |host| {
+            for (host.tabs.items, 0..) |*tab, tab_index| {
+                var it = tab.tree.iterator();
+                while (it.next()) |leaf| {
+                    const surface = leaf.view;
+                    const events = try a.alloc(Event, surface.attention_history.items.len);
+                    for (surface.attention_history.items, 0..) |event, i| events[i] = .{
+                        .wall_ms = event.wall_ms,
+                        .state = @tagName(event.state),
+                        .message = event.message,
+                    };
+                    try panes.append(a, .{
+                        .surface_id = surface.core().id,
+                        .window_id = host.id,
+                        .workspace = tab_index + 1,
+                        .title = surface.title,
+                        .events = events,
+                    });
+                }
+            }
+        }
+        var out: std.Io.Writer.Allocating = .init(alloc);
+        errdefer out.deinit();
+        try std.json.Stringify.value(.{
+            .exported_at_ms = std.time.milliTimestamp(),
+            .panes = panes.items,
+        }, .{ .emit_null_optional_fields = false }, &out.writer);
+        return try out.toOwnedSlice();
+    }
+
     fn exportAttentionLog(self: *App) bool {
         const path = self.localAppDataPath("attention-log.json") orelse return false;
         defer self.core_app.alloc.free(path);

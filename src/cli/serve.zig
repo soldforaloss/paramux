@@ -176,6 +176,48 @@ fn runArgs(
             request.respond("not found\n", .{ .status = .not_found }) catch {};
             continue;
         }
+        if (std.mem.eql(u8, path, "/attention")) {
+            // Timelines carry notify message text — same bearer gate
+            // as pane content.
+            const token = apprt.App.readClientIpcTokenFromFile(alloc) orelse {
+                request.respond("{\"error\":\"no instance token on this machine\"}", .{
+                    .status = .service_unavailable,
+                    .extra_headers = &.{.{ .name = "content-type", .value = "application/json" }},
+                }) catch {};
+                continue;
+            };
+            defer alloc.free(token);
+            var authed = false;
+            var head_it = request.iterateHeaders();
+            while (head_it.next()) |h| {
+                if (!std.ascii.eqlIgnoreCase(h.name, "authorization")) continue;
+                const prefix = "Bearer ";
+                if (h.value.len != prefix.len + token.len) continue;
+                if (!std.ascii.startsWithIgnoreCase(h.value, prefix)) continue;
+                var diff: u8 = 0;
+                for (h.value[prefix.len..], token) |ca, cb| diff |= ca ^ cb;
+                if (diff == 0) authed = true;
+            }
+            if (!authed) {
+                request.respond("{\"error\":\"missing or wrong bearer token\"}", .{
+                    .status = .unauthorized,
+                    .extra_headers = &.{.{ .name = "content-type", .value = "application/json" }},
+                }) catch {};
+                continue;
+            }
+            const json = (apprt.App.performReadAttention(alloc, target) catch null) orelse {
+                request.respond("{\"error\":\"no running paramux instance\"}", .{
+                    .status = .service_unavailable,
+                    .extra_headers = &.{.{ .name = "content-type", .value = "application/json" }},
+                }) catch {};
+                continue;
+            };
+            defer alloc.free(json);
+            request.respond(json, .{
+                .extra_headers = &.{.{ .name = "content-type", .value = "application/json" }},
+            }) catch {};
+            continue;
+        }
         if (std.mem.eql(u8, path, "/status") or std.mem.eql(u8, path, "/")) {
             const payload = (apprt.App.queryAutomationWindowList(alloc, target) catch null) orelse {
                 request.respond("{\"error\":\"no running paramux instance\"}", .{
