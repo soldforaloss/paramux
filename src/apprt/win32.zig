@@ -9197,14 +9197,28 @@ pub const App = struct {
                     var client: std.http.Client = .{ .allocator = std.heap.smp_allocator };
                     defer client.deinit();
                     const uri = std.Uri.parse(payload.url) catch return;
-                    _ = client.fetch(.{
-                        .location = .{ .uri = uri },
-                        .method = .POST,
-                        .payload = payload.json,
-                        .headers = .{ .content_type = .{ .override = "application/json" } },
-                    }) catch |err| {
-                        std.log.warn("attention webhook failed err={}", .{err});
-                    };
+                    // One retry after a short backoff: agent endpoints
+                    // (a laptop dashboard waking up, a cold function)
+                    // often need one more chance; more than one retry
+                    // risks reordering against newer events.
+                    var attempt: usize = 0;
+                    while (attempt < 2) : (attempt += 1) {
+                        const result = client.fetch(.{
+                            .location = .{ .uri = uri },
+                            .method = .POST,
+                            .payload = payload.json,
+                            .headers = .{ .content_type = .{ .override = "application/json" } },
+                        }) catch |err| {
+                            if (attempt == 0) {
+                                std.Thread.sleep(2 * std.time.ns_per_s);
+                                continue;
+                            }
+                            std.log.warn("attention webhook failed after retry err={}", .{err});
+                            return;
+                        };
+                        _ = result;
+                        return;
+                    }
                 }
             };
             const gpa = std.heap.smp_allocator;
