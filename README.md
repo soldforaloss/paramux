@@ -87,29 +87,27 @@ path today.
 ## Try the current prerelease
 
 The current test build is
-[`v0.1.11`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.11),
+[`v0.1.12`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.12),
 published 2026-07-21 for Windows x64 and ARM64:
 
-- [`paramux-0.1.11-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.11/paramux-0.1.11-windows-x64-portable.zip)
-- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.11/SHA256SUMS-windows-x64.txt)
-- [`paramux-0.1.11-windows-arm64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.11/paramux-0.1.11-windows-arm64-portable.zip)
-- [`SHA256SUMS-windows-arm64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.11/SHA256SUMS-windows-arm64.txt)
+- [`paramux-0.1.12-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.12/paramux-0.1.12-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.12/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.12-windows-arm64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.12/paramux-0.1.12-windows-arm64-portable.zip)
+- [`SHA256SUMS-windows-arm64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.12/SHA256SUMS-windows-arm64.txt)
 
-This build is the responsiveness release. Screen readers now
-**re-read the moment an agent finishes or starts waiting**
-(TextChanged on attention transitions), "read current page" covers
-the **viewport instead of all scrollback**, and the repo carries a
-**Narrator hardware checklist**. **Layout slots have names** — menus
-read "Slot 2 — api server", `open --list` shows them, and
-**`open --slot=N`** applies any saved slot. A dozen CLI sharp edges
-came off: **`notify --focused`** (plus an honest hint when notify
-can't reach a pane), timestamped `record` defaults,
-`status --interval`, **`version --json`**, **ETag/304 on the serve
-pane-text route**, a doctor line and launch banner for **leftover
-crash dumps**, and a **Reset Quick Terminal Frame** action for
-stranded windows. i18n slice 2 moves the **banner texts** into the
-string table with full de-DE coverage. It builds on
-`v0.1.10`'s follow-through. Releases from
+This build is the polish release. Plumbing answers faster:
+**ETags/304 across `serve`**, **attention webhooks retry once**,
+**`update --version=X`** pin-installs any release, and
+**`doctor --json`** feeds CI. States read at a glance: **sidebar
+markers for muted and broadcast-opt-out panes**, **`status
+--notes`** for workspace scratch notes, and the **palette's
+recently-used actions finally rank first** (the MRU was recorded
+but never consumed — now it leads the empty-query list).
+Quick-terminal frames **clamp into the work area** after monitor
+changes, attention exports gain **window/workspace attribution and
+a CSV sibling**, and the restore E2E grew a **fourth phase** proving
+`paramux open` preserves layout slot names. It builds on
+`v0.1.11`'s responsiveness. Releases from
 `v0.1.0-paramux.7` onward apply with `paramux update`
 (`v0.1.0-paramux.4` remains a legacy test artifact).
 
@@ -118,7 +116,7 @@ string table with full de-DE coverage. It builds on
    release checksum:
 
 ```powershell
-Get-FileHash .\paramux-0.1.11-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\paramux-0.1.12-windows-x64-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 
