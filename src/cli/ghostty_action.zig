@@ -105,6 +105,8 @@ pub const Action = enum {
 
     // Copy the config, layouts, sessions, and themes to a backup folder.
     @"export-config",
+    @"export-layout",
+    @"import-layout",
 
     // Open a directory as a new workspace in the running instance.
     open,

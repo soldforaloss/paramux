@@ -139,7 +139,10 @@ try {
         $failures += "D: slot names lost or project label missing: $after"
     }
 } finally {
-    if ($layoutsBackup) { $layoutsBackup | Out-File $layouts -Encoding utf8 -NoNewline }
+    if ($layoutsBackup) {
+        [System.IO.File]::WriteAllText($layouts, $layoutsBackup,
+            (New-Object System.Text.UTF8Encoding $false))
+    }
 }
 
 if ($failures.Count -gt 0) {
