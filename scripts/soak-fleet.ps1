@@ -23,7 +23,12 @@ $proc = Start-Process -FilePath $Binary -PassThru
 Start-Sleep -Seconds 4
 $versionLine = (& $Com version 2>$null | Select-Object -First 1)
 if (-not $versionLine) { $versionLine = "unknown" }
-"timestamp,minute,alive,workspaces,panes,paramux_mb,children,child_mb,notify_cycles,version" | Out-File $OutCsv -Encoding utf8
+"timestamp,minute,alive,workspaces,panes,paramux_mb,children,child_mb,notify_cycles,version,att_http" | Out-File $OutCsv -Encoding utf8
+$servePort = 7891
+$serveProc = Start-Process $Com -ArgumentList "serve", "--port=$servePort" -PassThru -WindowStyle Hidden
+$ipcToken = ""
+$tokenPath = Join-Path $env:LOCALAPPDATA "paramux\paramux-ipc-token"
+if (Test-Path $tokenPath) { $ipcToken = (Get-Content $tokenPath -Raw).Trim() }
 
 $states = @("working", "waiting", "done", "none")
 $cycles = 0
@@ -55,15 +60,28 @@ try {
             $alive = -not $proc.HasExited
             $mb = if ($alive) { [math]::Round($proc.WorkingSet64 / 1MB, 1) } else { 0 }
             $statusRaw = if ($alive) { (& $Com status --no-header) } else { @() }
+            if ($alive -and @($statusRaw).Count -eq 0) {
+                # A sample can land while the app is mid-notify; settle and retry once.
+                Start-Sleep -Milliseconds 500
+                $statusRaw = (& $Com status --no-header)
+            }
             $paneCount = @($statusRaw).Count
             $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$($proc.Id)" -ErrorAction SilentlyContinue)
             $childMb = [math]::Round((($children | ForEach-Object { $_.WorkingSetSize } | Measure-Object -Sum).Sum / 1MB), 1)
-            "$((Get-Date).ToString('s')),$minute,$alive,1,$paneCount,$mb,$($children.Count),$childMb,$cycles,$versionLine" | Add-Content $OutCsv
+            $attCode = 0
+            if ($ipcToken) {
+                try {
+                    $attResp = Invoke-WebRequest -Uri "http://127.0.0.1:$servePort/attention" -Headers @{Authorization="Bearer $ipcToken"} -UseBasicParsing -TimeoutSec 5
+                    $attCode = $attResp.StatusCode
+                } catch { $attCode = -1 }
+            }
+            "$((Get-Date).ToString('s')),$minute,$alive,1,$paneCount,$mb,$($children.Count),$childMb,$cycles,$versionLine,$attCode" | Add-Content $OutCsv
             if (-not $alive) { throw "paramux exited during soak at minute $minute" }
         }
     }
     Write-Host "SOAK PASS: $totalMinutes minute(s), $cycles notify cycles, paramux alive throughout. Results: $OutCsv"
 } finally {
+    if ($serveProc -and -not $serveProc.HasExited) { Stop-Process -Id $serveProc.Id -Force -ErrorAction SilentlyContinue }
     if (-not $proc.HasExited) { $proc.CloseMainWindow() | Out-Null; Start-Sleep -Seconds 1 }
     if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
 }
