@@ -41,7 +41,10 @@ remaining "Missing" rows of capability-parity.md close —
    readable anyway, so the open method adds no same-user attack
    surface beyond what a local process already has.
 3. **Hookless agent detection (bounded)** — process/output signals
-   for agents with no usable hook API, opt-in and documented.
+   for agents with no usable hook API, opt-in and documented. Design
+   fixed in hookless-detection.md (timing + identity only, never
+   content; hooks always win; hollow-dot rendering for inferred
+   states).
 
 Until those land with receipts, releases stay 0.1.x. No milestone
 bumps for accumulation alone.
