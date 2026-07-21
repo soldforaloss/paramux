@@ -99,3 +99,15 @@ message splinters into pathspecs. Keep double quotes out of args
 passed to native tools; for commit messages, rephrase or use
 `git commit -F <file>`.
 
+## Wire ids are u64 — read them with `ipc.jsonU64`
+
+Pane/surface ids are random `u64`s. In dynamic `std.json.Value`
+parsing, an integer above `maxInt(i64)` arrives as `.number_string`,
+not `.integer` — accessing `v.integer` panics and a switch that only
+handles `.integer` silently drops the value (both shipped once; a
+soak probe caught them). Any client-side read of an id (or other
+u64) from a dynamic JSON value must go through
+`apprt.ipc.jsonU64(v)`. The same trap exists in PowerShell:
+`ConvertFrom-Json` rounds big ids through a double — regex the raw
+JSON for id digits instead (see `scripts/e2e-serve.ps1`).
+
