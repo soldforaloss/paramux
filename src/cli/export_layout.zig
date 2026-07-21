@@ -29,7 +29,8 @@ fn layoutsPath(alloc: Allocator) ![]u8 {
 }
 
 /// Write a saved layout slot as a standalone `.layout.json` template:
-/// `paramux export-layout 2 team.layout.json` (file omitted = stdout).
+/// `paramux export-layout 2 team.layout.json` (file omitted = stdout);
+/// `--all=<dir>` writes every occupied slot as `slotN-<name>.layout.json`.
 /// The output is exactly the project-layout / gallery format, so it
 /// round-trips through `.paramux/layout` and `import-layout`.
 pub fn run(alloc: Allocator) !u8 {
@@ -48,11 +49,16 @@ pub fn run(alloc: Allocator) !u8 {
 
     var slot_arg: ?usize = null;
     var out_arg: ?[]const u8 = null;
+    var all_dir: ?[]const u8 = null;
     var iter = try args.argsIterator(alloc);
     defer iter.deinit();
     while (iter.next()) |arg| {
         if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
             return actionpkg.help_error;
+        }
+        if (lib.cutPrefix(u8, arg, "--all=")) |rest| {
+            all_dir = try a.dupe(u8, rest);
+            continue;
         }
         if (slot_arg == null) {
             slot_arg = std.fmt.parseInt(usize, arg, 10) catch null;
@@ -65,6 +71,8 @@ pub fn run(alloc: Allocator) !u8 {
         try stderr.print("unexpected argument: {s}\n", .{arg});
         return 1;
     }
+    if (all_dir) |dir_path| return exportAll(a, stdout, stderr, dir_path);
+
     const slot = slot_arg orelse {
         try stderr.print("usage: paramux export-layout <slot 1-5> [file]\n", .{});
         return 1;
@@ -115,6 +123,67 @@ pub fn run(alloc: Allocator) !u8 {
         try stdout.print("Exported slot {d} ({s}) to {s}\n", .{ slot, name, file_path });
     } else {
         try stdout.print("{s}\n", .{out.written()});
+    }
+    return 0;
+}
+
+fn exportAll(
+    a: std.mem.Allocator,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+    dir_path: []const u8,
+) !u8 {
+    const path = layoutsPath(a) catch {
+        try stderr.print("could not resolve layouts.json\n", .{});
+        return 1;
+    };
+    const raw = std.fs.cwd().readFileAlloc(a, path, 16 * 1024 * 1024) catch {
+        try stderr.print("no layouts.json yet (save a layout first)\n", .{});
+        return 1;
+    };
+    const parsed = std.json.parseFromSlice(Slots, a, stripBom(raw), .{
+        .ignore_unknown_fields = true,
+        .allocate = .alloc_always,
+    }) catch {
+        try stderr.print("layouts.json is unreadable\n", .{});
+        return 1;
+    };
+    defer parsed.deinit();
+
+    std.fs.cwd().makePath(dir_path) catch {};
+    var written: usize = 0;
+    for (parsed.value.slots, 0..) |slot_opt, i| {
+        const tab = slot_opt orelse continue;
+        const name = parsed.value.names[i] orelse "unnamed";
+        var name_safe_buf: [40]u8 = undefined;
+        var n: usize = 0;
+        for (name) |c| {
+            if (n >= name_safe_buf.len) break;
+            const ok = (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or
+                (c >= '0' and c <= '9') or c == '-' or c == '_';
+            name_safe_buf[n] = if (ok) c else '-';
+            n += 1;
+        }
+        const file_path = try std.fmt.allocPrint(a, "{s}/slot{d}-{s}.layout.json", .{
+            dir_path,
+            i + 1,
+            name_safe_buf[0..n],
+        });
+        var out: std.Io.Writer.Allocating = .init(a);
+        defer out.deinit();
+        std.json.Stringify.value(tab, .{
+            .whitespace = .indent_2,
+            .emit_null_optional_fields = false,
+        }, &out.writer) catch continue;
+        const file = std.fs.cwd().createFile(file_path, .{}) catch continue;
+        defer file.close();
+        file.writeAll(out.written()) catch continue;
+        written += 1;
+        try stdout.print("Exported slot {d} ({s}) to {s}\n", .{ i + 1, name, file_path });
+    }
+    if (written == 0) {
+        try stderr.print("no occupied slots to export\n", .{});
+        return 1;
     }
     return 0;
 }
