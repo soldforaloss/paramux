@@ -38,8 +38,9 @@ which reader you used.
 
 ## Known approximations (do not file as bugs)
 
-- Column geometry ≈ UTF-16 units: CJK/emoji lines highlight
-  imprecisely.
+- Wide glyphs (CJK/emoji) measure their true cells since v0.1.13;
+  the one remaining case is a wide glyph at line END highlighting one
+  cell short.
 - Format/Paragraph units behave as Line.
 - Selection is reported unsupported; Narrator can read but not select.
 

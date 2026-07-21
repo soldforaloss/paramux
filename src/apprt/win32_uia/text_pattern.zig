@@ -10,8 +10,9 @@
 //! First-slice degradations, all within the UIA contract:
 //!   * Format / Paragraph units behave as Line (Word is real:
 //!     ink runs with trailing blanks).
-//!   * Bounding rects and point hit-testing are line/column-granular
-//!     with column ≈ UTF-16 unit (wide glyphs approximate).
+//!   * Bounding rects and point hit-testing use TRUE terminal columns
+//!     from the snapshot pin map (wide glyphs span their real cells);
+//!     only a wide glyph at line end still reads one cell short.
 //!   * Selection is reported as unsupported (`SupportedTextSelection_None`).
 //!
 //! Threading: UIA invokes ServerSideProvider methods on RPC threads,
