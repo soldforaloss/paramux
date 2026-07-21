@@ -52,6 +52,14 @@ recommended for pollers.
 
 ## Non-goals
 
+- **No `/attention` endpoint (for now).** Attention timelines carry
+  notify message text; exposing them over HTTP would put content
+  behind the same bearer token as pane text but with a much longer
+  retention story. The local `Export Attention Log` action
+  (attention-log.json/.csv in the state dir) is the supported path;
+  an HTTP variant needs its own IPC method and a deliberate decision.
+
+
 - **No remote access.** Binding is hardcoded to loopback; put a
   reverse proxy with real auth in front if you must bridge machines,
   per `remote-design.md` (notify-only inbound remains the rule).

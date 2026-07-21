@@ -30,3 +30,9 @@ so a saved slot is a valid template body.
 Templates may also carry a startup `command` and `env` entries per
 pane, plus a workspace-level `env` applied to every pane (pane
 entries win on conflict) — see `agents-with-env.layout.json`.
+
+Slots have display names: saving from the menu names the slot after
+the workspace, and the `names` array in `layouts.json` is plain text
+you can edit by hand — the Save/Apply menus and `paramux open --list`
+show whatever it says. A rename UI is deliberately deferred until the
+prompt-overlay infrastructure exists.

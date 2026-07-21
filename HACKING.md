@@ -36,6 +36,12 @@ tests can't reach (each needs a built `zig-out` and a free instance):
 | `scripts/start-soak.ps1 -Minutes 2` | the detached soak harness end to end (72h run = the 1.0 gate) |
 | `docs/paramux/accessibility-testing.md` | Narrator checklist for `win32_uia/` changes (human + hardware) |
 
+When a PowerShell harness writes JSON that paramux will parse, write
+it BOM-less (`[System.IO.File]::WriteAllText(..., (New-Object
+System.Text.UTF8Encoding $false))`): PS 5.1's `Out-File -Encoding
+utf8` prepends a BOM and `std.json` rejects the file with
+`SyntaxError`.
+
 ## Toolchain
 
 This fork requires a Zig `0.15.x` release with patch version 2 or newer. The
