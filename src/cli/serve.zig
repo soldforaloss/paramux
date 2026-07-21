@@ -101,6 +101,14 @@ fn runArgs(
         var request = server.receiveHead() catch continue;
 
         const path = request.head.target;
+        // One operability line per request; the defer covers every
+        // route's `continue`. recv_buf (and so `path`) is still live
+        // at iteration-scope exit.
+        const started_ms = std.time.milliTimestamp();
+        defer {
+            stdout.print("{d}ms {s}\n", .{ std.time.milliTimestamp() - started_ms, path }) catch {};
+            stdout.flush() catch {};
+        }
         if (lib.cutPrefix(u8, path, "/panes/")) |rest| {
             // /panes/<id>/text — pane CONTENT, so it requires the
             // instance token as `Authorization: Bearer <token>`.
