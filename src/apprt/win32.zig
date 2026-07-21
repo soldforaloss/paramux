@@ -11340,6 +11340,34 @@ const Host = struct {
                 n += 1;
             }
         }
+        // MRU boost: stable-partition recently executed actions to the
+        // front so the empty-query view leads with them, and ranked
+        // ties (which break by index) favor them too. The MRU file
+        // stores action strings, matched against cvals' action field.
+        {
+            var front: usize = 0;
+            for (self.app.palette_mru) |slot_opt| {
+                const recent = slot_opt orelse continue;
+                var i: usize = front;
+                while (i < n) : (i += 1) {
+                    const action = std.mem.span(cvals[i].action);
+                    if (!std.mem.eql(u8, action, recent)) continue;
+                    if (i != front) {
+                        const cmd_tmp = cmds[i];
+                        const cval_tmp = cvals[i];
+                        var j: usize = i;
+                        while (j > front) : (j -= 1) {
+                            cmds[j] = cmds[j - 1];
+                            cvals[j] = cvals[j - 1];
+                        }
+                        cmds[front] = cmd_tmp;
+                        cvals[front] = cval_tmp;
+                    }
+                    front += 1;
+                    break;
+                }
+            }
+        }
         self.palette_dyn_commands = cmds[0..n];
         self.palette_dyn_cvals = cvals[0..n];
     }
