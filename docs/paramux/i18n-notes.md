@@ -66,10 +66,13 @@ menu handles, not just `AppendMenuW(menu` (the toggle items hid
 behind other handles once). `setLocale` swap and unknown-tag
 fallback are test-locked. Slice 12 moved all 26 remaining banners (plain + conditional
 setBanner sites); slice 13 the settings-window buttons, checkboxes,
-and search cues; and the composed "Workspace N" labels + the
-untitled-pane "shell" fallback now come from table pieces
-(`workspace_word`, `shell_fallback`). Still outside the table:
-layout-slot rows built from saved names, activity-timeline rows,
-ratio numbers (by design), and the settings option help text
-(generated from config docs — a docs-site problem per the notes
-above).
+and search cues; the composed "Workspace N" labels + the
+untitled-pane "shell" fallback come from table pieces; the
+layout-slot submenu labels (Slot word, saved/empty suffixes, rename
+prefix) and the activity timeline (ago as prefix+suffix so German
+leads with "vor"; now/WORKING/WAITING/DONE/ERROR display words)
+compose from the table too — wire tags never localize. A runtime
+de-DE smoke (`scripts/smoke-de.ps1`) boots the GUI under the German
+table on every pre-train sweep. Still outside the table: ratio
+numbers (by design) and the settings option help text (generated
+from config docs — a docs-site problem per the notes above).
