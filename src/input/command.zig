@@ -547,6 +547,12 @@ fn actionCommands(action: Action.Key) []const Command {
             .description = "Write the session layout to disk without waiting for the autosave.",
         }},
 
+        .export_attention => comptime &.{.{
+            .action = .export_attention,
+            .title = "Export Attention Log",
+            .description = "Write every pane's attention timeline to attention-log.json in the state directory.",
+        }},
+
         .health_hud => comptime &.{.{
             .action = .health_hud,
             .title = "Health HUD",

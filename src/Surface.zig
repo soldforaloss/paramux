@@ -5816,6 +5816,12 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool 
             {},
         ),
 
+        .export_attention => return try self.rt_app.performAction(
+            .{ .surface = self },
+            .export_attention,
+            {},
+        ),
+
         .health_hud => return try self.rt_app.performAction(
             .{ .surface = self },
             .health_hud,

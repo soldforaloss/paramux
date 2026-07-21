@@ -574,6 +574,11 @@ pub const Action = union(enum) {
     /// automation ahead of a controlled restart.
     save_session,
 
+    /// Write every pane's attention timeline (state transitions with
+    /// timestamps and messages) to attention-log.json in the state
+    /// directory — the paper trail after a long unattended run.
+    export_attention,
+
     /// Keep this window above all others (toggle).
     toggle_window_on_top,
 
@@ -1439,6 +1444,7 @@ pub const Action = union(enum) {
             .show_digest,
             .health_hud,
             .save_session,
+            .export_attention,
             .toggle_window_on_top,
             .workspace_note,
             .focus_pane,

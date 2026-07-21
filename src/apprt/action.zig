@@ -154,6 +154,9 @@ pub const Action = union(Key) {
     /// Save the session layout to disk now.
     save_session,
 
+    /// Export all panes' attention timelines to the state directory.
+    export_attention,
+
     /// Show the health HUD.
     health_hud,
 
@@ -403,6 +406,7 @@ pub const Action = union(Key) {
         find_all_panes,
         show_digest,
         save_session,
+        export_attention,
         health_hud,
         toggle_window_on_top,
         apply_layout,

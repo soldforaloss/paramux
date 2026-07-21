@@ -5982,6 +5982,22 @@ pub const App = struct {
                 return true;
             },
 
+            .export_attention => {
+                const ok = self.exportAttentionLog();
+                if (self.findSurfaceForTarget(target)) |surface| {
+                    if (surface.host) |host| {
+                        host.setBanner(
+                            if (ok) .info else .err,
+                            if (ok)
+                                "Attention log exported to attention-log.json."
+                            else
+                                "Attention log export failed.",
+                        ) catch {};
+                    }
+                }
+                return ok;
+            },
+
             .health_hud => {
                 const surface = self.findSurfaceForTarget(target) orelse return false;
                 const host = surface.host orelse return false;
@@ -7983,6 +7999,58 @@ pub const App = struct {
             rect.bottom - rect.top,
             SWP_NOZORDER | SWP_NOACTIVATE,
         );
+        return true;
+    }
+
+    /// Write every pane's attention timeline to attention-log.json in
+    /// the state dir. States, timestamps, and notify messages only —
+    /// never pane text. Returns false on any failure; the action's
+    /// banner reports it.
+    fn exportAttentionLog(self: *App) bool {
+        const path = self.localAppDataPath("attention-log.json") orelse return false;
+        defer self.core_app.alloc.free(path);
+
+        var arena = std.heap.ArenaAllocator.init(self.core_app.alloc);
+        defer arena.deinit();
+        const a = arena.allocator();
+
+        const Event = struct { wall_ms: i64, state: []const u8, message: ?[]const u8 };
+        const PaneLog = struct { surface_id: u64, title: ?[]const u8, events: []Event };
+        var panes: std.ArrayListUnmanaged(PaneLog) = .empty;
+
+        for (self.hosts.items) |host| {
+            for (host.tabs.items) |*tab| {
+                var it = tab.tree.iterator();
+                while (it.next()) |leaf| {
+                    const surface = leaf.view;
+                    const events = a.alloc(
+                        Event,
+                        surface.attention_history.items.len,
+                    ) catch return false;
+                    for (surface.attention_history.items, 0..) |event, i| events[i] = .{
+                        .wall_ms = event.wall_ms,
+                        .state = @tagName(event.state),
+                        .message = event.message,
+                    };
+                    panes.append(a, .{
+                        .surface_id = surface.core().id,
+                        .title = surface.title,
+                        .events = events,
+                    }) catch return false;
+                }
+            }
+        }
+
+        var out: std.Io.Writer.Allocating = .init(a);
+        defer out.deinit();
+        std.json.Stringify.value(.{
+            .exported_at_ms = std.time.milliTimestamp(),
+            .panes = panes.items,
+        }, .{ .emit_null_optional_fields = false }, &out.writer) catch return false;
+
+        const file = std.fs.cwd().createFile(path, .{}) catch return false;
+        defer file.close();
+        file.writeAll(out.written()) catch return false;
         return true;
     }
 

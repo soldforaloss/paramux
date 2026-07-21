@@ -770,6 +770,7 @@ fn isSafeAutomationAction(action: input.Binding.Action) bool {
         .find_all_panes,
         .show_digest,
         .save_session,
+        .export_attention,
         .toggle_window_on_top,
         .apply_layout,
         .workspace_note,
