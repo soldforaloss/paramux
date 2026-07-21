@@ -76,6 +76,16 @@ pub const Strings = struct {
     menu_apply_layout_from: [:0]const u16 = w("Apply Layout From"),
     menu_workspaces: [:0]const u16 = w("Workspaces..."),
 
+    // Overlay title labels (UTF-8 - duped into paint paths).
+    overlay_surface_title: []const u8 = "Window title",
+    overlay_find_panes: []const u8 = "Find in all panes",
+    overlay_worktree_branch: []const u8 = "New workspace from branch",
+    overlay_workspace_note: []const u8 = "Workspace note",
+    overlay_prompt: []const u8 = "Rename layout slot",
+    overlay_tab_title: []const u8 = "Tab title",
+    overlay_profile: []const u8 = "Profile",
+    overlay_confirm: []const u8 = "Confirm",
+
     // Banner texts (UTF-8 - setBanner takes []const u8). Chord names
     // inside the text stay untranslated, same rule as tooltips.
     banner_nothing_to_undo: []const u8 = "Nothing to undo.",
@@ -139,6 +149,14 @@ pub const german: Strings = .{
     .menu_save_layout_to = w("Layout speichern in"),
     .menu_apply_layout_from = w("Layout anwenden aus"),
     .menu_workspaces = w("Arbeitsbereiche..."),
+    .overlay_surface_title = "Fenstertitel",
+    .overlay_find_panes = "In allen Panes suchen",
+    .overlay_worktree_branch = "Neuer Arbeitsbereich aus Branch",
+    .overlay_workspace_note = "Arbeitsbereich-Notiz",
+    .overlay_prompt = "Layout-Slot umbenennen",
+    .overlay_tab_title = "Arbeitsbereich-Titel",
+    .overlay_profile = "Profil",
+    .overlay_confirm = "Bestätigen",
     .banner_nothing_to_undo = "Nichts r\u{00FC}ckg\u{00E4}ngig zu machen.",
     .banner_nothing_to_redo = "Nichts wiederherzustellen.",
     .banner_session_saved = "Sitzung gespeichert.",

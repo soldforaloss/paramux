@@ -23222,20 +23222,20 @@ fn buildOverlayPaintLabelText(
 ) ![]u8 {
     return switch (mode) {
         .none => try alloc.dupe(u8, ""),
-        .surface_title => try alloc.dupe(u8, "Window title"),
-        .find_panes => try alloc.dupe(u8, "Find in all panes"),
-        .worktree_branch => try alloc.dupe(u8, "New workspace from branch"),
-        .workspace_note => try alloc.dupe(u8, "Workspace note"),
-        .prompt => try alloc.dupe(u8, "Rename layout slot"),
-        .tab_title => try alloc.dupe(u8, "Tab title"),
+        .surface_title => try alloc.dupe(u8, win32_strings.strings.overlay_surface_title),
+        .find_panes => try alloc.dupe(u8, win32_strings.strings.overlay_find_panes),
+        .worktree_branch => try alloc.dupe(u8, win32_strings.strings.overlay_worktree_branch),
+        .workspace_note => try alloc.dupe(u8, win32_strings.strings.overlay_workspace_note),
+        .prompt => try alloc.dupe(u8, win32_strings.strings.overlay_prompt),
+        .tab_title => try alloc.dupe(u8, win32_strings.strings.overlay_tab_title),
         .command_palette => try buildCommandPaletteOverlayLabel(alloc, palette, input_text),
-        .profile => try alloc.dupe(u8, "Profile"),
+        .profile => try alloc.dupe(u8, win32_strings.strings.overlay_profile),
         .search => try buildSearchOverlayLabel(alloc, search_total, search_selected),
         .tab_overview => try buildTabOverviewOverlayLabel(alloc, host_status.index, host_status.total),
         // Confirm overlays source their prompt title from the payload
         // at paint time; this default only appears when the payload
         // has already been dropped (mid-teardown).
-        .confirm => try alloc.dupe(u8, "Confirm"),
+        .confirm => try alloc.dupe(u8, win32_strings.strings.overlay_confirm),
     };
 }
 
