@@ -202,7 +202,7 @@ if ($version) {
     $tag = "v$version"
     $portableName = New-WindowsPackageArtifactName -Version $version -Architecture "x64" -Kind "portable"
     $checksumsName = New-WindowsPackageArtifactName -Version $version -Architecture "x64" -Kind "checksums"
-    # ARM64 portable + checksums publish alongside x64 since v0.1.9;
+    # ARM64 portable + checksums publish alongside x64 since v0.1.10;
     # only signed installers remain unpublished.
     $unpublishedArtifacts = @(
         (New-WindowsPackageArtifactName -Version $version -Architecture "x64" -Kind "setup"),
@@ -279,7 +279,7 @@ if ($version) {
                     }
 
                     $assetNames = @($release.assets | ForEach-Object { [string]$_.name })
-                    # Dual-arch since v0.1.9: the ARM64 pair is expected.
+                    # Dual-arch since v0.1.10: the ARM64 pair is expected.
                     $arm64Portable = New-WindowsPackageArtifactName -Version $version -Architecture "arm64" -Kind "portable"
                     $arm64Checksums = New-WindowsPackageArtifactName -Version $version -Architecture "arm64" -Kind "checksums"
                     $expectedAssets = @($portableName, $checksumsName, $arm64Portable, $arm64Checksums)
