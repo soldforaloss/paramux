@@ -213,11 +213,17 @@ fn runArgs(
                 continue;
             };
             defer alloc.free(json);
+            // Hash from the panes key on: the exported_at_ms prefix
+            // changes every call and would defeat If-None-Match.
+            const att_stable = if (std.mem.indexOf(u8, json, "\"panes\":")) |at|
+                json[at..]
+            else
+                json;
             var att_etag_buf: [20]u8 = undefined;
             const att_etag = std.fmt.bufPrint(
                 &att_etag_buf,
                 "{c}{x:0>16}{c}",
-                .{ '"', std.hash.Wyhash.hash(0, json), '"' },
+                .{ '"', std.hash.Wyhash.hash(0, att_stable), '"' },
             ) catch unreachable;
             var att_inm = false;
             var att_it = request.iterateHeaders();

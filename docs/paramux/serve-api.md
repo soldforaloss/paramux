@@ -56,7 +56,8 @@ through a dedicated token-gated IPC method (`read_attention`).
 
 Responses carry a content-hash `ETag`; send `If-None-Match` to get
 `304 Not Modified` with no body when the pane hasn't changed —
-recommended for pollers.
+recommended for pollers. The hash skips the `exported_at_ms` stamp,
+so an unchanged timeline revalidates even though the stamp moves.
 
 ## Non-goals
 
