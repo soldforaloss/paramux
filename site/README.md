@@ -22,7 +22,7 @@ Marketing copy must stay aligned with the repository source of truth:
 - [docs/paramux/paramux-prd.md](../docs/paramux/paramux-prd.md)
 
 Current distribution is deliberately narrow: an unsigned Windows x64
-portable prerelease `v0.1.18` in `soldforaloss/paramux`. There is no
+portable prerelease `v0.1.19` in `soldforaloss/paramux`. There is no
 public WinGet or Scoop package, signed installer, or verified ARM64 release yet.
 
 Ghostty and Winghostty may be named only as technical lineage. Paramux is the

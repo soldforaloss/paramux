@@ -51,7 +51,7 @@ file-loaded table would force allocation and lifetime management
 through all of them for no current user. Revisit only if a
 contributor brings a locale they cannot upstream as code.
 
-## Progress (as of v0.1.18)
+## Progress (as of v0.1.19)
 
 Shipped slices, all behind `ui-language = de`: 1 chrome basics,
 2 banners, 3 UIA localized type, 4 settings sections, 5 overlay

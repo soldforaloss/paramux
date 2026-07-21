@@ -91,35 +91,33 @@ path today.
 ## Try the current prerelease
 
 The current test build is
-[`v0.1.18`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.18),
+[`v0.1.19`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.19),
 published 2026-07-21 for Windows x64 and ARM64:
 
-- [`paramux-0.1.18-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.18/paramux-0.1.18-windows-x64-portable.zip)
-- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.18/SHA256SUMS-windows-x64.txt)
-- [`paramux-0.1.18-windows-arm64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.18/paramux-0.1.18-windows-arm64-portable.zip)
-- [`SHA256SUMS-windows-arm64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.18/SHA256SUMS-windows-arm64.txt)
+- [`paramux-0.1.19-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.19/paramux-0.1.19-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.19/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.19-windows-arm64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.19/paramux-0.1.19-windows-arm64-portable.zip)
+- [`SHA256SUMS-windows-arm64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.19/SHA256SUMS-windows-arm64.txt)
 
-This build is the resilience release. **CI absorbs the internet's
-bad days**: both Windows workflows fetch dependencies with bounded
-retries after a CDN outage failed a release gate once. The German
-goes wall to wall — i18n slices 12 and 13 move all 26 remaining
-banners and the settings window's labels into the strings table,
-composed "Workspace N" labels and the "shell" fallback localize
-too, and a **runtime de-DE smoke boots the GUI under
-`ui-language = de`** to prove the whole table live. **Pane rows
-inherit the workspace accent** (focused stripe takes the workspace
-color; other rows carry a half-width tick, blended when parked), so
-color grouping reads down the whole sidebar tree. It builds on
-`v0.1.17`'s fluency. Releases from `v0.1.0-paramux.7` onward apply
-with `paramux update` (`v0.1.0-paramux.4` remains a legacy test
-artifact).
+This build is the completeness release: the last composed labels
+localize. **Layout-slot submenu labels and the activity timeline**
+now build from strings-table pieces — relative time composes
+prefix+value+suffix so German leads with "vor" where English trails
+with "ago", and the WORKING/WAITING/DONE/ERROR display words
+localize while wire tags stay fixed. The **runtime German smoke is
+a permanent script** (`scripts/smoke-de.ps1`) and joins the
+pre-release sweep, now a quintet. The locale policy is written
+down: a locale is one struct literal plus one `setLocale` arm,
+compiled in. It builds on `v0.1.18`'s resilience. Releases from
+`v0.1.0-paramux.7` onward apply with `paramux update`
+(`v0.1.0-paramux.4` remains a legacy test artifact).
 
 1. Download both the portable ZIP and `SHA256SUMS-windows-x64.txt`.
 2. Before extracting or running anything, compare the ZIP's digest with the
    release checksum:
 
 ```powershell
-Get-FileHash .\paramux-0.1.18-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\paramux-0.1.19-windows-x64-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 
