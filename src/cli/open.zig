@@ -161,7 +161,12 @@ fn installProjectLayoutSlot(alloc: Allocator, layout_json: []const u8) !void {
     const path = try std.fs.path.join(alloc, &.{ local, "paramux", "layouts.json" });
     defer alloc.free(path);
 
-    const Slots = struct { slots: [5]?session.Tab = .{ null, null, null, null, null } };
+    // Carry `names` through the rewrite or slot names would be
+    // silently dropped every `paramux open`.
+    const Slots = struct {
+        slots: [5]?session.Tab = .{ null, null, null, null, null },
+        names: [5]?[]const u8 = .{ null, null, null, null, null },
+    };
     var slots: Slots = .{};
     if (std.fs.cwd().readFileAlloc(alloc, path, 16 * 1024 * 1024)) |raw| {
         defer alloc.free(raw);
@@ -169,10 +174,12 @@ fn installProjectLayoutSlot(alloc: Allocator, layout_json: []const u8) !void {
             defer existing.deinit();
             slots = existing.value;
             slots.slots[4] = parsed.value;
+            slots.names[4] = "project";
             return writeSlots(alloc, path, slots);
         } else |_| {}
     } else |_| {}
     slots.slots[4] = parsed.value;
+    slots.names[4] = "project";
     return writeSlots(alloc, path, slots);
 }
 
@@ -192,7 +199,10 @@ fn writeSlots(alloc: Allocator, path: []const u8, slots: anytype) !void {
 /// running instance required.
 fn listLayoutSlots(alloc: Allocator, stdout: *std.Io.Writer) !u8 {
     const session = @import("../apprt/win32_session_state.zig");
-    const Slots = struct { slots: [5]?session.Tab = .{ null, null, null, null, null } };
+    const Slots = struct {
+        slots: [5]?session.Tab = .{ null, null, null, null, null },
+        names: [5]?[]const u8 = .{ null, null, null, null, null },
+    };
 
     var slots: Slots = .{};
     var parsed_opt: ?std.json.Parsed(Slots) = null;
@@ -223,7 +233,11 @@ fn listLayoutSlots(alloc: Allocator, stdout: *std.Io.Writer) !u8 {
                 },
                 .split => {},
             };
-            try stdout.print("slot {d}: {d} pane(s)", .{ n, panes });
+            if (slots.names[n - 1]) |name| {
+                try stdout.print("slot {d} ({s}): {d} pane(s)", .{ n, name, panes });
+            } else {
+                try stdout.print("slot {d}: {d} pane(s)", .{ n, panes });
+            }
             if (commands > 0) try stdout.print(", {d} with commands", .{commands});
             try stdout.print("\n", .{});
         } else {

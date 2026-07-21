@@ -13739,11 +13739,17 @@ const Host = struct {
         }
         {
             const occupied = self.layoutSlotOccupancy();
+            var names_arena = std.heap.ArenaAllocator.init(self.app.core_app.alloc);
+            defer names_arena.deinit();
+            const slot_names = self.layoutSlotNames(names_arena.allocator());
             if (CreatePopupMenu()) |save_menu| {
                 for (0..layout_slot_count) |slot| {
-                    var lbuf: [40]u8 = undefined;
-                    const lu = std.fmt.bufPrint(&lbuf, "Slot {d}{s}", .{ slot + 1, if (occupied[slot]) " (saved)" else "" }) catch continue;
-                    var lw: [40:0]u16 = undefined;
+                    var lbuf: [72]u8 = undefined;
+                    const lu = if (slot_names[slot]) |name|
+                        std.fmt.bufPrint(&lbuf, "Slot {d} - {s}", .{ slot + 1, name }) catch continue
+                    else
+                        std.fmt.bufPrint(&lbuf, "Slot {d}{s}", .{ slot + 1, if (occupied[slot]) " (saved)" else "" }) catch continue;
+                    var lw: [72:0]u16 = undefined;
                     const wn = std.unicode.utf8ToUtf16Le(&lw, lu) catch continue;
                     lw[wn] = 0;
                     _ = AppendMenuW(save_menu, MF_STRING, CTX_LAYOUT_SAVE_BASE + slot, @ptrCast(&lw));
@@ -13752,9 +13758,12 @@ const Host = struct {
             }
             if (CreatePopupMenu()) |apply_menu| {
                 for (0..layout_slot_count) |slot| {
-                    var lbuf: [40]u8 = undefined;
-                    const lu = std.fmt.bufPrint(&lbuf, "Slot {d}{s}", .{ slot + 1, if (occupied[slot]) "" else " (empty)" }) catch continue;
-                    var lw: [40:0]u16 = undefined;
+                    var lbuf: [72]u8 = undefined;
+                    const lu = if (slot_names[slot]) |name|
+                        std.fmt.bufPrint(&lbuf, "Slot {d} - {s}", .{ slot + 1, name }) catch continue
+                    else
+                        std.fmt.bufPrint(&lbuf, "Slot {d}{s}", .{ slot + 1, if (occupied[slot]) "" else " (empty)" }) catch continue;
+                    var lw: [72:0]u16 = undefined;
                     const wn = std.unicode.utf8ToUtf16Le(&lw, lu) catch continue;
                     lw[wn] = 0;
                     const flags: UINT = if (occupied[slot]) MF_STRING else MF_GRAYED;
@@ -14150,6 +14159,10 @@ const Host = struct {
     const LayoutSlots = struct {
         slots: [layout_slot_count]?win32_session_state.Tab =
             .{ null, null, null, null, null },
+        /// Display names per slot (additive; older files parse fine).
+        /// Defaults to the saving workspace's title.
+        names: [layout_slot_count]?[]const u8 =
+            .{ null, null, null, null, null },
     };
 
     fn layoutSlotsPath(alloc: Allocator) ![]u8 {
@@ -14160,6 +14173,27 @@ const Host = struct {
     }
 
     /// Occupancy of each layout slot (for menu labels): true = saved.
+    /// Slot display names duped into `alloc` (each entry freed by the
+    /// caller); null = unnamed or unreadable file.
+    fn layoutSlotNames(
+        self: *Host,
+        alloc: Allocator,
+    ) [layout_slot_count]?[]u8 {
+        var result: [layout_slot_count]?[]u8 = .{null} ** layout_slot_count;
+        var arena = std.heap.ArenaAllocator.init(self.app.core_app.alloc);
+        defer arena.deinit();
+        const a = arena.allocator();
+        const path = layoutSlotsPath(a) catch return result;
+        const raw = std.fs.cwd().readFileAlloc(a, path, 16 * 1024 * 1024) catch return result;
+        const parsed = std.json.parseFromSlice(LayoutSlots, a, raw, .{ .ignore_unknown_fields = true }) catch return result;
+        for (parsed.value.names, 0..) |name_opt, i| {
+            if (name_opt) |name| {
+                if (name.len > 0) result[i] = alloc.dupe(u8, name) catch null;
+            }
+        }
+        return result;
+    }
+
     fn layoutSlotOccupancy(self: *Host) [layout_slot_count]bool {
         var result: [layout_slot_count]bool = .{false} ** layout_slot_count;
         const alloc = self.app.core_app.alloc;
@@ -14194,6 +14228,15 @@ const Host = struct {
         slots.slots[slot] = App.buildSessionTab(a, tab, false) catch {
             self.setBanner(.err, "Could not capture this workspace's layout.") catch {};
             return;
+        };
+        // Name the slot after the workspace so the menus can say what
+        // lives there ("Slot 2 - api server").
+        slots.names[slot] = name_blk: {
+            const focused = tab.focusedSurface() orelse break :name_blk null;
+            const title_opt: ?[]const u8 = focused.tab_title_override orelse focused.title;
+            const title = title_opt orelse break :name_blk null;
+            if (title.len == 0) break :name_blk null;
+            break :name_blk a.dupe(u8, title[0..@min(title.len, 32)]) catch null;
         };
 
         var out: std.Io.Writer.Allocating = .init(a);
