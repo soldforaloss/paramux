@@ -30,6 +30,11 @@ pub const Options = struct {
     /// Suppress the summary line (scripts that only want the exit code).
     quiet: bool = false,
 
+    /// Header canvas size for players (the capture itself is plain
+    /// text). Defaults match a comfortable 120x30.
+    width: u16 = 120,
+    height: u16 = 30,
+
     pub fn deinit(self: *Options) void {
         if (self._arena) |arena| arena.deinit();
         self.* = undefined;
@@ -104,6 +109,14 @@ fn runArgs(
             opts.quiet = true;
             continue;
         }
+        if (lib.cutPrefix(u8, arg, "--width=")) |rest| {
+            opts.width = std.fmt.parseInt(u16, rest, 10) catch opts.width;
+            continue;
+        }
+        if (lib.cutPrefix(u8, arg, "--height=")) |rest| {
+            opts.height = std.fmt.parseInt(u16, rest, 10) catch opts.height;
+            continue;
+        }
         if (lib.cutPrefix(u8, arg, "--idle-limit=")) |rest| {
             opts.@"idle-limit" = std.fmt.parseInt(u32, rest, 10) catch {
                 try stderr.print("bad --idle-limit value: {s}\n", .{rest});
@@ -143,11 +156,14 @@ fn runArgs(
     // paramux's read-pane text; players reflow.
     if (opts.@"idle-limit" > 0) {
         try w.print(
-            "{{\"version\": 2, \"width\": 120, \"height\": 30, \"idle_time_limit\": {d}, \"title\": \"paramux pane\"}}\n",
-            .{opts.@"idle-limit"},
+            "{{\"version\": 2, \"width\": {d}, \"height\": {d}, \"idle_time_limit\": {d}, \"title\": \"paramux pane\"}}\n",
+            .{ opts.width, opts.height, opts.@"idle-limit" },
         );
     } else {
-        try w.writeAll("{\"version\": 2, \"width\": 120, \"height\": 30, \"title\": \"paramux pane\"}\n");
+        try w.print(
+            "{{\"version\": 2, \"width\": {d}, \"height\": {d}, \"title\": \"paramux pane\"}}\n",
+            .{ opts.width, opts.height },
+        );
     }
 
     var timer = try std.time.Timer.start();
