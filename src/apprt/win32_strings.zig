@@ -148,6 +148,18 @@ pub const Strings = struct {
     menu_open_data_dir: [:0]const u16 = w("Open Data Folder (config, logs, crashes)"),
     menu_help_about: [:0]const u16 = w("About Paramux"),
 
+    // Toggle-state menu items and submenu empty states (the earlier
+    // sweeps matched only the main-menu handle). Ratio numbers stay
+    // untranslated by design.
+    menu_broadcast_include: [:0]const u16 = w("Include This Pane in Broadcast"),
+    menu_broadcast_exclude: [:0]const u16 = w("Exclude This Pane from Broadcast"),
+    menu_pin_pane: [:0]const u16 = w("Pin Pane to Top"),
+    menu_unpin_pane: [:0]const u16 = w("Unpin Pane"),
+    menu_mute_pane: [:0]const u16 = w("Mute Notifications 30 min"),
+    menu_unmute_pane: [:0]const u16 = w("Unmute Notifications"),
+    menu_accent_default: [:0]const u16 = w("Default"),
+    menu_no_recent_activity: [:0]const u16 = w("(no recent activity)"),
+
     // Hint-strip texts (UTF-16 via w) plus prefix/suffix pieces for
     // the two runtime-formatted hints (bufPrint formats are comptime,
     // so the dynamic parts compose around table strings instead).
@@ -284,6 +296,14 @@ pub const german: Strings = .{
     .menu_help_docs = w("Dokumentation (GitHub)"),
     .menu_open_data_dir = w("Datenordner \u{00F6}ffnen (Konfiguration, Logs, Abst\u{00FC}rze)"),
     .menu_help_about = w("\u{00DC}ber Paramux"),
+    .menu_broadcast_include = w("Dieses Pane in Broadcast einbeziehen"),
+    .menu_broadcast_exclude = w("Dieses Pane vom Broadcast ausnehmen"),
+    .menu_pin_pane = w("Pane oben anpinnen"),
+    .menu_unpin_pane = w("Pane l\u{00F6}sen"),
+    .menu_mute_pane = w("Benachrichtigungen 30 Min. stumm"),
+    .menu_unmute_pane = w("Stummschaltung aufheben"),
+    .menu_accent_default = w("Standard"),
+    .menu_no_recent_activity = w("(keine letzte Aktivit\u{00E4}t)"),
     .hint_confirm = w("Enter best\u{00E4}tigen \u{00B7} Esc abbrechen"),
     .hint_drop = w("Ablegen: Kanten docken an \u{00B7} Mitte tauscht"),
     .hint_resize = w("Ziehen zum Anpassen"),

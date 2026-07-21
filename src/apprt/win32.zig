@@ -14027,22 +14027,22 @@ const Host = struct {
             _ = AppendMenuW(menu, bcast_flags, CTX_BROADCAST, win32_strings.strings.menu_broadcast);
             if (self.activeSurface()) |bc_target| {
                 _ = AppendMenuW(menu, MF_STRING, CTX_BROADCAST_OPTOUT, if (bc_target.broadcast_opt_out)
-                    std.unicode.utf8ToUtf16LeStringLiteral("Include This Pane in Broadcast")
+                    win32_strings.strings.menu_broadcast_include
                 else
-                    std.unicode.utf8ToUtf16LeStringLiteral("Exclude This Pane from Broadcast"));
+                    win32_strings.strings.menu_broadcast_exclude);
             }
         }
         if (self.activeSurface()) |pin_target| {
             _ = AppendMenuW(menu, MF_STRING, CTX_PIN_PANE, if (pin_target.pinned)
-                std.unicode.utf8ToUtf16LeStringLiteral("Unpin Pane")
+                win32_strings.strings.menu_unpin_pane
             else
-                std.unicode.utf8ToUtf16LeStringLiteral("Pin Pane to Top"));
+                win32_strings.strings.menu_pin_pane);
         }
         if (self.activeSurface()) |mute_target| {
             _ = AppendMenuW(menu, MF_STRING, CTX_MUTE_PANE, if (mute_target.attentionMuted())
-                std.unicode.utf8ToUtf16LeStringLiteral("Unmute Notifications")
+                win32_strings.strings.menu_unmute_pane
             else
-                std.unicode.utf8ToUtf16LeStringLiteral("Mute Notifications 30 min"));
+                win32_strings.strings.menu_mute_pane);
         }
         _ = AppendMenuW(menu, MF_STRING, CTX_COMMAND_PALETTE, win32_strings.strings.menu_command_palette);
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
@@ -14068,7 +14068,7 @@ const Host = struct {
                 };
                 _ = AppendMenuW(accent_menu, MF_STRING | checked, CTX_ACCENT_BASE + ai, @ptrCast(&label_w));
             }
-            _ = AppendMenuW(accent_menu, MF_STRING, CTX_ACCENT_BASE + workspace_accents.len, std.unicode.utf8ToUtf16LeStringLiteral("Default"));
+            _ = AppendMenuW(accent_menu, MF_STRING, CTX_ACCENT_BASE + workspace_accents.len, win32_strings.strings.menu_accent_default);
             _ = AppendMenuW(menu, MF_POPUP, @intFromPtr(accent_menu), win32_strings.strings.menu_workspace_color);
         }
         {
@@ -14150,7 +14150,7 @@ const Host = struct {
                 const alloc = self.app.core_app.alloc;
                 const items = surface.attention_history.items;
                 if (items.len == 0) {
-                    _ = AppendMenuW(submenu, MF_GRAYED, 0, std.unicode.utf8ToUtf16LeStringLiteral("(no recent activity)"));
+                    _ = AppendMenuW(submenu, MF_GRAYED, 0, win32_strings.strings.menu_no_recent_activity);
                 } else {
                     const now_ms = std.time.milliTimestamp();
                     var shown: usize = 0;
