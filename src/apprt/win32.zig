@@ -14300,6 +14300,27 @@ const Host = struct {
             if (hint_tab.tree.zoomed != null)
                 return std.unicode.utf8ToUtf16LeStringLiteral("Zoomed \u{00B7} Ctrl+Shift+Enter restores all panes");
         }
+        // A wave of alerts earns the sweep hint: with 2+ panes
+        // alerting, teach the one action that clears them all.
+        {
+            const counts = self.attentionCounts();
+            const alerting = counts.waiting + counts.done + counts.err;
+            if (alerting >= 2) {
+                var wave_buf: [96]u8 = undefined;
+                const wave = std.fmt.bufPrint(
+                    &wave_buf,
+                    "{d} panes need you  \u{00B7}  palette: Clear All Attention",
+                    .{alerting},
+                ) catch null;
+                if (wave) |text| {
+                    const wlen = std.unicode.utf8ToUtf16Le(self.hint_dynamic_buf[0..199], text) catch 0;
+                    if (wlen > 0) {
+                        self.hint_dynamic_buf[wlen] = 0;
+                        return self.hint_dynamic_buf[0..wlen :0];
+                    }
+                }
+            }
+        }
         // Default hint, prefixed with the focused pane's git branch
         // when one is known: the status bar doubles as a git segment.
         const fallback = std.unicode.utf8ToUtf16LeStringLiteral("Ctrl+Alt+I inbox \u{00B7} Ctrl+Alt+U attention \u{00B7} Ctrl+Shift+P palette");
