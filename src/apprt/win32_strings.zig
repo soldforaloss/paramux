@@ -278,3 +278,14 @@ test "german table covers every field" {
         try std.testing.expect(@field(german, field.name).len > 0);
     }
 }
+
+test "win32 setLocale swaps the active table and back" {
+    defer strings = english;
+    setLocale("de");
+    try std.testing.expect(std.mem.eql(u16, strings.uia_localized_control_type, german.uia_localized_control_type));
+    setLocale("en");
+    try std.testing.expect(std.mem.eql(u16, strings.uia_localized_control_type, english.uia_localized_control_type));
+    // Unknown tags fall back to English rather than erroring.
+    setLocale("fr");
+    try std.testing.expect(std.mem.eql(u16, strings.uia_localized_control_type, english.uia_localized_control_type));
+}
