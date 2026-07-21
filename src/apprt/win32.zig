@@ -20534,6 +20534,16 @@ fn uiaTextDocument(hwnd: HWND) ?win32_uia.TextDoc {
     }
     const viewport_cols: usize = core.renderer_state.terminal.cols;
 
+    // True column per byte from the pin map: wide glyphs measure
+    // correctly in UIA rects and hit-testing. Best effort.
+    var col_map: []const u16 = &.{};
+    if (alloc.alloc(u16, document.pin_map.len)) |cols| {
+        for (document.pin_map, 0..) |pin, i| {
+            cols[i] = std.math.cast(u16, pin.x) orelse 0;
+        }
+        col_map = cols;
+    } else |_| {}
+
     const text = document.takeText();
     document.deinit();
     return .{
@@ -20545,6 +20555,7 @@ fn uiaTextDocument(hwnd: HWND) ?win32_uia.TextDoc {
         .origin_x = origin_x,
         .origin_y = origin_y,
         .viewport_cols = viewport_cols,
+        .col_map_bytes = col_map,
     };
 }
 

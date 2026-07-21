@@ -46,6 +46,10 @@ pub const TextDoc = struct {
     origin_x: f64 = 0,
     origin_y: f64 = 0,
     viewport_cols: usize = 0,
+    /// True terminal column per UTF-8 byte (from the snapshot pin
+    /// map), so wide glyphs measure correctly. Empty = fall back to
+    /// column ≈ unit offset. Owner: the host callback's allocator.
+    col_map_bytes: []const u16 = &.{},
 };
 
 pub const LineRect = struct {
@@ -99,6 +103,36 @@ pub fn utf16LenOfPrefix(utf8: []const u8, byte_offset: usize) usize {
     return n;
 }
 
+/// Column of a unit: the true terminal column when the map exists,
+/// else the offset-within-line approximation.
+fn unitCol(
+    unit_cols: []const u16,
+    line_start: usize,
+    unit: usize,
+) usize {
+    if (unit < unit_cols.len) return unit_cols[unit];
+    return unit - line_start;
+}
+
+/// Exclusive end column of the unit before `seg_end` (start column of
+/// the next unit on the line when known — captures wide-glyph width).
+fn unitEndCol(
+    unit_cols: []const u16,
+    line_start: usize,
+    content_end: usize,
+    seg_end: usize,
+) usize {
+    if (seg_end == 0) return 0;
+    if (unit_cols.len == 0) return seg_end - line_start;
+    if (seg_end < content_end and seg_end < unit_cols.len)
+        return unit_cols[seg_end];
+    // Last unit of the line: assume width 1 past its start column
+    // (wide final glyphs read one cell short — the remaining
+    // approximation).
+    if (seg_end - 1 < unit_cols.len) return unit_cols[seg_end - 1] + 1;
+    return seg_end - line_start;
+}
+
 /// Per-line screen rectangles for `[start, end)` clipped to the
 /// viewport. Column ≈ UTF-16 unit offset within the line, so wide
 /// glyphs make widths approximate; line breaks and empty segments
@@ -112,6 +146,7 @@ pub fn boundingLineRects(
     start: usize,
     end: usize,
     geo: TextDoc,
+    unit_cols: []const u16,
 ) ![]LineRect {
     var rects: std.ArrayList(LineRect) = .empty;
     defer rects.deinit(alloc);
@@ -138,8 +173,8 @@ pub fn boundingLineRects(
         const seg_end = @min(clip_end, content_end);
         if (seg_end <= seg_start) continue;
 
-        const col_start = @min(seg_start - line_start, geo.viewport_cols);
-        const col_end = @min(seg_end - line_start, geo.viewport_cols);
+        const col_start = @min(unitCol(unit_cols, line_start, seg_start), geo.viewport_cols);
+        const col_end = @min(unitEndCol(unit_cols, line_start, content_end, seg_end), geo.viewport_cols);
         if (col_end <= col_start) continue;
 
         const row = line - first_visible_line;
@@ -162,6 +197,7 @@ pub fn offsetForPoint(
     visible_start: usize,
     visible_end: usize,
     geo: TextDoc,
+    unit_cols: []const u16,
     x: f64,
     y: f64,
 ) usize {
@@ -179,7 +215,23 @@ pub fn offsetForPoint(
     var content_end = line_end;
     if (content_end > line_start and doc[content_end - 1] == '\n') content_end -= 1;
 
-    const offset = @min(line_start + @min(col, geo.viewport_cols), content_end);
+    // With a true column map, find the first unit at-or-past the
+    // clicked column; otherwise approximate column = offset.
+    var offset: usize = undefined;
+    if (unit_cols.len > 0) {
+        // The unit whose column SPAN contains the click: advance while
+        // the next unit still starts at-or-before the clicked column,
+        // so a wide glyph's second cell resolves to the glyph itself.
+        var unit = line_start;
+        while (unit + 1 < content_end and unit + 1 < unit_cols.len and
+            unit_cols[unit + 1] <= col)
+        {
+            unit += 1;
+        }
+        offset = @min(unit, content_end);
+    } else {
+        offset = @min(line_start + @min(col, geo.viewport_cols), content_end);
+    }
     return std.math.clamp(offset, visible_start, visible_end);
 }
 
@@ -397,6 +449,8 @@ pub const TextPattern = struct {
     visible_end: usize,
     /// Viewport screen geometry as captured (utf8/visible fields unused).
     geo: TextDoc,
+    /// True column per UTF-16 unit (empty = approximate by offset).
+    unit_cols: []const u16,
     /// The window element ranges report as enclosing. Holds a ref.
     root: *com.IRawElementProviderSimple,
 
@@ -422,6 +476,34 @@ pub const TextPattern = struct {
         errdefer pattern_alloc.free(doc);
         const line_starts = try buildLineStarts(pattern_alloc, doc);
         errdefer pattern_alloc.free(line_starts);
+
+        // Convert the per-byte column map into unit space alongside
+        // the text conversion: every unit of a codepoint (surrogate
+        // pairs included) carries the codepoint's terminal column.
+        var unit_cols: []u16 = &.{};
+        if (source.col_map_bytes.len == source.utf8.len and doc.len > 0) {
+            unit_cols = try pattern_alloc.alloc(u16, doc.len);
+            var bi: usize = 0;
+            var ui: usize = 0;
+            while (bi < source.utf8.len and ui < doc.len) {
+                const seq_len = std.unicode.utf8ByteSequenceLength(source.utf8[bi]) catch 1;
+                const cp_end = @min(bi + seq_len, source.utf8.len);
+                const cp = std.unicode.utf8Decode(source.utf8[bi..cp_end]) catch {
+                    unit_cols[ui] = source.col_map_bytes[bi];
+                    ui += 1;
+                    bi += 1;
+                    continue;
+                };
+                const units: usize = if (cp <= 0xFFFF) 1 else 2;
+                var k: usize = 0;
+                while (k < units and ui < doc.len) : (k += 1) {
+                    unit_cols[ui] = source.col_map_bytes[bi];
+                    ui += 1;
+                }
+                bi += seq_len;
+            }
+        }
+        errdefer if (unit_cols.len > 0) pattern_alloc.free(unit_cols);
 
         const vis_start = @min(
             utf16LenOfPrefix(source.utf8, source.visible_start),
@@ -450,6 +532,7 @@ pub const TextPattern = struct {
                 .origin_y = source.origin_y,
                 .viewport_cols = source.viewport_cols,
             },
+            .unit_cols = unit_cols,
             .root = root_provider,
         };
         _ = root_provider.vtbl.AddRef(root_provider);
@@ -514,6 +597,7 @@ pub const TextPattern = struct {
         const prev = self.refcount.fetchSub(1, .acq_rel);
         if (prev == 1) {
             _ = self.root.vtbl.Release(self.root);
+            if (self.unit_cols.len > 0) pattern_alloc.free(self.unit_cols);
             pattern_alloc.free(self.line_starts);
             pattern_alloc.free(self.doc);
             pattern_alloc.destroy(self);
@@ -579,6 +663,7 @@ pub const TextPattern = struct {
             self.visible_start,
             self.visible_end,
             self.geo,
+            self.unit_cols,
             point.x,
             point.y,
         );
@@ -832,6 +917,7 @@ pub const TextRange = struct {
             self.start,
             self.end,
             self.pattern.geo,
+            self.pattern.unit_cols,
         ) catch return com.E_OUTOFMEMORY;
         defer pattern_alloc.free(rects);
 
@@ -1112,6 +1198,7 @@ test "win32 uia text pattern bounding rects" {
             0,
             7,
             geo,
+            &.{},
         );
         defer std.testing.allocator.free(rects);
         try std.testing.expectEqual(@as(usize, 2), rects.len);
@@ -1137,6 +1224,7 @@ test "win32 uia text pattern bounding rects" {
             4,
             13,
             geo,
+            &.{},
         );
         defer std.testing.allocator.free(rects);
         try std.testing.expectEqual(@as(usize, 2), rects.len);
@@ -1160,6 +1248,7 @@ test "win32 uia text pattern bounding rects" {
             0,
             13,
             no_geo,
+            &.{},
         );
         defer std.testing.allocator.free(rects);
         try std.testing.expectEqual(@as(usize, 0), rects.len);
@@ -1183,29 +1272,78 @@ test "win32 uia text pattern point hit-testing" {
     // Row 1 col 2 -> line "two", offset 4+2.
     try std.testing.expectEqual(
         @as(usize, 6),
-        offsetForPoint(doc, &starts, 0, doc.len, geo, 117, 217),
+        offsetForPoint(doc, &starts, 0, doc.len, geo, &.{}, 117, 217),
     );
     // Past the line's ink clamps to its content end (before the '\n').
     try std.testing.expectEqual(
         @as(usize, 7),
-        offsetForPoint(doc, &starts, 0, doc.len, geo, 900, 217),
+        offsetForPoint(doc, &starts, 0, doc.len, geo, &.{}, 900, 217),
     );
     // Above/left of the grid clamps to the first cell.
     try std.testing.expectEqual(
         @as(usize, 0),
-        offsetForPoint(doc, &starts, 0, doc.len, geo, 0, 0),
+        offsetForPoint(doc, &starts, 0, doc.len, geo, &.{}, 0, 0),
     );
     // Below the last line clamps into the last line.
     try std.testing.expectEqual(
         @as(usize, 10),
-        offsetForPoint(doc, &starts, 0, doc.len, geo, 108, 900),
+        offsetForPoint(doc, &starts, 0, doc.len, geo, &.{}, 108, 900),
     );
     // Unknown geometry -> offset 0.
     var no_geo = geo;
     no_geo.cell_w = 0;
     try std.testing.expectEqual(
         @as(usize, 0),
-        offsetForPoint(doc, &starts, 0, doc.len, no_geo, 117, 217),
+        offsetForPoint(doc, &starts, 0, doc.len, no_geo, &.{}, 117, 217),
+    );
+}
+
+test "win32 uia text pattern wide-glyph columns" {
+    // "AB\u{4E2D}C" where the CJK char occupies columns 2-3:
+    // unit cols = 0,1,2,4.
+    const doc = std.unicode.utf8ToUtf16LeStringLiteral("AB\u{4E2D}C");
+    const starts = [_]usize{0};
+    const cols = [_]u16{ 0, 1, 2, 4 };
+    const geo: TextDoc = .{
+        .utf8 = &.{},
+        .visible_start = 0,
+        .visible_end = 0,
+        .cell_w = 10,
+        .cell_h = 20,
+        .origin_x = 0,
+        .origin_y = 0,
+        .viewport_cols = 80,
+    };
+
+    // Rect over the CJK char alone spans TWO cells (cols 2..4).
+    {
+        const rects = try boundingLineRects(
+            std.testing.allocator,
+            doc,
+            &starts,
+            0,
+            doc.len,
+            2,
+            3,
+            geo,
+            &cols,
+        );
+        defer std.testing.allocator.free(rects);
+        try std.testing.expectEqual(@as(usize, 1), rects.len);
+        try std.testing.expectEqual(@as(f64, 20), rects[0].left);
+        try std.testing.expectEqual(@as(f64, 20), rects[0].width);
+    }
+
+    // Clicking column 3 (the CJK char's second cell) hits the CJK
+    // unit, not the char after it.
+    try std.testing.expectEqual(
+        @as(usize, 2),
+        offsetForPoint(doc, &starts, 0, doc.len, geo, &cols, 35, 5),
+    );
+    // Column 4 hits "C".
+    try std.testing.expectEqual(
+        @as(usize, 3),
+        offsetForPoint(doc, &starts, 0, doc.len, geo, &cols, 45, 5),
     );
 }
 

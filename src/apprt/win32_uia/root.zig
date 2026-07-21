@@ -164,6 +164,8 @@ pub const RootProvider = struct {
             const doc_fn = text_doc_fn orelse return com.S_OK;
             const doc = doc_fn(self.hwnd) orelse return com.S_OK;
             defer std.heap.smp_allocator.free(doc.utf8);
+            defer if (doc.col_map_bytes.len > 0)
+                std.heap.smp_allocator.free(doc.col_map_bytes);
             const pattern = text_pattern.TextPattern.create(
                 &self.base,
                 doc,
