@@ -30,7 +30,9 @@ pub const Options = struct {
 /// so `paramux open .` can start a whole agent formation.
 ///
 /// `--list` prints the five layout slots (pane counts and commands)
-/// plus whether the current directory carries a project layout.
+/// plus whether the current directory carries a project layout;
+/// `--slot=N` applies that saved slot for the new workspace instead
+/// of the project layout / plain default.
 pub fn run(alloc: Allocator) !u8 {
     var iter = try args.argsIterator(alloc);
     defer iter.deinit();
@@ -56,6 +58,7 @@ fn runArgs(
     const a = opts._arena.?.allocator();
 
     var dir_arg: ?[]const u8 = null;
+    var slot_arg: ?usize = null;
     while (args_iter.next()) |arg| {
         if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
             return actionpkg.help_error;
@@ -66,6 +69,15 @@ fn runArgs(
         }
         if (std.mem.eql(u8, arg, "--list")) {
             return try listLayoutSlots(a, stdout);
+        }
+        if (lib.cutPrefix(u8, arg, "--slot=")) |rest| {
+            const n = std.fmt.parseInt(usize, rest, 10) catch 0;
+            if (n < 1 or n > 5) {
+                try stderr.print("bad --slot value (1-5): {s}\n", .{rest});
+                return 1;
+            }
+            slot_arg = n;
+            continue;
         }
         if (std.mem.startsWith(u8, arg, "--")) {
             try stderr.print("unknown option: {s}\n", .{arg});
@@ -96,9 +108,9 @@ fn runArgs(
 
     // Project layout seeding: a .paramux/layout file (the layouts.json
     // slot format) is installed into slot 5 and applied instead of a
-    // plain workspace.
+    // plain workspace. An explicit --slot wins over both.
     var project_layout = false;
-    {
+    if (slot_arg == null) {
         var layout_path_buf: [std.fs.max_path_bytes]u8 = undefined;
         const layout_path = std.fmt.bufPrint(&layout_path_buf, "{s}/.paramux/layout", .{abs}) catch null;
         if (layout_path) |lp| {
@@ -112,7 +124,13 @@ fn runArgs(
         }
     }
 
-    const spawn_action: []const u8 = if (project_layout) "apply_layout:5" else "new_tab";
+    var spawn_buf: [24]u8 = undefined;
+    const spawn_action: []const u8 = if (slot_arg) |n|
+        std.fmt.bufPrint(&spawn_buf, "apply_layout:{d}", .{n}) catch "new_tab"
+    else if (project_layout)
+        "apply_layout:5"
+    else
+        "new_tab";
     const performed = apprt.App.performAutomationAction(alloc, target, .focused, spawn_action) catch |err| {
         try stderr.print("workspace spawn failed (err={})\n", .{err});
         return 1;
