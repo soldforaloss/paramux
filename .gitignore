@@ -44,6 +44,8 @@ vgcore.*
 
 # paramux: packaging output (build artifacts, never commit)
 dist/artifacts/
+# ARM64 release-asset download staging (gh run download)
+dist/arm64-*/
 
 # Local soak-gate run output (start-soak.ps1, soak-fleet.ps1)
 soak-runs/
