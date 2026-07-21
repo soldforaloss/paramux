@@ -174,7 +174,31 @@ pub fn run(alloc: Allocator) !u8 {
         }
     }
 
-    // 7. Live pipeline test.
+    // 7. Accessibility: UIA core must be loadable for the TextPattern
+    // and fleet-summary providers, and "clients listening" says whether
+    // a screen reader is attached right now.
+    {
+        const uiacore = std.os.windows.kernel32.LoadLibraryW(
+            std.unicode.utf8ToUtf16LeStringLiteral("uiautomationcore.dll"),
+        );
+        if (uiacore != null) {
+            const listening = blk: {
+                const proc = std.os.windows.kernel32.GetProcAddress(
+                    uiacore.?,
+                    "UiaClientsAreListening",
+                ) orelse break :blk false;
+                const f: *const fn () callconv(.winapi) i32 = @ptrCast(@alignCast(proc));
+                break :blk f() != 0;
+            };
+            try report.line(.ok, "UI Automation core loadable; screen-reader client listening: {s}", .{
+                if (listening) "yes" else "no",
+            });
+        } else {
+            try report.line(.warn, "uiautomationcore.dll not loadable - screen readers cannot read panes", .{});
+        }
+    }
+
+    // 8. Live pipeline test.
     if (opts.fire) {
         if (surface_id) |id| {
             try fireTestSignals(&report, alloc, a, id);
