@@ -22,7 +22,7 @@ and has evidence in the current repo or runtime.
 | All-workspace navigation | Implemented | The `▾` and terminal context menus expose `Tabs / Workspaces...`; its overview lists every tab, pane count, active tab, and strongest attention state for direct numeric selection. |
 | Live pane metadata | Implemented | cwd, git branch/dirty state, ports, textual attention state, and the latest bounded notification render in each active-tab sidebar row. |
 | Per-pane agent attention | Implemented | Working/waiting/done/error drive pane rings, tab stripes, sidebar dots, toasts, and taskbar flash. Alerts survive focus/navigation and clear with deliberate terminal input. |
-| Notification history / inbox | Missing | There is no in-app history or unread-jump workflow. |
+| Notification history / inbox | Partial | The attention inbox (Ctrl+Alt+I) and per-pane timelines cover live sessions; transitions persist to a rotated local `attention-history.jsonl` since v0.1.20. Reading history back into the inbox across restarts remains open. |
 | Agent hook adapters | Implemented | The portable package includes concrete, protocol-aware Claude Code, Codex CLI, Gemini CLI, and OpenCode adapters plus bounded contract tests. |
 | Hookless agent detection | Missing | Paramux does not infer agent state from process/output heuristics when a CLI has no usable hook API or is not configured. |
 | Local automation | Partial | List windows, safe actions, notify, read-pane, bounded send, and terminal-mode-aware send-key work end to end. Workspace naming, a complete process-launch contract, and versioned JSON-RPC compatibility remain incomplete. |

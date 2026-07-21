@@ -56,6 +56,7 @@ Important files and directories:
 | `%LOCALAPPDATA%\paramux\config.ghostty` | User config. The extension and grammar are retained from Ghostty. |
 | `%LOCALAPPDATA%\paramux\session-state.json` | Window, tab, split, profile, cwd, and title restore state when enabled. |
 | `%LOCALAPPDATA%\paramux\paramux-ipc-token` | Current local IPC token used by external Paramux CLI clients. Treat it as user-private runtime state. |
+| `%LOCALAPPDATA%\paramux\attention-history.jsonl` | Durable attention-transition log (one JSON line per transition, rotated past ~1 MiB). Local only. |
 | `%LOCALAPPDATA%\paramux\crash\` | Local crash dumps. Nothing here is uploaded automatically. |
 | `%LOCALAPPDATA%\paramux\shell-integration\` | Installed shell-integration payloads and manual fallbacks. |
 
