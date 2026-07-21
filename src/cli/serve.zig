@@ -77,7 +77,11 @@ fn runArgs(
     const target: apprt.ipc.Target = if (opts.class) |class| .{ .class = class } else .detect;
 
     const address = std.net.Address.parseIp4("127.0.0.1", opts.port) catch unreachable;
-    var listener = address.listen(.{ .reuse_address = true }) catch |err| {
+    // No reuse_address: on Windows SO_REUSEADDR lets a second serve
+    // bind an actively listening port and silently steal its traffic.
+    // Listening sockets don't linger in TIME_WAIT, so quick restarts
+    // don't need it.
+    var listener = address.listen(.{}) catch |err| {
         try stderr.print("could not bind 127.0.0.1:{d} (err={})\n", .{ opts.port, err });
         return 1;
     };
