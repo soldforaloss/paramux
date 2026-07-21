@@ -1380,6 +1380,86 @@ const PROCESS_MEMORY_COUNTERS = extern struct {
 };
 extern "kernel32" fn K32GetProcessMemoryInfo(hProcess: ?*anyopaque, ppsmemCounters: *PROCESS_MEMORY_COUNTERS, cb: u32) callconv(.winapi) BOOL;
 extern "kernel32" fn GetCurrentProcess() callconv(.winapi) ?*anyopaque;
+
+// -- Opt-in crash minidumps (config crash-minidumps) ----------------
+const CrashExceptionPointers = opaque {};
+const MINIDUMP_EXCEPTION_INFORMATION = extern struct {
+    ThreadId: DWORD,
+    ExceptionPointers: ?*CrashExceptionPointers,
+    ClientPointers: i32,
+};
+extern "kernel32" fn SetUnhandledExceptionFilter(
+    filter: ?*const fn (?*CrashExceptionPointers) callconv(.winapi) c_long,
+) callconv(.winapi) ?*anyopaque;
+extern "dbghelp" fn MiniDumpWriteDump(
+    hProcess: ?*anyopaque,
+    ProcessId: DWORD,
+    hFile: windows.HANDLE,
+    DumpType: u32,
+    ExceptionParam: ?*const MINIDUMP_EXCEPTION_INFORMATION,
+    UserStreamParam: ?*anyopaque,
+    CallbackParam: ?*anyopaque,
+) callconv(.winapi) BOOL;
+const MiniDumpNormal: u32 = 0;
+const EXCEPTION_CONTINUE_SEARCH: c_long = 0;
+
+/// UTF-16 crash dir with trailing backslash, prepared at install time
+/// so the exception filter never allocates or converts.
+var crash_dump_dir_w: [512]u16 = undefined;
+var crash_dump_dir_len: usize = 0;
+
+fn crashMinidumpFilter(
+    info: ?*CrashExceptionPointers,
+) callconv(.winapi) c_long {
+    if (crash_dump_dir_len == 0) return EXCEPTION_CONTINUE_SEARCH;
+
+    // Fixed buffers only: the process is already crashing.
+    var name_utf8: [64]u8 = undefined;
+    const name = std.fmt.bufPrint(
+        &name_utf8,
+        "paramux-{d}-{d}.dmp",
+        .{ windows.GetCurrentProcessId(), std.time.milliTimestamp() },
+    ) catch return EXCEPTION_CONTINUE_SEARCH;
+
+    var path_w: [512 + 64:0]u16 = undefined;
+    @memcpy(path_w[0..crash_dump_dir_len], crash_dump_dir_w[0..crash_dump_dir_len]);
+    var n: usize = crash_dump_dir_len;
+    for (name) |c| {
+        path_w[n] = c;
+        n += 1;
+    }
+    path_w[n] = 0;
+
+    const file = windows.kernel32.CreateFileW(
+        path_w[0..n :0],
+        windows.GENERIC_WRITE,
+        0,
+        null,
+        windows.CREATE_ALWAYS,
+        windows.FILE_ATTRIBUTE_NORMAL,
+        null,
+    );
+    if (file == windows.INVALID_HANDLE_VALUE) return EXCEPTION_CONTINUE_SEARCH;
+    defer windows.CloseHandle(file);
+
+    var mei: MINIDUMP_EXCEPTION_INFORMATION = .{
+        .ThreadId = GetCurrentThreadId(),
+        .ExceptionPointers = info,
+        .ClientPointers = 0,
+    };
+    _ = MiniDumpWriteDump(
+        GetCurrentProcess(),
+        windows.GetCurrentProcessId(),
+        file,
+        MiniDumpNormal,
+        if (info != null) &mei else null,
+        null,
+        null,
+    );
+    // Let default handling (WER, debugger) continue after the dump.
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
 const LASTINPUTINFO = extern struct { cbSize: u32, dwTime: u32 };
 extern "user32" fn GetLastInputInfo(plii: *LASTINPUTINFO) callconv(.winapi) BOOL;
 const TH32CS_SNAPPROCESS: u32 = 0x00000002;
@@ -4023,6 +4103,7 @@ pub const App = struct {
         // Chrome locale is selected once, before any window chrome
         // exists; call sites read the table at runtime.
         win32_strings.setLocale(@tagName(self.config.@"ui-language"));
+        if (self.config.@"crash-minidumps") self.installCrashMinidumps();
         // Screen readers get a live fleet summary on the window element,
         // and TextPattern serves the active pane's screen + scrollback.
         win32_uia.setFleetHelpFn(&uiaFleetHelp);
@@ -8052,6 +8133,24 @@ pub const App = struct {
         defer file.close();
         file.writeAll(out.written()) catch return false;
         return true;
+    }
+
+    /// Opt-in local crash capture: prepare the crash directory once
+    /// and register the minidump exception filter. Dumps are local
+    /// only, per the telemetry stance.
+    fn installCrashMinidumps(self: *App) void {
+        const path = self.localAppDataPath("crash") orelse return;
+        defer self.core_app.alloc.free(path);
+        std.fs.cwd().makePath(path) catch {};
+
+        const written = std.unicode.utf8ToUtf16Le(
+            crash_dump_dir_w[0 .. crash_dump_dir_w.len - 1],
+            path,
+        ) catch return;
+        crash_dump_dir_w[written] = '\\';
+        crash_dump_dir_len = written + 1;
+        _ = SetUnhandledExceptionFilter(&crashMinidumpFilter);
+        log.info("crash minidumps enabled dir={s}", .{path});
     }
 
     fn quickTerminalRectPath(alloc: Allocator) ![]u8 {

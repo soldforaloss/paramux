@@ -1854,6 +1854,14 @@ class: ?[:0]const u8 = null,
 /// segments untouched.
 @"hint-strip": bool = true,
 
+/// Write a local crash minidump when paramux itself crashes. Opt-in
+/// and strictly local per the telemetry stance: dumps land in
+/// `%LOCALAPPDATA%\paramux\crash\` and are NEVER uploaded anywhere —
+/// attach one to a GitHub issue by hand if you want it looked at.
+/// Minidumps can contain fragments of process memory, which is why
+/// this is off by default.
+@"crash-minidumps": bool = false,
+
 /// Language for window-chrome strings (labels, tooltips, cues).
 /// Proof-of-concept scope: only the converted chrome slice localizes
 /// today — menus, the settings window, CLI help, and config docs stay
