@@ -11497,7 +11497,7 @@ const Host = struct {
             while (it.next()) |leaf| {
                 if (n >= cmds.len) break :pane_rows;
                 const surface = leaf.view;
-                const pane_title: []const u8 = if (surface.effectiveTitle()) |t| t else "shell";
+                const pane_title: []const u8 = if (surface.effectiveTitle()) |t| t else win32_strings.strings.shell_fallback;
                 const sid = surface.core().id;
                 const title = std.fmt.allocPrintSentinel(arena, "Go to Pane: {s} (workspace {d})", .{ pane_title[0..@min(pane_title.len, 40)], ti + 1 }, 0) catch break :pane_rows;
                 const action_str = std.fmt.allocPrintSentinel(arena, "focus_pane:{d}", .{sid}, 0) catch break :pane_rows;
@@ -14798,7 +14798,7 @@ const Host = struct {
             var it = tab.tree.iterator();
             while (it.next()) |leaf| {
                 const surface = leaf.view;
-                const title: []const u8 = if (surface.effectiveTitle()) |t| t else "shell";
+                const title: []const u8 = if (surface.effectiveTitle()) |t| t else win32_strings.strings.shell_fallback;
                 const state = @tagName(surface.attention_state);
                 text.writer(alloc).print("- [{s}] {s}", .{ state, title }) catch return;
                 if (surface.last_notification) |msg| {
@@ -15029,7 +15029,7 @@ const Host = struct {
             _ = AppendMenuW(menu, MF_GRAYED, 0, win32_strings.strings.menu_no_matches);
         } else {
             for (matches[0..n], 0..) |*m, idx| {
-                const title: []const u8 = if (m.surface.effectiveTitle()) |t| t else "shell";
+                const title: []const u8 = if (m.surface.effectiveTitle()) |t| t else win32_strings.strings.shell_fallback;
                 const label_utf8 = std.fmt.allocPrint(alloc, "{d}: {s} - {s}", .{
                     m.tab_index + 1,
                     title[0..@min(title.len, 24)],
@@ -17436,7 +17436,7 @@ const Host = struct {
         };
 
         const host_status = self.app.hostTabStatus(surface);
-        try append.fmt(&parts, alloc, "Workspace {d}/{d}", .{ host_status.index + 1, host_status.total });
+        try append.fmt(&parts, alloc, "{s} {d}/{d}", .{ win32_strings.strings.workspace_word, host_status.index + 1, host_status.total });
         const pane_count = tab.leafCount();
         if (pane_count > 1) {
             try append.fmt(&parts, alloc, "Panes {d}", .{pane_count});
@@ -18553,9 +18553,9 @@ const Host = struct {
                             (std.fmt.bufPrint(&label_buf, "{d} \u{00B7} {s}", .{ row.tab_index + 1, name }) catch name))
                     else
                         (if (pane_count > 1)
-                            (std.fmt.bufPrint(&label_buf, "Workspace {d}  ({d})", .{ row.tab_index + 1, pane_count }) catch "Workspace")
+                            (std.fmt.bufPrint(&label_buf, "{s} {d}  ({d})", .{ win32_strings.strings.workspace_word, row.tab_index + 1, pane_count }) catch win32_strings.strings.workspace_word)
                         else
-                            (std.fmt.bufPrint(&label_buf, "Workspace {d}", .{row.tab_index + 1}) catch "Workspace"));
+                            (std.fmt.bufPrint(&label_buf, "{s} {d}", .{ win32_strings.strings.workspace_word, row.tab_index + 1 }) catch win32_strings.strings.workspace_word));
                     var note_label_buf: [200]u8 = undefined;
                     const label_with_note: []const u8 = if (tab.note != null)
                         (std.fmt.bufPrint(&note_label_buf, "{s}  \u{270E}", .{label}) catch label)
@@ -18631,7 +18631,7 @@ const Host = struct {
                     }
 
                     const half = @divTrunc(row.h, 2);
-                    const base_label: []const u8 = if (surface.effectiveTitle()) |t| t else "shell";
+                    const base_label: []const u8 = if (surface.effectiveTitle()) |t| t else win32_strings.strings.shell_fallback;
                     // Invisible states earn visible markers: muted panes
                     // and broadcast opt-outs read differently only here.
                     var state_label_buf: [208]u8 = undefined;
@@ -23272,7 +23272,7 @@ fn buildTabOverviewOverlayLabel(
     current_index: usize,
     total: usize,
 ) ![]u8 {
-    if (total <= 1) return try alloc.dupe(u8, "Workspace");
+    if (total <= 1) return try alloc.dupe(u8, win32_strings.strings.workspace_word);
     return try std.fmt.allocPrint(alloc, "Workspace {d}/{d}", .{ current_index + 1, total });
 }
 
@@ -27565,7 +27565,7 @@ fn buildAttentionInboxLabel(
         if (items.len == 0) break :blk "now";
         break :blk formatRelativeMs(&rel_buf, now_ms - items[items.len - 1].wall_ms);
     };
-    const title: []const u8 = if (surface.effectiveTitle()) |t| t else "shell";
+    const title: []const u8 = if (surface.effectiveTitle()) |t| t else win32_strings.strings.shell_fallback;
     const msg: []const u8 = surface.last_notification orelse "";
     const msg_trunc = msg[0..@min(msg.len, 60)];
     return if (msg_trunc.len > 0)

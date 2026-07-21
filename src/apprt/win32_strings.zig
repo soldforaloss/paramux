@@ -180,6 +180,11 @@ pub const Strings = struct {
     settings_focus_follows: [:0]const u16 = w("Focus follows attention (only when idle 10s+)"),
     settings_background_blur: [:0]const u16 = w("Enable background blur"),
 
+    // Runtime-composed label pieces (UTF-8, bufPrint composes around
+    // them): the workspace ordinal label and the untitled-pane word.
+    workspace_word: []const u8 = "Workspace",
+    shell_fallback: []const u8 = "shell",
+
     // Hint-strip texts (UTF-16 via w) plus prefix/suffix pieces for
     // the two runtime-formatted hints (bufPrint formats are comptime,
     // so the dynamic parts compose around table strings instead).
@@ -366,6 +371,8 @@ pub const german: Strings = .{
     .settings_search_cue = w("Einstellungen durchsuchen..."),
     .settings_focus_follows = w("Fokus folgt Aufmerksamkeit (nur bei 10s+ Leerlauf)"),
     .settings_background_blur = w("Hintergrund-Unsch\u{00E4}rfe aktivieren"),
+    .workspace_word = "Arbeitsbereich",
+    .shell_fallback = "Shell",
     .hint_confirm = w("Enter best\u{00E4}tigen \u{00B7} Esc abbrechen"),
     .hint_drop = w("Ablegen: Kanten docken an \u{00B7} Mitte tauscht"),
     .hint_resize = w("Ziehen zum Anpassen"),
