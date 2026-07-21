@@ -14,6 +14,11 @@ pub const Options = struct {
     /// last update). The window closes when the next update sweeps.
     rollback: bool = false,
 
+    /// Install this exact release version ("0.1.9" or "v0.1.9")
+    /// instead of the newest — the tested downgrade/pin path. The
+    /// same checksum verification applies.
+    version: ?[]const u8 = null,
+
     pub fn deinit(self: Options) void {
         _ = self;
     }
@@ -94,19 +99,27 @@ pub fn run(alloc: Allocator) !u8 {
     try stdout.print("Checking {s} ...\n", .{github_releases.releases_url});
     try stdout.flush();
 
-    var release = github_releases.fetchLatestPortableRelease(alloc) catch |err| {
+    var release = (if (opts.version) |pin|
+        github_releases.fetchPortableReleaseByVersion(alloc, pin)
+    else
+        github_releases.fetchLatestPortableRelease(alloc)) catch |err| {
         try stdout.print("error: release check failed ({s}).\n", .{@errorName(err)});
         return 1;
     };
     defer release.deinit(alloc);
 
-    try stdout.print("Latest release : {s}\n", .{release.version_text});
+    try stdout.print("{s} release : {s}\n", .{
+        if (opts.version != null) "Pinned" else "Latest",
+        release.version_text,
+    });
 
     const latest = std.SemanticVersion.parse(release.version_text) catch {
-        try stdout.print("error: latest release has an unparseable version.\n", .{});
+        try stdout.print("error: release has an unparseable version.\n", .{});
         return 1;
     };
-    if (build_config.version.order(latest) != .lt) {
+    // A pinned install skips the newer-than check on purpose: pinning
+    // exists precisely to move sideways or back.
+    if (opts.version == null and build_config.version.order(latest) != .lt) {
         try stdout.print("Already up to date.\n", .{});
         return 0;
     }

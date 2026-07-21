@@ -738,6 +738,63 @@ pub fn fetchLatestPortableRelease(alloc: Allocator) !Release {
     return parseLatestPortableReleaseResponse(alloc, body);
 }
 
+/// Fetch a specific release by version ("0.1.9" or "v0.1.9") from the
+/// same list endpoint. Errors with NoPortableRelease when the tag is
+/// absent or carries no portable asset.
+pub fn fetchPortableReleaseByVersion(alloc: Allocator, version: []const u8) !Release {
+    var client: std.http.Client = .{ .allocator = alloc };
+    defer client.deinit();
+
+    var response_buf: std.Io.Writer.Allocating = .init(alloc);
+    defer response_buf.deinit();
+
+    const result = try client.fetch(.{
+        .location = .{ .url = releases_list_api_url },
+        .extra_headers = &.{
+            .{ .name = "accept", .value = "application/vnd.github+json" },
+            .{ .name = "user-agent", .value = "paramux-updater" },
+            .{ .name = "x-github-api-version", .value = "2022-11-28" },
+        },
+        .response_writer = &response_buf.writer,
+    });
+
+    try requireOkHttpStatus("release list", releases_list_api_url, result.status);
+
+    const body = try response_buf.toOwnedSlice();
+    defer alloc.free(body);
+
+    const want = if (std.mem.startsWith(u8, version, "v")) version[1..] else version;
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, body, .{});
+    defer parsed.deinit();
+    const list = switch (parsed.value) {
+        .array => |value| value,
+        else => return error.InvalidReleaseResponse,
+    };
+    for (list.items) |item| {
+        const obj = switch (item) {
+            .object => |value| value,
+            else => continue,
+        };
+        if (obj.get("draft")) |draft| {
+            if (draft == .bool and draft.bool) continue;
+        }
+        const tag = switch (obj.get("tag_name") orelse continue) {
+            .string => |value| value,
+            else => continue,
+        };
+        const tag_version = if (std.mem.startsWith(u8, tag, "v")) tag[1..] else tag;
+        if (!std.mem.eql(u8, tag_version, want)) continue;
+        var release = parseReleaseObject(alloc, obj) catch continue;
+        if (release.windows_portable == null) {
+            release.deinit(alloc);
+            return error.NoPortableRelease;
+        }
+        return release;
+    }
+    return error.NoPortableRelease;
+}
+
 fn parseLatestPortableReleaseResponse(alloc: Allocator, body: []const u8) !Release {
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, body, .{});
     defer parsed.deinit();
