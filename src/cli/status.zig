@@ -20,6 +20,10 @@ pub const Options = struct {
     /// default table stays machine-countable).
     notes: bool = false,
 
+    /// Print the raw paramux.windows.v2 JSON payload instead of the
+    /// table (one verb for humans and scripts alike).
+    json: bool = false,
+
     /// Omit the column-header row (script-friendly output).
     @"no-header": bool = false,
 
@@ -78,6 +82,10 @@ fn runArgs(
             opts.notes = true;
             continue;
         }
+        if (std.mem.eql(u8, arg, "--json")) {
+            opts.json = true;
+            continue;
+        }
         if (std.mem.eql(u8, arg, "--watch")) {
             opts.watch = true;
             continue;
@@ -96,13 +104,13 @@ fn runArgs(
         while (true) {
             // ANSI clear + home keeps the table stable in place.
             try stdout.writeAll("\x1b[2J\x1b[H");
-            const code = try renderOnce(alloc, a, target, stdout, stderr, opts.@"no-header", opts.notes);
+            const code = try renderOnce(alloc, a, target, stdout, stderr, opts.@"no-header", opts.notes, opts.json);
             try stdout.flush();
             if (code != 0) return code;
             std.Thread.sleep(@as(u64, opts.interval) * std.time.ns_per_s);
         }
     }
-    return renderOnce(alloc, a, target, stdout, stderr, opts.@"no-header", opts.notes);
+    return renderOnce(alloc, a, target, stdout, stderr, opts.@"no-header", opts.notes, opts.json);
 }
 
 fn renderOnce(
@@ -113,6 +121,7 @@ fn renderOnce(
     stderr: *std.Io.Writer,
     no_header: bool,
     show_notes: bool,
+    show_json: bool,
 ) !u8 {
     const payload = (apprt.App.queryAutomationWindowList(alloc, target) catch |err| {
         try stderr.print("could not reach a running paramux instance (err={})\n", .{err});
@@ -122,6 +131,11 @@ fn renderOnce(
         return 1;
     };
     defer alloc.free(payload);
+
+    if (show_json) {
+        try stdout.print("{s}\n", .{payload});
+        return 0;
+    }
 
     var parsed = std.json.parseFromSlice(std.json.Value, a, payload, .{}) catch {
         try stderr.print("unexpected list-windows payload\n", .{});
