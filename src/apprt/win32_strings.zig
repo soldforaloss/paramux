@@ -15,7 +15,9 @@
 const std = @import("std");
 
 fn w(comptime utf8: []const u8) [:0]const u16 {
-    @setEvalBranchQuota(20_000);
+    // The quota is shared across every comptime conversion in this
+    // struct; grow it as the table grows.
+    @setEvalBranchQuota(60_000);
     return std.unicode.utf8ToUtf16LeStringLiteral(utf8);
 }
 
@@ -85,6 +87,18 @@ pub const Strings = struct {
     overlay_tab_title: []const u8 = "Tab title",
     overlay_profile: []const u8 = "Profile",
     overlay_confirm: []const u8 = "Confirm",
+
+    // Pane context menu, first block (UTF-16). The \t chord suffixes
+    // ride inside the strings and never translate.
+    menu_copy: [:0]const u16 = w("Copy\tCtrl+Shift+C"),
+    menu_paste: [:0]const u16 = w("Paste\tCtrl+Shift+V"),
+    menu_select_all: [:0]const u16 = w("Select All"),
+    menu_find: [:0]const u16 = w("Find...\tCtrl+Shift+F"),
+    menu_find_panes: [:0]const u16 = w("Find in All Panes...\tCtrl+Alt+F"),
+    menu_scrollback_editor: [:0]const u16 = w("Open Scrollback in Editor"),
+    menu_watch_pane: [:0]const u16 = w("Pop Out Watch Window"),
+    menu_restart_pane: [:0]const u16 = w("Restart Pane (new shell here)"),
+    menu_worktree_seed: [:0]const u16 = w("Type Worktree Command"),
 
     // Hint-strip texts (UTF-16 via w) plus prefix/suffix pieces for
     // the two runtime-formatted hints (bufPrint formats are comptime,
@@ -174,6 +188,15 @@ pub const german: Strings = .{
     .overlay_tab_title = "Arbeitsbereich-Titel",
     .overlay_profile = "Profil",
     .overlay_confirm = "Bestätigen",
+    .menu_copy = w("Kopieren\tCtrl+Shift+C"),
+    .menu_paste = w("Einf\u{00FC}gen\tCtrl+Shift+V"),
+    .menu_select_all = w("Alles ausw\u{00E4}hlen"),
+    .menu_find = w("Suchen...\tCtrl+Shift+F"),
+    .menu_find_panes = w("In allen Panes suchen...\tCtrl+Alt+F"),
+    .menu_scrollback_editor = w("Scrollback im Editor \u{00F6}ffnen"),
+    .menu_watch_pane = w("Beobachtungsfenster abdocken"),
+    .menu_restart_pane = w("Pane neu starten (neue Shell hier)"),
+    .menu_worktree_seed = w("Worktree-Befehl eintippen"),
     .hint_confirm = w("Enter best\u{00E4}tigen \u{00B7} Esc abbrechen"),
     .hint_drop = w("Ablegen: Kanten docken an \u{00B7} Mitte tauscht"),
     .hint_resize = w("Ziehen zum Anpassen"),

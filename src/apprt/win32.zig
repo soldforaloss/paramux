@@ -13983,16 +13983,16 @@ const Host = struct {
             break :blk s.core_surface.hasSelection();
         } else false;
 
-        _ = AppendMenuW(menu, if (has_selection) MF_STRING else MF_GRAYED, CTX_COPY, std.unicode.utf8ToUtf16LeStringLiteral("Copy\tCtrl+Shift+C"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_PASTE, std.unicode.utf8ToUtf16LeStringLiteral("Paste\tCtrl+Shift+V"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_SELECT_ALL, std.unicode.utf8ToUtf16LeStringLiteral("Select All"));
+        _ = AppendMenuW(menu, if (has_selection) MF_STRING else MF_GRAYED, CTX_COPY, win32_strings.strings.menu_copy);
+        _ = AppendMenuW(menu, MF_STRING, CTX_PASTE, win32_strings.strings.menu_paste);
+        _ = AppendMenuW(menu, MF_STRING, CTX_SELECT_ALL, win32_strings.strings.menu_select_all);
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
-        _ = AppendMenuW(menu, MF_STRING, CTX_FIND, std.unicode.utf8ToUtf16LeStringLiteral("Find...\tCtrl+Shift+F"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_FIND_PANES, std.unicode.utf8ToUtf16LeStringLiteral("Find in All Panes...\tCtrl+Alt+F"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_SCROLLBACK_EDITOR, std.unicode.utf8ToUtf16LeStringLiteral("Open Scrollback in Editor"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_WATCH_PANE, std.unicode.utf8ToUtf16LeStringLiteral("Pop Out Watch Window"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_RESTART_PANE, std.unicode.utf8ToUtf16LeStringLiteral("Restart Pane (new shell here)"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_WORKTREE_SEED, std.unicode.utf8ToUtf16LeStringLiteral("Type Worktree Command"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_FIND, win32_strings.strings.menu_find);
+        _ = AppendMenuW(menu, MF_STRING, CTX_FIND_PANES, win32_strings.strings.menu_find_panes);
+        _ = AppendMenuW(menu, MF_STRING, CTX_SCROLLBACK_EDITOR, win32_strings.strings.menu_scrollback_editor);
+        _ = AppendMenuW(menu, MF_STRING, CTX_WATCH_PANE, win32_strings.strings.menu_watch_pane);
+        _ = AppendMenuW(menu, MF_STRING, CTX_RESTART_PANE, win32_strings.strings.menu_restart_pane);
+        _ = AppendMenuW(menu, MF_STRING, CTX_WORKTREE_SEED, win32_strings.strings.menu_worktree_seed);
         if (CreatePopupMenu()) |ratio_menu| {
             _ = AppendMenuW(ratio_menu, MF_STRING, CTX_RATIO_BASE + 0, std.unicode.utf8ToUtf16LeStringLiteral("50 / 50"));
             _ = AppendMenuW(ratio_menu, MF_STRING, CTX_RATIO_BASE + 1, std.unicode.utf8ToUtf16LeStringLiteral("70 / 30"));
@@ -15191,7 +15191,7 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_WINDOW, std.unicode.utf8ToUtf16LeStringLiteral("New Window\tCtrl+Shift+N"));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
         _ = AppendMenuW(menu, MF_STRING, CTX_COMMAND_PALETTE, std.unicode.utf8ToUtf16LeStringLiteral("Command Palette\tCtrl+Shift+P"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_FIND, std.unicode.utf8ToUtf16LeStringLiteral("Find...\tCtrl+Shift+F"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_FIND, win32_strings.strings.menu_find);
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
         _ = AppendMenuW(menu, MF_STRING, CTX_SETTINGS, std.unicode.utf8ToUtf16LeStringLiteral("Settings...\tCtrl+,"));
         _ = AppendMenuW(menu, MF_STRING, CTX_INSPECTOR, std.unicode.utf8ToUtf16LeStringLiteral("Toggle Inspector"));
