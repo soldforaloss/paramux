@@ -198,7 +198,25 @@ pub fn run(alloc: Allocator) !u8 {
         }
     }
 
-    // 8. Live pipeline test.
+    // 8. Crash dumps: surface leftovers so opted-in users notice them.
+    crash_blk: {
+        const local = std.process.getEnvVarOwned(a, "LOCALAPPDATA") catch break :crash_blk;
+        const dir_path = std.fs.path.join(a, &.{ local, "paramux", "crash" }) catch break :crash_blk;
+        var dir = std.fs.openDirAbsolute(dir_path, .{ .iterate = true }) catch break :crash_blk;
+        defer dir.close();
+        var count: usize = 0;
+        var it = dir.iterate();
+        while (it.next() catch null) |entry| {
+            if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".dmp")) count += 1;
+        }
+        if (count > 0) {
+            try report.line(.warn, "{d} crash dump(s) in the state dir's crash folder - attach to an issue or delete", .{count});
+        } else {
+            try report.line(.ok, "no crash dumps on disk", .{});
+        }
+    }
+
+    // 9. Live pipeline test.
     if (opts.fire) {
         if (surface_id) |id| {
             try fireTestSignals(&report, alloc, a, id);
