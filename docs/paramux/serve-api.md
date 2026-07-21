@@ -43,6 +43,10 @@ curl -H "Authorization: Bearer $token" http://127.0.0.1:7877/panes/42/text
 
 Unknown pane ids return `404`.
 
+Responses carry a content-hash `ETag`; send `If-None-Match` to get
+`304 Not Modified` with no body when the pane hasn't changed —
+recommended for pollers.
+
 ## Non-goals
 
 - **No remote access.** Binding is hardcoded to loopback; put a
