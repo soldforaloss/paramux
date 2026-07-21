@@ -3,9 +3,9 @@
 //! The pattern is created per `GetPatternProvider` call and owns an
 //! immutable UTF-16 snapshot of the active pane's screen + scrollback.
 //! UIA text ranges are snapshots by design — clients re-fetch after
-//! TextChanged — so an immutable document is contract-correct; we do
-//! not (yet) raise TextChanged, which means live-follow modes re-read
-//! on their own cadence rather than streaming.
+//! TextChanged — so an immutable document is contract-correct.
+//! TextChanged is raised by the host on a 3s heartbeat while content
+//! moves and immediately on active-pane attention transitions.
 //!
 //! First-slice degradations, all within the UIA contract:
 //!   * Format / Paragraph units behave as Line (Word is real:

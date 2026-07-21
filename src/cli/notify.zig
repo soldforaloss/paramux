@@ -43,6 +43,11 @@ pub const Options = struct {
     /// the `PARAMUX_SURFACE_ID` environment variable injected into each pane.
     @"surface-id": ?u64 = null,
 
+    /// Target the currently focused pane over IPC. The escape hatch for
+    /// scripts running OUTSIDE any pane (no PARAMUX_SURFACE_ID), where
+    /// the console fallback cannot reach paramux.
+    focused: bool = false,
+
     /// Set when an explicit `--surface-id=` value failed to parse, so `run` can
     /// error out instead of silently falling back to the env/console target.
     _surface_id_invalid: bool = false,
@@ -81,6 +86,10 @@ pub const Options = struct {
         }
         if (std.mem.eql(u8, arg, "--message-from-stdin")) {
             self.@"message-from-stdin" = true;
+            return;
+        }
+        if (std.mem.eql(u8, arg, "--focused")) {
+            self.focused = true;
             return;
         }
         if (lib.cutPrefix(u8, arg, "--surface-id=")) |rest| {
@@ -218,7 +227,24 @@ pub fn run(alloc: Allocator) !u8 {
     // `--surface-id` or the `PARAMUX_SURFACE_ID` env var injected per pane. On
     // any failure (no instance listening, surface gone) we fall through to the
     // console path below.
-    if (opts.@"surface-id" orelse readSurfaceIdEnv(arena)) |id| {
+    if (opts.focused) {
+        const delivered = apprt.App.performSetNotification(
+            alloc,
+            .detect,
+            .focused,
+            osc_title,
+            message,
+        ) catch false;
+        if (delivered) return 0;
+        var buf: [128]u8 = undefined;
+        var stderr_writer = std.fs.File.stderr().writer(&buf);
+        stderr_writer.interface.writeAll("notify --focused: no running instance answered\n") catch {};
+        stderr_writer.interface.flush() catch {};
+        return 1;
+    }
+
+    const target_id = opts.@"surface-id" orelse readSurfaceIdEnv(arena);
+    if (target_id) |id| {
         const delivered = apprt.App.performSetNotification(
             alloc,
             .detect,
@@ -227,6 +253,16 @@ pub fn run(alloc: Allocator) !u8 {
             message,
         ) catch false;
         if (delivered) return 0;
+    } else {
+        // No pane id anywhere: the console write below reaches whatever
+        // terminal is hosting this command, which outside paramux is
+        // not a pane at all. Say so instead of no-opping silently.
+        var buf: [192]u8 = undefined;
+        var stderr_writer = std.fs.File.stderr().writer(&buf);
+        stderr_writer.interface.writeAll(
+            "notify: not inside a paramux pane; use --surface-id=<id> or --focused (writing the console escape anyway)\n",
+        ) catch {};
+        stderr_writer.interface.flush() catch {};
     }
 
     // Fallback: write the OSC 777 desktop-notification sequence to the pane's
