@@ -13,6 +13,7 @@ paramux status --watch --interval=5
 paramux status --notes          # adds "# workspace N accent: 3 note: ..." lines
 paramux status --json           # the raw list-windows v2 payload
 paramux attention               # every pane's timeline as JSON (last 8 transitions)
+paramux attention --watch --interval=10
 paramux version --json
 ```
 
