@@ -31,8 +31,8 @@ pub const Options = struct {
 ///
 /// `--list` prints the five layout slots (pane counts and commands)
 /// plus whether the current directory carries a project layout;
-/// `--slot=N` applies that saved slot for the new workspace instead
-/// of the project layout / plain default.
+/// `--slot=N` (or `--name=<slot name>`) applies that saved slot for
+/// the new workspace instead of the project layout / plain default.
 pub fn run(alloc: Allocator) !u8 {
     var iter = try args.argsIterator(alloc);
     defer iter.deinit();
@@ -77,6 +77,13 @@ fn runArgs(
                 return 1;
             }
             slot_arg = n;
+            continue;
+        }
+        if (lib.cutPrefix(u8, arg, "--name=")) |rest| {
+            slot_arg = resolveSlotByName(a, rest) orelse {
+                try stderr.print("no layout slot named {s} (see paramux open --list)\n", .{rest});
+                return 1;
+            };
             continue;
         }
         if (std.mem.startsWith(u8, arg, "--")) {
@@ -215,6 +222,37 @@ fn writeSlots(alloc: Allocator, path: []const u8, slots: anytype) !void {
 /// counts) and whether the current directory carries a
 /// `.paramux/layout` project file. Reads layouts.json directly — no
 /// running instance required.
+/// Map a saved layout-slot name (case-insensitive) to its 1-based
+/// slot number: `paramux open --name=api-fleet`.
+fn resolveSlotByName(alloc: Allocator, name: []const u8) ?usize {
+    const Names = struct {
+        names: [5]?[]const u8 = .{ null, null, null, null, null },
+    };
+    const local = std.process.getEnvVarOwned(alloc, "LOCALAPPDATA") catch return null;
+    defer alloc.free(local);
+    const path = std.fs.path.join(alloc, &.{ local, "paramux", "layouts.json" }) catch return null;
+    defer alloc.free(path);
+    const raw = std.fs.cwd().readFileAlloc(alloc, path, 16 * 1024 * 1024) catch return null;
+    defer alloc.free(raw);
+    var parsed = std.json.parseFromSlice(Names, alloc, stripBom(raw), .{
+        .ignore_unknown_fields = true,
+        .allocate = .alloc_always,
+    }) catch return null;
+    defer parsed.deinit();
+    for (parsed.value.names, 1..) |slot_name, n| {
+        const have = slot_name orelse continue;
+        if (std.ascii.eqlIgnoreCase(have, name)) return n;
+    }
+    return null;
+}
+
+/// Hand-edited or PowerShell-written files often carry a UTF-8
+/// BOM; std.json refuses it, so strip before parsing.
+fn stripBom(raw: []const u8) []const u8 {
+    const bom = "\xEF\xBB\xBF";
+    return if (std.mem.startsWith(u8, raw, bom)) raw[bom.len..] else raw;
+}
+
 fn listLayoutSlots(alloc: Allocator, stdout: *std.Io.Writer) !u8 {
     const session = @import("../apprt/win32_session_state.zig");
     const Slots = struct {
@@ -233,7 +271,7 @@ fn listLayoutSlots(alloc: Allocator, stdout: *std.Io.Writer) !u8 {
         defer alloc.free(path);
         const raw = std.fs.cwd().readFileAlloc(alloc, path, 16 * 1024 * 1024) catch break :read;
         defer alloc.free(raw);
-        parsed_opt = std.json.parseFromSlice(Slots, alloc, raw, .{
+        parsed_opt = std.json.parseFromSlice(Slots, alloc, stripBom(raw), .{
             .ignore_unknown_fields = true,
             .allocate = .alloc_always,
         }) catch break :read;
