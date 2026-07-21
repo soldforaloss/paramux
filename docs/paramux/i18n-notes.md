@@ -46,10 +46,11 @@ Nothing here is scheduled; this is the map so step 1 is a mechanical PR.
 Shipped slices, all behind `ui-language = de`: 1 chrome basics,
 2 banners, 3 UIA localized type, 4 settings sections, 5 overlay
 labels, 6 hint strip, 7 pane-menu block one, 8 navigation/workspace
-menu block, 9 splits + window/workspace ops, plus the watch-window
-fallback title. `setLocale` swap and unknown-tag fallback are
-test-locked. Eleven inline menu literals remain (profile chooser,
-zoom/close leftovers, overflow specials, layout-slot submenus whose
-labels carry runtime slot numbers) — future slices; runtime-numbered
-items need the prefix/suffix composition pattern the hint strip
-uses.
+menu block, 9 splits + window/workspace ops, 10 workspace-close +
+empty states + quick terminal + inspector + help menu, plus the
+watch-window fallback title. **Zero inline `AppendMenuW` literals
+remain** — every menu string is table-driven. `setLocale` swap and
+unknown-tag fallback are test-locked. What still bypasses the table:
+runtime-composed labels (layout-slot rows built from saved names,
+activity timeline rows) and non-menu chrome that later slices can
+sweep with a fresh `utf8ToUtf16LeStringLiteral` grep.
