@@ -14125,10 +14125,10 @@ const Host = struct {
         // creating a split is discoverable, with the keyboard shortcut shown so
         // users learn it. Right/Down are the common cases and carry binds; the
         // Left/Up variants follow for completeness.
-        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_RIGHT, std.unicode.utf8ToUtf16LeStringLiteral("Split Right\tCtrl+Shift+O"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_DOWN, std.unicode.utf8ToUtf16LeStringLiteral("Split Down\tCtrl+Shift+E"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_LEFT, std.unicode.utf8ToUtf16LeStringLiteral("Split Left"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_UP, std.unicode.utf8ToUtf16LeStringLiteral("Split Up"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_RIGHT, win32_strings.strings.menu_split_right);
+        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_DOWN, win32_strings.strings.menu_split_down);
+        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_LEFT, win32_strings.strings.menu_split_left);
+        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_UP, win32_strings.strings.menu_split_up);
 
         // Multi-pane layout actions. Grayed with a single pane so the menu
         // teaches what becomes possible once you split.
@@ -14136,8 +14136,8 @@ const Host = struct {
         const is_zoomed = if (self.activeTab()) |tab| tab.tree.zoomed != null else false;
         const multi_flag: UINT = if (pane_count > 1) MF_STRING else MF_GRAYED;
         _ = AppendMenuW(menu, multi_flag, CTX_ZOOM_PANE, zoomPaneMenuLabel(is_zoomed));
-        _ = AppendMenuW(menu, multi_flag, CTX_EQUALIZE_SPLITS, std.unicode.utf8ToUtf16LeStringLiteral("Equalize Splits"));
-        _ = AppendMenuW(menu, multi_flag, CTX_MERGE_PANES, std.unicode.utf8ToUtf16LeStringLiteral("Merge Panes (Close Others)"));
+        _ = AppendMenuW(menu, multi_flag, CTX_EQUALIZE_SPLITS, win32_strings.strings.menu_equalize);
+        _ = AppendMenuW(menu, multi_flag, CTX_MERGE_PANES, win32_strings.strings.menu_merge_panes);
         _ = AppendMenuW(menu, MF_STRING, CTX_CLOSE_SURFACE, closeSurfaceMenuLabel(pane_count));
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
 
@@ -14173,13 +14173,13 @@ const Host = struct {
                     }
                 }
                 // DestroyMenu on the parent tears down submenus too.
-                _ = AppendMenuW(menu, MF_POPUP, @intFromPtr(submenu), std.unicode.utf8ToUtf16LeStringLiteral("Recent Activity"));
+                _ = AppendMenuW(menu, MF_POPUP, @intFromPtr(submenu), win32_strings.strings.menu_recent_activity);
                 _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
             }
         }
 
-        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_WINDOW, std.unicode.utf8ToUtf16LeStringLiteral("New Window\tCtrl+Shift+N"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_SETTINGS, std.unicode.utf8ToUtf16LeStringLiteral("Settings...\tCtrl+,"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_WINDOW, win32_strings.strings.menu_new_window);
+        _ = AppendMenuW(menu, MF_STRING, CTX_SETTINGS, win32_strings.strings.menu_settings);
 
         // Menu must be owned by top-level host HWND to avoid dismiss bugs
         _ = SetForegroundWindow(hwnd);
@@ -14407,16 +14407,16 @@ const Host = struct {
         const menu = CreatePopupMenu() orelse return;
         defer _ = DestroyMenu(menu);
 
-        _ = AppendMenuW(menu, MF_STRING, CTX_PANE_RENAME, std.unicode.utf8ToUtf16LeStringLiteral("Rename Pane"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_RENAME, std.unicode.utf8ToUtf16LeStringLiteral("Rename Workspace"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_PANE_RENAME, win32_strings.strings.menu_rename_pane);
+        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_RENAME, win32_strings.strings.menu_rename_workspace);
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
-        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_MOVE_LEFT, std.unicode.utf8ToUtf16LeStringLiteral("Move Workspace Left"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_MOVE_RIGHT, std.unicode.utf8ToUtf16LeStringLiteral("Move Workspace Right"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_MOVE_LEFT, win32_strings.strings.menu_move_ws_left);
+        _ = AppendMenuW(menu, MF_STRING, CTX_TAB_MOVE_RIGHT, win32_strings.strings.menu_move_ws_right);
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
 
         // Only allow closing if there's more than one tab
         const close_flag: UINT = if (self.tabs.items.len > 1) MF_STRING else MF_GRAYED;
-        _ = AppendMenuW(menu, close_flag, CTX_TAB_CLOSE, std.unicode.utf8ToUtf16LeStringLiteral("Close Workspace"));
+        _ = AppendMenuW(menu, close_flag, CTX_TAB_CLOSE, win32_strings.strings.menu_close_workspace);
         _ = AppendMenuW(menu, if (self.tabs.items.len > 1) MF_STRING else MF_GRAYED, CTX_TAB_CLOSE_OTHERS, std.unicode.utf8ToUtf16LeStringLiteral("Close Other Workspaces"));
 
         // Position below the tab button
@@ -15190,21 +15190,21 @@ const Host = struct {
         _ = AppendMenuW(menu, MF_STRING, CTX_NEW_TAB, win32_strings.strings.menu_new_workspace);
         _ = AppendMenuW(menu, MF_STRING, CTX_TAB_OVERVIEW, win32_strings.strings.menu_workspaces);
         _ = AppendMenuW(menu, MF_STRING, CTX_QUICK_TERMINAL, std.unicode.utf8ToUtf16LeStringLiteral("Quick Terminal\tCtrl+Alt+Q"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_RIGHT, std.unicode.utf8ToUtf16LeStringLiteral("Split Right\tCtrl+Shift+O"));
-        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_DOWN, std.unicode.utf8ToUtf16LeStringLiteral("Split Down\tCtrl+Shift+E"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_RIGHT, win32_strings.strings.menu_split_right);
+        _ = AppendMenuW(menu, MF_STRING, CTX_SPLIT_DOWN, win32_strings.strings.menu_split_down);
         const pane_count = if (self.activeTab()) |tab| tab.leafCount() else 1;
         const is_zoomed = if (self.activeTab()) |tab| tab.tree.zoomed != null else false;
         const multi_flag: UINT = if (pane_count > 1) MF_STRING else MF_GRAYED;
         _ = AppendMenuW(menu, multi_flag, CTX_ZOOM_PANE, zoomPaneMenuLabel(is_zoomed));
-        _ = AppendMenuW(menu, multi_flag, CTX_EQUALIZE_SPLITS, std.unicode.utf8ToUtf16LeStringLiteral("Equalize Splits"));
-        _ = AppendMenuW(menu, multi_flag, CTX_MERGE_PANES, std.unicode.utf8ToUtf16LeStringLiteral("Merge Panes (Close Others)"));
+        _ = AppendMenuW(menu, multi_flag, CTX_EQUALIZE_SPLITS, win32_strings.strings.menu_equalize);
+        _ = AppendMenuW(menu, multi_flag, CTX_MERGE_PANES, win32_strings.strings.menu_merge_panes);
         _ = AppendMenuW(menu, MF_STRING, CTX_CLOSE_SURFACE, closeSurfaceMenuLabel(pane_count));
-        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_WINDOW, std.unicode.utf8ToUtf16LeStringLiteral("New Window\tCtrl+Shift+N"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_NEW_WINDOW, win32_strings.strings.menu_new_window);
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
         _ = AppendMenuW(menu, MF_STRING, CTX_COMMAND_PALETTE, win32_strings.strings.menu_command_palette);
         _ = AppendMenuW(menu, MF_STRING, CTX_FIND, win32_strings.strings.menu_find);
         _ = AppendMenuW(menu, MF_SEPARATOR, 0, null);
-        _ = AppendMenuW(menu, MF_STRING, CTX_SETTINGS, std.unicode.utf8ToUtf16LeStringLiteral("Settings...\tCtrl+,"));
+        _ = AppendMenuW(menu, MF_STRING, CTX_SETTINGS, win32_strings.strings.menu_settings);
         _ = AppendMenuW(menu, MF_STRING, CTX_INSPECTOR, std.unicode.utf8ToUtf16LeStringLiteral("Toggle Inspector"));
 
         _ = SetForegroundWindow(hwnd);
