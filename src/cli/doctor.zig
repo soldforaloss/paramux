@@ -18,6 +18,10 @@ pub const Options = struct {
     /// exercised end-to-end. Requires running inside a paramux pane.
     fire: bool = false,
 
+    /// Emit the report as one JSON object (checks array + counts)
+    /// instead of the human lines — for CI and dashboards.
+    json: bool = false,
+
     pub fn deinit(self: *Options) void {
         if (self._arena) |arena| arena.deinit();
         self.* = undefined;
@@ -38,16 +42,32 @@ const Status = enum {
     }
 };
 
+const JsonCheck = struct {
+    status: []const u8,
+    text: []const u8,
+};
+
 const Report = struct {
     out: *std.Io.Writer,
     fail_count: usize = 0,
     warn_count: usize = 0,
+    /// When set, lines collect here instead of printing (--json).
+    json_alloc: ?Allocator = null,
+    json_checks: std.ArrayListUnmanaged(JsonCheck) = .empty,
 
     fn line(self: *Report, status: Status, comptime fmt: []const u8, fmt_args: anytype) !void {
         switch (status) {
             .fail => self.fail_count += 1,
             .warn => self.warn_count += 1,
             .ok => {},
+        }
+        if (self.json_alloc) |alloc| {
+            const text = try std.fmt.allocPrint(alloc, fmt, fmt_args);
+            try self.json_checks.append(alloc, .{
+                .status = @tagName(status),
+                .text = text,
+            });
+            return;
         }
         try self.out.print("{s} " ++ fmt ++ "\n", .{status.label()} ++ fmt_args);
     }
@@ -93,7 +113,10 @@ pub fn run(alloc: Allocator) !u8 {
     var out_buf: [4096]u8 = undefined;
     var stdout_writer = std.fs.File.stdout().writer(&out_buf);
     const out = &stdout_writer.interface;
-    var report: Report = .{ .out = out };
+    var report: Report = .{
+        .out = out,
+        .json_alloc = if (opts.json) a else null,
+    };
 
     // 1. PARAMUX_HOME: the anchor every adapter resolves paramux through.
     const home: ?[]const u8 = std.process.getEnvVarOwned(a, "PARAMUX_HOME") catch null;
@@ -225,6 +248,16 @@ pub fn run(alloc: Allocator) !u8 {
         }
     }
 
+    if (opts.json) {
+        try std.json.Stringify.value(.{
+            .checks = report.json_checks.items,
+            .failed = report.fail_count,
+            .warnings = report.warn_count,
+        }, .{}, out);
+        try out.writeAll("\n");
+        try out.flush();
+        return if (report.fail_count == 0) 0 else 1;
+    }
     try out.print(
         "\ndoctor: {d} failed, {d} warnings.{s}\n",
         .{
