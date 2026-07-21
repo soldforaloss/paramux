@@ -10475,6 +10475,8 @@ const Host = struct {
     /// dynamic workspace entries; rebuilt on every palette open.
     palette_dyn_arena: ?std.heap.ArenaAllocator = null,
     palette_dyn_commands: []const command_pkg.Command = &.{},
+    /// How many MRU-boosted entries lead the dynamic snapshot.
+    palette_mru_front: usize = 0,
     palette_dyn_cvals: []const command_pkg.Command.C = &.{},
     /// Where the hint strip was painted last frame (client coords);
     /// clicking it runs the hint's action.
@@ -11395,6 +11397,7 @@ const Host = struct {
                     break;
                 }
             }
+            self.palette_mru_front = front;
         }
         self.palette_dyn_commands = cmds[0..n];
         self.palette_dyn_cvals = cvals[0..n];
@@ -11739,6 +11742,21 @@ const Host = struct {
                 },
                 secondary_color,
             );
+            // MRU rows in the unfiltered view carry a quiet "recent"
+            // chip (identity order means no query reshuffled them).
+            if (i == cmd_index and cmd_index < self.palette_mru_front) {
+                drawPaletteRowText(
+                    hdc,
+                    "recent",
+                    .{
+                        .left = row_rect.right - padding - hint_width,
+                        .top = row_rect.top,
+                        .right = row_rect.right - padding,
+                        .bottom = row_rect.bottom,
+                    },
+                    theme.text_secondary,
+                );
+            }
 
             // Keybind hint: look up the primary trigger for this action
             // in the reverse index that `Binding.Set` already maintains.
