@@ -90,27 +90,27 @@ path today.
 ## Try the current prerelease
 
 The current test build is
-[`v0.1.12`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.12),
+[`v0.1.13`](https://github.com/soldforaloss/paramux/releases/tag/v0.1.13),
 published 2026-07-21 for Windows x64 and ARM64:
 
-- [`paramux-0.1.12-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.12/paramux-0.1.12-windows-x64-portable.zip)
-- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.12/SHA256SUMS-windows-x64.txt)
-- [`paramux-0.1.12-windows-arm64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.12/paramux-0.1.12-windows-arm64-portable.zip)
-- [`SHA256SUMS-windows-arm64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.12/SHA256SUMS-windows-arm64.txt)
+- [`paramux-0.1.13-windows-x64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.13/paramux-0.1.13-windows-x64-portable.zip)
+- [`SHA256SUMS-windows-x64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.13/SHA256SUMS-windows-x64.txt)
+- [`paramux-0.1.13-windows-arm64-portable.zip`](https://github.com/soldforaloss/paramux/releases/download/v0.1.13/paramux-0.1.13-windows-arm64-portable.zip)
+- [`SHA256SUMS-windows-arm64.txt`](https://github.com/soldforaloss/paramux/releases/download/v0.1.13/SHA256SUMS-windows-arm64.txt)
 
-This build is the polish release. Plumbing answers faster:
-**ETags/304 across `serve`**, **attention webhooks retry once**,
-**`update --version=X`** pin-installs any release, and
-**`doctor --json`** feeds CI. States read at a glance: **sidebar
-markers for muted and broadcast-opt-out panes**, **`status
---notes`** for workspace scratch notes, and the **palette's
-recently-used actions finally rank first** (the MRU was recorded
-but never consumed — now it leads the empty-query list).
-Quick-terminal frames **clamp into the work area** after monitor
-changes, attention exports gain **window/workspace attribution and
-a CSV sibling**, and the restore E2E grew a **fourth phase** proving
-`paramux open` preserves layout slot names. It builds on
-`v0.1.11`'s responsiveness. Releases from
+This build is the precision release. Screen readers get
+**pixel-true wide-glyph geometry** — highlights and hit-testing use
+each character's real terminal columns from the pin map. Layouts
+**travel as files**: `export-layout` / `import-layout` round-trip
+slots as validated templates, and **Rename Slot** ships on a new
+reusable prompt overlay. One action — **Clear All Attention** —
+acknowledges the whole fleet (the hint strip teaches it when a wave
+hits), and **`GET /attention`** serves every pane's timeline over
+HTTP behind the bearer token via a dedicated IPC method. Plus:
+"recent" chips on the palette's MRU rows, workspace accents on the
+wire, `status --json`, settings Enter-flow, i18n slice 4, and fresh
+perf receipts (13.2 ms cold start vs Windows Terminal's 47.6 ms).
+It builds on `v0.1.12`'s polish. Releases from
 `v0.1.0-paramux.7` onward apply with `paramux update`
 (`v0.1.0-paramux.4` remains a legacy test artifact).
 
@@ -119,7 +119,7 @@ a CSV sibling**, and the restore E2E grew a **fourth phase** proving
    release checksum:
 
 ```powershell
-Get-FileHash .\paramux-0.1.12-windows-x64-portable.zip -Algorithm SHA256
+Get-FileHash .\paramux-0.1.13-windows-x64-portable.zip -Algorithm SHA256
 Get-Content .\SHA256SUMS-windows-x64.txt
 ```
 

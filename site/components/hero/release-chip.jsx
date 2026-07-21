@@ -1,6 +1,6 @@
 import { ColorDots } from './color-dots.jsx';
 
-export const PARAMUX_VERSION = '0.1.12';
+export const PARAMUX_VERSION = '0.1.13';
 
 export function ReleaseChip() {
   return (

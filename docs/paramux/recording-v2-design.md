@@ -18,4 +18,4 @@ styling. v2's bar:
   (a red dot) the entire time; no silent capture, ever.
 
 Est. shape: `src/termio/record_tee.zig` + surface arm/disarm plumbing
-+ IPC verbs + the sidebar indicator. Post-v0.1.12 material.
++ IPC verbs + the sidebar indicator. Post-v0.1.13 material.
