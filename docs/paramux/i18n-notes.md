@@ -47,10 +47,15 @@ Shipped slices, all behind `ui-language = de`: 1 chrome basics,
 2 banners, 3 UIA localized type, 4 settings sections, 5 overlay
 labels, 6 hint strip, 7 pane-menu block one, 8 navigation/workspace
 menu block, 9 splits + window/workspace ops, 10 workspace-close +
-empty states + quick terminal + inspector + help menu, plus the
-watch-window fallback title. **Zero inline `AppendMenuW` literals
-remain** — every menu string is table-driven. `setLocale` swap and
-unknown-tag fallback are test-locked. What still bypasses the table:
-runtime-composed labels (layout-slot rows built from saved names,
-activity timeline rows) and non-menu chrome that later slices can
-sweep with a fresh `utf8ToUtf16LeStringLiteral` grep.
+empty states + quick terminal + inspector + help menu, 11 toggle
+pairs (broadcast/pin/mute) + accent Default + activity empty state,
+plus dialog titles (Health/Watch/help boxes), the update-banner
+buttons, and the watch-window fallback title. **Every static menu
+and dialog string is table-driven** — a sweep grep must match ALL
+menu handles, not just `AppendMenuW(menu` (the toggle items hid
+behind other handles once). `setLocale` swap and unknown-tag
+fallback are test-locked. Still outside the table: runtime-composed
+labels (layout-slot rows from saved names, activity timeline rows,
+ratio numbers by design) and the settings window's option help text
+(generated from config docs — a docs-site problem per the notes
+above).
