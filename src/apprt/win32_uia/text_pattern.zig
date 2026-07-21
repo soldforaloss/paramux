@@ -115,9 +115,39 @@ fn unitCol(
     return unit - line_start;
 }
 
+/// East-Asian-wide / emoji heuristic for the one place the column
+/// map can't answer: the width of a line's FINAL glyph (the map only
+/// stores start columns). Covers the practical wide ranges.
+fn isWideCodepoint(cp: u21) bool {
+    return (cp >= 0x1100 and cp <= 0x115F) or // Hangul Jamo
+        (cp >= 0x2E80 and cp <= 0xA4CF) or // CJK radicals..Yi
+        (cp >= 0xAC00 and cp <= 0xD7A3) or // Hangul syllables
+        (cp >= 0xF900 and cp <= 0xFAFF) or // CJK compat ideographs
+        (cp >= 0xFE30 and cp <= 0xFE4F) or // CJK compat forms
+        (cp >= 0xFF00 and cp <= 0xFF60) or // fullwidth forms
+        (cp >= 0xFFE0 and cp <= 0xFFE6) or
+        (cp >= 0x1F300 and cp <= 0x1FAFF) or // emoji blocks
+        (cp >= 0x20000 and cp <= 0x3FFFD); // CJK ext B+
+}
+
+/// Codepoint at `unit` (joining a surrogate pair when needed).
+fn codepointAt(doc: []const u16, unit: usize) u21 {
+    if (unit >= doc.len) return 0;
+    const u = doc[unit];
+    if (u >= 0xD800 and u <= 0xDBFF and unit + 1 < doc.len) {
+        const lo = doc[unit + 1];
+        if (lo >= 0xDC00 and lo <= 0xDFFF) {
+            return 0x10000 + ((@as(u21, u) - 0xD800) << 10) + (@as(u21, lo) - 0xDC00);
+        }
+    }
+    return u;
+}
+
 /// Exclusive end column of the unit before `seg_end` (start column of
-/// the next unit on the line when known — captures wide-glyph width).
+/// the next unit on the line when known — captures wide-glyph width;
+/// a line's final glyph falls back to a width heuristic).
 fn unitEndCol(
+    doc: []const u16,
     unit_cols: []const u16,
     line_start: usize,
     content_end: usize,
@@ -127,10 +157,15 @@ fn unitEndCol(
     if (unit_cols.len == 0) return seg_end - line_start;
     if (seg_end < content_end and seg_end < unit_cols.len)
         return unit_cols[seg_end];
-    // Last unit of the line: assume width 1 past its start column
-    // (wide final glyphs read one cell short — the remaining
-    // approximation).
-    if (seg_end - 1 < unit_cols.len) return unit_cols[seg_end - 1] + 1;
+    if (seg_end - 1 < unit_cols.len) {
+        // The final glyph: derive its width from the codepoint. For a
+        // surrogate pair the low unit shares the high unit's column.
+        var glyph_unit = seg_end - 1;
+        if (glyph_unit > line_start and doc[glyph_unit] >= 0xDC00 and doc[glyph_unit] <= 0xDFFF)
+            glyph_unit -= 1;
+        const width: usize = if (isWideCodepoint(codepointAt(doc, glyph_unit))) 2 else 1;
+        return unit_cols[glyph_unit] + width;
+    }
     return seg_end - line_start;
 }
 
@@ -175,7 +210,7 @@ pub fn boundingLineRects(
         if (seg_end <= seg_start) continue;
 
         const col_start = @min(unitCol(unit_cols, line_start, seg_start), geo.viewport_cols);
-        const col_end = @min(unitEndCol(unit_cols, line_start, content_end, seg_end), geo.viewport_cols);
+        const col_end = @min(unitEndCol(doc, unit_cols, line_start, content_end, seg_end), geo.viewport_cols);
         if (col_end <= col_start) continue;
 
         const row = line - first_visible_line;
@@ -1346,6 +1381,39 @@ test "win32 uia text pattern wide-glyph columns" {
         @as(usize, 3),
         offsetForPoint(doc, &starts, 0, doc.len, geo, &cols, 45, 5),
     );
+}
+
+test "win32 uia text pattern wide glyph at line end" {
+    // "A\u{4E2D}": the CJK char is LAST — its width must come from
+    // the heuristic (the col map only stores start columns).
+    const doc = std.unicode.utf8ToUtf16LeStringLiteral("A\u{4E2D}");
+    const starts = [_]usize{0};
+    const cols = [_]u16{ 0, 1 };
+    const geo: TextDoc = .{
+        .utf8 = &.{},
+        .visible_start = 0,
+        .visible_end = 0,
+        .cell_w = 10,
+        .cell_h = 20,
+        .origin_x = 0,
+        .origin_y = 0,
+        .viewport_cols = 80,
+    };
+    const rects = try boundingLineRects(
+        std.testing.allocator,
+        doc,
+        &starts,
+        0,
+        doc.len,
+        0,
+        doc.len,
+        geo,
+        &cols,
+    );
+    defer std.testing.allocator.free(rects);
+    try std.testing.expectEqual(@as(usize, 1), rects.len);
+    // Cols 0..3: A (1 cell) + CJK (2 cells) = width 30px.
+    try std.testing.expectEqual(@as(f64, 30), rects[0].width);
 }
 
 test "win32 uia text pattern word boundaries" {
