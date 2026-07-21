@@ -239,7 +239,21 @@ pub fn run(alloc: Allocator) !u8 {
         }
     }
 
-    // 9. Live pipeline test.
+    // 9. Session autosave freshness: a stale file under a running
+    // fleet usually means saves are failing silently.
+    session_blk: {
+        const local = std.process.getEnvVarOwned(a, "LOCALAPPDATA") catch break :session_blk;
+        const session_path = std.fs.path.join(a, &.{ local, "paramux", "session-state.json" }) catch break :session_blk;
+        const stat = std.fs.cwd().statFile(session_path) catch {
+            try report.line(.ok, "no default session-state.json (fresh install or named sessions)", .{});
+            break :session_blk;
+        };
+        const age_ns = @as(i128, std.time.nanoTimestamp()) - stat.mtime;
+        const age_min = @divTrunc(age_ns, std.time.ns_per_min);
+        try report.line(.ok, "session-state.json last written {d} minute(s) ago", .{age_min});
+    }
+
+    // 10. Live pipeline test.
     if (opts.fire) {
         if (surface_id) |id| {
             try fireTestSignals(&report, alloc, a, id);
