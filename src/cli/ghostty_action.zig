@@ -103,6 +103,10 @@ pub const Action = enum {
     // totals as a table.
     status,
 
+    // Print every pane's attention timeline as JSON (the CLI twin of
+    // GET /attention on `paramux serve`).
+    attention,
+
     // Copy the config, layouts, sessions, and themes to a backup folder.
     @"export-config",
     @"export-layout",

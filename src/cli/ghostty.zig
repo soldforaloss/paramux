@@ -33,6 +33,7 @@ const update = @import("update.zig");
 const doctor = @import("doctor.zig");
 const run_cmd = @import("run.zig");
 const status_cmd = @import("status.zig");
+const attention_cmd = @import("attention.zig");
 const open_cmd = @import("open.zig");
 const export_config_cmd = @import("export_config.zig");
 const export_layout_cmd = @import("export_layout.zig");
@@ -105,6 +106,7 @@ fn runMain(self: Action, alloc: Allocator) !u8 {
         .doctor => try doctor.run(alloc),
         .run => try run_cmd.run(alloc),
         .status => try status_cmd.run(alloc),
+        .attention => try attention_cmd.run(alloc),
         .open => try open_cmd.run(alloc),
         .@"export-config" => try export_config_cmd.run(alloc),
         .@"export-layout" => try export_layout_cmd.run(alloc),
@@ -150,6 +152,7 @@ pub fn options(comptime self: Action) type {
             .doctor => doctor.Options,
             .run => run_cmd.Options,
             .status => status_cmd.Options,
+            .attention => attention_cmd.Options,
             .open => open_cmd.Options,
             .@"export-config" => export_config_cmd.Options,
             .@"export-layout" => export_layout_cmd.Options,
