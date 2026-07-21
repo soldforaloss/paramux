@@ -553,6 +553,12 @@ fn actionCommands(action: Action.Key) []const Command {
             .description = "Write every pane's attention timeline to attention-log.json in the state directory.",
         }},
 
+        .reset_quick_terminal_frame => comptime &.{.{
+            .action = .reset_quick_terminal_frame,
+            .title = "Reset Quick Terminal Frame",
+            .description = "Forget the remembered quick-terminal position and use the configured geometry again.",
+        }},
+
         .health_hud => comptime &.{.{
             .action = .health_hud,
             .title = "Health HUD",

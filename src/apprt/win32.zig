@@ -6064,6 +6064,23 @@ pub const App = struct {
                 return true;
             },
 
+            .reset_quick_terminal_frame => {
+                self.quick_terminal_rect = null;
+                self.quick_terminal_rect_loaded = true;
+                reset_file: {
+                    var arena = std.heap.ArenaAllocator.init(self.core_app.alloc);
+                    defer arena.deinit();
+                    const path = quickTerminalRectPath(arena.allocator()) catch break :reset_file;
+                    std.fs.cwd().deleteFile(path) catch {};
+                }
+                if (self.findSurfaceForTarget(target)) |surface| {
+                    if (surface.host) |host| {
+                        host.setBanner(.info, "Quick terminal frame reset.") catch {};
+                    }
+                }
+                return true;
+            },
+
             .export_attention => {
                 const ok = self.exportAttentionLog();
                 if (self.findSurfaceForTarget(target)) |surface| {

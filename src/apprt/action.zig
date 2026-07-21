@@ -157,6 +157,9 @@ pub const Action = union(Key) {
     /// Export all panes' attention timelines to the state directory.
     export_attention,
 
+    /// Forget the quick terminal's remembered frame.
+    reset_quick_terminal_frame,
+
     /// Show the health HUD.
     health_hud,
 
@@ -407,6 +410,7 @@ pub const Action = union(Key) {
         show_digest,
         save_session,
         export_attention,
+        reset_quick_terminal_frame,
         health_hud,
         toggle_window_on_top,
         apply_layout,

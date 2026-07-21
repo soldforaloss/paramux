@@ -579,6 +579,11 @@ pub const Action = union(enum) {
     /// directory — the paper trail after a long unattended run.
     export_attention,
 
+    /// Forget the quick terminal's remembered frame and fall back to
+    /// the config-derived geometry — the escape hatch when a monitor
+    /// change strands the frame off-screen.
+    reset_quick_terminal_frame,
+
     /// Keep this window above all others (toggle).
     toggle_window_on_top,
 
@@ -1445,6 +1450,7 @@ pub const Action = union(enum) {
             .health_hud,
             .save_session,
             .export_attention,
+            .reset_quick_terminal_frame,
             .toggle_window_on_top,
             .workspace_note,
             .focus_pane,
