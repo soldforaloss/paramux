@@ -8113,9 +8113,26 @@ pub const App = struct {
             if (self.quick_terminal_rect == null)
                 self.quick_terminal_rect = self.loadQuickTerminalRect();
         }
-        const rect = self.quick_terminal_rect orelse return false;
+        var rect = self.quick_terminal_rect orelse return false;
         if (rect.right <= rect.left or rect.bottom <= rect.top) return false;
-        if (MonitorFromRect(&rect, MONITOR_DEFAULTTONULL) == null) return false;
+        const monitor = MonitorFromRect(&rect, MONITOR_DEFAULTTONULL) orelse return false;
+        // Clamp into the monitor's work area so a resolution change
+        // can't leave the frame half (or fully) off-screen.
+        var info: MONITORINFO = .{
+            .cbSize = @sizeOf(MONITORINFO),
+            .rcMonitor = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 },
+            .rcWork = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 },
+            .dwFlags = 0,
+        };
+        if (GetMonitorInfoW(monitor, &info) != 0) {
+            const work = info.rcWork;
+            const width = @min(rect.right - rect.left, work.right - work.left);
+            const height = @min(rect.bottom - rect.top, work.bottom - work.top);
+            rect.left = std.math.clamp(rect.left, work.left, work.right - width);
+            rect.top = std.math.clamp(rect.top, work.top, work.bottom - height);
+            rect.right = rect.left + width;
+            rect.bottom = rect.top + height;
+        }
         _ = SetWindowPos(
             top_level,
             null,
