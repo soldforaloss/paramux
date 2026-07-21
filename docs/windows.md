@@ -170,6 +170,10 @@ paramux send-key --surface-id=<surface_id> enter
 paramux notify --surface-id=<surface_id> --state=waiting "Needs input"
 ```
 
+The full verb map (status, attention, run, layouts, doctor, serve,
+record, update) lives in
+[docs/paramux/fleet-cli.md](paramux/fleet-cli.md).
+
 `list-windows` reports the `paramux.windows.v2` JSON schema. It exposes local
 window/tab/pane IDs and structural state without terminal text. `read-pane`
 is the explicit, token-gated viewport-text operation.
