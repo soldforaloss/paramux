@@ -30,6 +30,7 @@ fn layoutsPath(alloc: Allocator) ![]u8 {
 
 /// Write a saved layout slot as a standalone `.layout.json` template:
 /// `paramux export-layout 2 team.layout.json` (file omitted = stdout);
+/// `--name=<slot name>` picks the slot by its saved name instead;
 /// `--all=<dir>` writes every occupied slot as `slotN-<name>.layout.json`.
 /// The output is exactly the project-layout / gallery format, so it
 /// round-trips through `.paramux/layout` and `import-layout`.
@@ -48,6 +49,7 @@ pub fn run(alloc: Allocator) !u8 {
     defer stderr.flush() catch {};
 
     var slot_arg: ?usize = null;
+    var name_arg: ?[]const u8 = null;
     var out_arg: ?[]const u8 = null;
     var all_dir: ?[]const u8 = null;
     var iter = try args.argsIterator(alloc);
@@ -58,6 +60,10 @@ pub fn run(alloc: Allocator) !u8 {
         }
         if (lib.cutPrefix(u8, arg, "--all=")) |rest| {
             all_dir = try a.dupe(u8, rest);
+            continue;
+        }
+        if (lib.cutPrefix(u8, arg, "--name=")) |rest| {
+            name_arg = try a.dupe(u8, rest);
             continue;
         }
         if (slot_arg == null) {
@@ -73,13 +79,15 @@ pub fn run(alloc: Allocator) !u8 {
     }
     if (all_dir) |dir_path| return exportAll(a, stdout, stderr, dir_path);
 
-    const slot = slot_arg orelse {
-        try stderr.print("usage: paramux export-layout <slot 1-5> [file]\n", .{});
+    if (slot_arg == null and name_arg == null) {
+        try stderr.print("usage: paramux export-layout <slot 1-5 | --name=...> [file]\n", .{});
         return 1;
-    };
-    if (slot < 1 or slot > 5) {
-        try stderr.print("slot must be 1-5\n", .{});
-        return 1;
+    }
+    if (slot_arg) |slot| {
+        if (slot < 1 or slot > 5) {
+            try stderr.print("slot must be 1-5\n", .{});
+            return 1;
+        }
     }
 
     const path = layoutsPath(a) catch {
@@ -98,6 +106,18 @@ pub fn run(alloc: Allocator) !u8 {
         return 1;
     };
     defer parsed.deinit();
+
+    // --name resolves against the saved slot names, same rule as
+    // `paramux open --name`. An explicit slot number wins.
+    const slot = slot_arg orelse blk: {
+        const want = name_arg.?;
+        for (parsed.value.names, 1..) |slot_name, n| {
+            const have = slot_name orelse continue;
+            if (std.ascii.eqlIgnoreCase(have, want)) break :blk n;
+        }
+        try stderr.print("no layout slot named {s} (see paramux open --list)\n", .{want});
+        return 1;
+    };
 
     const tab = parsed.value.slots[slot - 1] orelse {
         try stderr.print("slot {d} is empty\n", .{slot});
