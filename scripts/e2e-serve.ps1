@@ -44,10 +44,24 @@ try {
             -Headers @{Authorization = "Bearer $token"; "If-None-Match" = $etag} | Out-Null
     } catch { $code304 = [int]$_.Exception.Response.StatusCode }
     Check "/attention 304 on matching ETag" ($code304 -eq 304)
+
+    # Pane text route, both sides of the auth gate. The id comes from a
+    # regex over the raw JSON: ConvertFrom-Json would round u64 ids
+    # through a double and corrupt them.
+    $sid = ([regex]::Match($st.Content, '"surface_id":(\d+)')).Groups[1].Value
+    Check "/status carries a pane id" (-not [string]::IsNullOrEmpty($sid))
+    if ($sid) {
+        $pt = Invoke-WebRequest -Uri "$base/panes/$sid/text" -Headers $auth -UseBasicParsing -TimeoutSec 10
+        Check "/panes/<id>/text 200 with token" ($pt.StatusCode -eq 200)
+        $ptCode = 0
+        try { Invoke-WebRequest -Uri "$base/panes/$sid/text" -UseBasicParsing -TimeoutSec 10 | Out-Null }
+        catch { $ptCode = [int]$_.Exception.Response.StatusCode }
+        Check "/panes/<id>/text 401 without token" ($ptCode -eq 401)
+    }
 } finally {
     if ($serve -and -not $serve.HasExited) { Stop-Process -Id $serve.Id -Force -ErrorAction SilentlyContinue }
     if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
 }
 
 if ($fails.Count -gt 0) { Write-Error "serve E2E FAILED: $($fails -join ', ')" }
-Write-Host "serve E2E PASS (6 checks)"
+Write-Host "serve E2E PASS (9 checks)"
