@@ -78,6 +78,9 @@ pub const Strings = struct {
     menu_apply_layout_from: [:0]const u16 = w("Apply Layout From"),
     menu_workspaces: [:0]const u16 = w("Workspaces..."),
 
+    // Watch-window fallback title when the pane has none (UTF-8).
+    watch_fallback_title: []const u8 = "pane",
+
     // Overlay title labels (UTF-8 - duped into paint paths).
     overlay_surface_title: []const u8 = "Window title",
     overlay_find_panes: []const u8 = "Find in all panes",
@@ -195,6 +198,7 @@ pub const german: Strings = .{
     .menu_save_layout_to = w("Layout speichern in"),
     .menu_apply_layout_from = w("Layout anwenden aus"),
     .menu_workspaces = w("Arbeitsbereiche..."),
+    .watch_fallback_title = "Pane",
     .overlay_surface_title = "Fenstertitel",
     .overlay_find_panes = "In allen Panes suchen",
     .overlay_worktree_branch = "Neuer Arbeitsbereich aus Branch",

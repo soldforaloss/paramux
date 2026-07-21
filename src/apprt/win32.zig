@@ -22091,9 +22091,9 @@ fn paneWatchProc(
             const line_h = v.scaled(17);
             var y: i32 = v.scaled(8);
             const title: []const u8 = if (v.watch_surface) |ws|
-                (if (ws.effectiveTitle()) |t| t else "pane")
+                (if (ws.effectiveTitle()) |t| t else win32_strings.strings.watch_fallback_title)
             else
-                "pane";
+                win32_strings.strings.watch_fallback_title;
             drawPaletteRowText(hdc, title, .{
                 .left = rect.left + v.scaled(10),
                 .top = y,
