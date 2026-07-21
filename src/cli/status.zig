@@ -143,18 +143,33 @@ fn renderOnce(
     };
     defer parsed.deinit();
 
+    return renderTable(stdout, parsed.value, no_header, show_notes);
+}
+
+fn renderTable(
+    stdout: *std.Io.Writer,
+    root: std.json.Value,
+    no_header: bool,
+    show_notes: bool,
+) !u8 {
     if (!no_header) {
         try stdout.print("{s:<10} {s:<20} {s:<10} {s:<10} {s}\n", .{ "WORKSPACE", "SURFACE", "STATE", "TOKENS", "FLAGS" });
     }
-    const windows = parsed.value.object.get("windows") orelse return 1;
+    const windows = root.object.get("windows") orelse return 1;
     for (windows.array.items) |win| {
         const tabs = win.object.get("tabs") orelse continue;
         for (tabs.array.items, 0..) |tab, ti| {
             if (show_notes) {
-                if (tab.object.get("note")) |note_val| {
-                    if (note_val == .string and note_val.string.len > 0) {
-                        try stdout.print("# workspace {d} note: {s}\n", .{ ti + 1, note_val.string });
-                    }
+                const note: []const u8 = if (tab.object.get("note")) |v|
+                    (if (v == .string) v.string else "")
+                else
+                    "";
+                const accent: ?u64 = if (tab.object.get("accent")) |v| apprt.ipc.jsonU64(v) else null;
+                if (note.len > 0 or accent != null) {
+                    try stdout.print("# workspace {d}", .{ti + 1});
+                    if (accent) |hue| try stdout.print(" accent: {d}", .{hue});
+                    if (note.len > 0) try stdout.print(" note: {s}", .{note});
+                    try stdout.print("\n", .{});
                 }
             }
             const panes = tab.object.get("panes") orelse continue;
@@ -179,4 +194,26 @@ fn renderOnce(
         }
     }
     return 0;
+}
+
+test "win32 status renders accent and note in the notes line" {
+    const alloc = std.testing.allocator;
+    const payload =
+        "{\"windows\":[{\"tabs\":[" ++
+        "{\"note\":\"hi\",\"accent\":3,\"panes\":[{\"surface_id\":18446744073709551615,\"attention\":\"none\",\"tokens\":0,\"focused\":false,\"active\":true}]}," ++
+        "{\"accent\":5,\"panes\":[]}," ++
+        "{\"panes\":[]}]}]}";
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, payload, .{});
+    defer parsed.deinit();
+    var out: std.Io.Writer.Allocating = .init(alloc);
+    defer out.deinit();
+    const rc = try renderTable(&out.writer, parsed.value, true, true);
+    try std.testing.expectEqual(@as(u8, 0), rc);
+    const text = out.written();
+    try std.testing.expect(std.mem.indexOf(u8, text, "# workspace 1 accent: 3 note: hi\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "# workspace 2 accent: 5\n") != null);
+    // The big surface id renders in full instead of panicking.
+    try std.testing.expect(std.mem.indexOf(u8, text, "18446744073709551615") != null);
+    // Workspace 3 has neither note nor accent: exactly two note lines.
+    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, text, "# workspace"));
 }
