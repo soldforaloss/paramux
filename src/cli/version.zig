@@ -12,15 +12,35 @@ const event_backend_label = "  - event backend : ";
 pub const Options = struct {};
 
 /// The `version` command is used to display information about paramux. Recognized as
-/// either `version` or `--version`.
+/// either `version` or `--version`. `--json` emits a machine-readable
+/// object (version, channel, commit, arch, zig, mode) for tooling.
 pub fn run(alloc: Allocator) !u8 {
-    _ = alloc;
     var buffer: [1024]u8 = undefined;
     const stdout_file: std.fs.File = .stdout();
     var stdout_writer = stdout_file.writer(&buffer);
 
     const stdout = &stdout_writer.interface;
     const tty = stdout_file.isTty();
+
+    {
+        var iter = std.process.argsWithAllocator(alloc) catch null;
+        defer if (iter) |*it| it.deinit();
+        if (iter) |*it| while (it.next()) |arg| {
+            if (std.mem.eql(u8, arg, "--json")) {
+                try std.json.Stringify.value(.{
+                    .version = build_config.version_string,
+                    .channel = @tagName(build_config.release_channel),
+                    .commit = build_config.version.build,
+                    .arch = @tagName(builtin.cpu.arch),
+                    .zig = builtin.zig_version_string,
+                    .mode = @tagName(builtin.mode),
+                }, .{}, stdout);
+                try stdout.writeAll("\n");
+                try stdout.flush();
+                return 0;
+            }
+        };
+    }
 
     if (tty) if (build_config.version.build) |commit_hash| {
         try stdout.print(
