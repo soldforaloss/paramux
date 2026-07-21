@@ -15343,11 +15343,17 @@ const Host = struct {
         self.pane_drop_row = null;
 
         // Dropping on another pane row of the SAME workspace swaps the
-        // two panes (cross-workspace move is a later phase).
+        // two panes; dropping on ANOTHER workspace's header moves the
+        // pane there. Both targets get the row-band preview so the
+        // drop is visible before release.
         if (self.sidebarRowIndexAt(x, y)) |row_index| {
             if (row_index != self.pane_drag.source_row) {
                 if (self.sidebarRowByIndex(row_index)) |row| {
-                    if (row.kind == .pane and row.tab_index == self.active_tab and row.surface != null) {
+                    const swap_target = row.kind == .pane and
+                        row.tab_index == self.active_tab and row.surface != null;
+                    const move_target = row.kind == .workspace_header and
+                        row.tab_index != self.active_tab;
+                    if (swap_target or move_target) {
                         self.pane_drop_row = row_index;
                         const content = self.contentRect() catch return;
                         self.positionPaneDropPreview(.{
