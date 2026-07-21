@@ -686,6 +686,16 @@ const Subprocess = struct {
         errdefer arena.deinit();
         const alloc = arena.allocator();
 
+        // Own the command before anything references it: callers with
+        // transient configs (session restore, launch profiles, layout
+        // templates) free theirs before the io thread spawns, and the
+        // argv built below would otherwise keep pointers into freed
+        // memory (observed as 0xAA garbage at spawn).
+        const owned_command: ?configpkg.Command = if (cfg.command) |cmd|
+            try cmd.clone(alloc)
+        else
+            null;
+
         // Get our env. If a default env isn't provided by the caller
         // then we get it ourselves.
         var env = cfg.env;
@@ -798,7 +808,7 @@ const Subprocess = struct {
         // Setup our shell integration, if we can.
         const shell_command: configpkg.Command = shell: {
             const default_shell_command: configpkg.Command =
-                cfg.command orelse switch (builtin.os.tag) {
+                owned_command orelse switch (builtin.os.tag) {
                     .windows => try windows_shell.previewCommand(alloc),
                     else => .{ .shell = "sh" },
                 };

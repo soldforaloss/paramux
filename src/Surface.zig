@@ -5810,6 +5810,12 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool 
             {},
         ),
 
+        .save_session => return try self.rt_app.performAction(
+            .{ .surface = self },
+            .save_session,
+            {},
+        ),
+
         .health_hud => return try self.rt_app.performAction(
             .{ .surface = self },
             .health_hud,

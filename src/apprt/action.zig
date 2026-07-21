@@ -151,6 +151,9 @@ pub const Action = union(Key) {
     /// Show the while-you-were-away attention digest.
     show_digest,
 
+    /// Save the session layout to disk now.
+    save_session,
+
     /// Show the health HUD.
     health_hud,
 
@@ -399,6 +402,7 @@ pub const Action = union(Key) {
         attention_inbox,
         find_all_panes,
         show_digest,
+        save_session,
         health_hud,
         toggle_window_on_top,
         apply_layout,

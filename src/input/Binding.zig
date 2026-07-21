@@ -569,6 +569,11 @@ pub const Action = union(enum) {
     /// process memory, and where the config and control pipe live.
     health_hud,
 
+    /// Save the session layout to disk right now, without waiting for
+    /// the periodic autosave — before a risky reorganization, or from
+    /// automation ahead of a controlled restart.
+    save_session,
+
     /// Keep this window above all others (toggle).
     toggle_window_on_top,
 
@@ -1433,6 +1438,7 @@ pub const Action = union(enum) {
             .find_all_panes,
             .show_digest,
             .health_hud,
+            .save_session,
             .toggle_window_on_top,
             .workspace_note,
             .focus_pane,

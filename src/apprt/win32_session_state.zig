@@ -77,9 +77,10 @@ pub const Pane = struct {
     profile: ?[]const u8 = null,
     title_override: ?[]const u8 = null,
     tab_title_override: ?[]const u8 = null,
-    /// Layout templates only: a shell command the pane runs at spawn.
-    /// Never emitted by session SAVE (running commands are not
-    /// captured); honored on restore/apply when present.
+    /// A shell command the pane runs at spawn. Plain session saves
+    /// never emit it; `restore-commands` opt-in captures the running
+    /// child's command line, and layout templates may author it.
+    /// Honored on restore/apply when present.
     command: ?[]const u8 = null,
     /// Layout templates only: extra environment for the pane, as
     /// "KEY=value" strings. Same save/apply semantics as `command`.
@@ -124,6 +125,12 @@ pub fn parseAlloc(alloc: Allocator, raw: []const u8) !std.json.Parsed(SessionSta
 
     var parsed = try std.json.parseFromSlice(SessionState, alloc, raw, .{
         .ignore_unknown_fields = false,
+        // The caller frees `raw` immediately; every string field (cwd,
+        // titles, notes, commands) must be owned by the parse arena,
+        // not sliced out of the input buffer. Without this the restore
+        // path reads freed memory — masked in ReleaseFast, 0xAA in
+        // debug.
+        .allocate = .alloc_always,
     });
     errdefer parsed.deinit();
 
@@ -643,4 +650,28 @@ test "win32 session state parse rejects self-referential layout before DFS stack
         error.InvalidTreeShape,
         parseAlloc(std.testing.allocator, raw),
     );
+}
+
+test "win32 session state parse owns its strings after the input dies" {
+    const alloc = std.testing.allocator;
+    const source =
+        \\{"schema_version":1,"windows":[{"x":1,"y":2,"width":3,"height":4,
+        \\"state":"normal","selected_tab":0,"tabs":[{"selected_leaf":0,
+        \\"note":"remember","layout":{"root":0,"nodes":[{"pane":
+        \\{"cwd":"C:\\repo","command":"ping -t 127.0.0.1"}}]}}]}]}
+    ;
+    const raw = try alloc.dupe(u8, source);
+
+    var parsed = try parseAlloc(alloc, raw);
+    defer parsed.deinit();
+
+    // Simulate the caller freeing (and the allocator poisoning) the
+    // input buffer: parsed strings must not alias it.
+    @memset(raw, 0xAA);
+    alloc.free(raw);
+
+    const pane = parsed.value.windows[0].tabs[0].layout.nodes[0].pane;
+    try std.testing.expectEqualStrings("ping -t 127.0.0.1", pane.command.?);
+    try std.testing.expectEqualStrings("C:\\repo", pane.cwd.?);
+    try std.testing.expectEqualStrings("remember", parsed.value.windows[0].tabs[0].note.?);
 }

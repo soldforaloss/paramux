@@ -541,6 +541,12 @@ fn actionCommands(action: Action.Key) []const Command {
             .description = "Show how many panes are waiting, done, or errored right now.",
         }},
 
+        .save_session => comptime &.{.{
+            .action = .save_session,
+            .title = "Save Session Now",
+            .description = "Write the session layout to disk without waiting for the autosave.",
+        }},
+
         .health_hud => comptime &.{.{
             .action = .health_hud,
             .title = "Health HUD",

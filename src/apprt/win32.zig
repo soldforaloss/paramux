@@ -5954,6 +5954,16 @@ pub const App = struct {
                 return true;
             },
 
+            .save_session => {
+                self.saveSessionState();
+                if (self.findSurfaceForTarget(target)) |surface| {
+                    if (surface.host) |host| {
+                        host.setBanner(.info, "Session saved.") catch {};
+                    }
+                }
+                return true;
+            },
+
             .health_hud => {
                 const surface = self.findSurfaceForTarget(target) orelse return false;
                 const host = surface.host orelse return false;
