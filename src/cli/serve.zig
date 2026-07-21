@@ -13,6 +13,9 @@ pub const Options = struct {
     /// Port on 127.0.0.1 (default 7877).
     port: u16 = 7877,
 
+    /// Suppress the per-request log line, set with `--quiet`.
+    quiet: bool = false,
+
     pub fn deinit(self: *Options) void {
         if (self._arena) |arena| arena.deinit();
         self.* = undefined;
@@ -70,6 +73,10 @@ fn runArgs(
             };
             continue;
         }
+        if (std.mem.eql(u8, arg, "--quiet")) {
+            opts.quiet = true;
+            continue;
+        }
         try stderr.print("unknown option: {s}\n", .{arg});
         return 1;
     }
@@ -105,10 +112,10 @@ fn runArgs(
         // route's `continue`. recv_buf (and so `path`) is still live
         // at iteration-scope exit.
         const started_ms = std.time.milliTimestamp();
-        defer {
+        defer if (!opts.quiet) {
             stdout.print("{d}ms {s}\n", .{ std.time.milliTimestamp() - started_ms, path }) catch {};
             stdout.flush() catch {};
-        }
+        };
         if (lib.cutPrefix(u8, path, "/panes/")) |rest| {
             // /panes/<id>/text — pane CONTENT, so it requires the
             // instance token as `Authorization: Bearer <token>`.
