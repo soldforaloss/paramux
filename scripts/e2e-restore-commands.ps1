@@ -20,6 +20,14 @@ param(
 $ErrorActionPreference = "Stop"
 if (-not (Test-Path $Binary)) { Write-Error "Build first: zig build -Demit-exe=true" }
 
+# A running instance would intercept the phases via single-instance
+# forwarding and turn the results into noise - refuse up front.
+$binFull = (Resolve-Path $Binary).Path
+$already = @(Get-Process -Name paramux -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $binFull })
+if ($already.Count -gt 0) {
+    Write-Error "paramux is already running from $binFull - close it (or the soak) before the restore E2E"
+}
+
 $session = "e2erestore"
 $stateFile = Join-Path $env:LOCALAPPDATA "paramux\session-state-$session.json"
 $marker = "ping -t 127.0.0.1"

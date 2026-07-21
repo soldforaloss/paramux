@@ -27,6 +27,15 @@ Use the standard Zig workflow from the repository root:
 For normal development, run the narrowest verification that covers the change,
 then run `zig build` before finishing.
 
+Beyond the unit suites, three scripted verifications cover behavior
+tests can't reach (each needs a built `zig-out` and a free instance):
+
+| Script | Proves |
+| --- | --- |
+| `scripts/e2e-restore-commands.ps1` | `restore-commands` opt-in gate, capture, and relaunch (3 phases) |
+| `scripts/start-soak.ps1 -Minutes 2` | the detached soak harness end to end (72h run = the 1.0 gate) |
+| `docs/paramux/accessibility-testing.md` | Narrator checklist for `win32_uia/` changes (human + hardware) |
+
 ## Toolchain
 
 This fork requires a Zig `0.15.x` release with patch version 2 or newer. The
